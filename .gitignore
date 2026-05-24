@@ -1,0 +1,34 @@
+# Dependencias
+node_modules/
+*.egg-info/
+__pycache__/
+*.pyc
+.Python
+
+# Entorno
+.env
+.env.local
+.venv
+env/
+venv/
+
+# Compilación y distribución
+build/
+dist/
+*.egg
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+npm-debug.log*
+
+# Temporal
+.cache/
+*.tmp

@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Automatizador notas enfermería — Fundación Clínica Santa Fe de Bogotá</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="icon" href="assets/logo-fcsb.png" type="image/png">
+</head>
+<body>
+    <div class="container">
+
+        <header class="header">
+            <img src="assets/logo-fcsb.png" alt="Logo Fundación Clínica Santa Fe de Bogotá" class="header-logo" width="68" height="68">
+            <div class="header-text">
+                <h1>Automatizador de notas de enfermería</h1>
+                <h2>Fundación Clínica Santa Fe de Bogotá</h2>
+                <p>Plan de Atención Integral (PAI) · Todas las áreas clínicas</p>
+            </div>
+        </header>
+
+        <main class="content">
+
+            <!-- Panel lateral — primero en DOM para que en mobile aparezca arriba -->
+            <aside class="note-section" aria-label="Nota de enfermería generada">
+
+                <div class="note-panel-header">
+                    <h3>Nota de enfermería</h3>
+                    <div class="note-panel-header-actions">
+                        <span class="live-badge">En vivo</span>
+                        <button type="button" class="note-toggle-btn" id="noteToggleBtn" aria-expanded="false">
+                            Ver nota
+                        </button>
+                    </div>
+                </div>
+
+                <div class="note-panel-body">
+                    <!-- Transversales: visible por defecto -->
+                    <div class="trans-list" id="transversales"></div>
+                    <!-- Nota: oculta por defecto, se muestra al hacer clic en "Ver nota" -->
+                    <div class="note-content" id="noteContent" hidden role="document" aria-live="polite"></div>
+                </div>
+
+            </aside>
+
+            <!-- Flujo de trabajo -->
+            <section class="workflow" aria-label="Flujo de trabajo">
+
+                <!-- Datos del paciente — siempre visible, encabezado con botón de reinicio -->
+                <section class="patient-block" id="patientBlock" aria-label="Datos del paciente">
+                    <div class="patient-block-header">
+                        <h3>Datos del paciente</h3>
+                        <div class="patient-header-right">
+                            <span class="required-note">* Obligatorios</span>
+                            <button type="button" class="reset-icon-btn" id="resetBtn"
+                                    title="Reiniciar proceso" aria-label="Reiniciar todo el proceso">
+                                ↺
+                            </button>
+                        </div>
+                    </div>
+                    <div class="patient-block-body">
+                        <div class="patient-field-row">
+                            <div class="field-group">
+                                <label for="sexo">Sexo <span class="required-star" aria-label="obligatorio">*</span></label>
+                                <select id="sexo" aria-label="Sexo del paciente">
+                                    <option value="___">Seleccionar…</option>
+                                    <option value="Femenino">Femenino</option>
+                                    <option value="Masculino">Masculino</option>
+                                </select>
+                            </div>
+                            <div class="field-group field-group--dob">
+                                <label>Fecha de nacimiento <span class="required-star" aria-label="obligatorio">*</span></label>
+                                <div class="dob-inputs" role="group" aria-label="Fecha de nacimiento">
+                                    <input type="text" inputmode="numeric" id="dobDia"
+                                           maxlength="2" placeholder="DD"
+                                           aria-label="Día de nacimiento"
+                                           class="dob-field" autocomplete="off">
+                                    <span class="dob-sep" aria-hidden="true">/</span>
+                                    <input type="text" inputmode="numeric" id="dobMes"
+                                           maxlength="2" placeholder="MM"
+                                           aria-label="Mes de nacimiento"
+                                           class="dob-field" autocomplete="off">
+                                    <span class="dob-sep" aria-hidden="true">/</span>
+                                    <input type="text" inputmode="numeric" id="dobAnio"
+                                           maxlength="4" placeholder="AAAA"
+                                           aria-label="Año de nacimiento"
+                                           class="dob-field dob-field--year" autocomplete="off">
+                                </div>
+                                <div class="dob-feedback" id="dobFeedback" aria-live="polite"></div>
+                            </div>
+                            <div class="field-group field-group--wide">
+                                <label for="servicio">Servicio / Unidad <span class="required-star" aria-label="obligatorio">*</span></label>
+                                <input type="text" id="servicio" placeholder="Ej: Hospitalización pediátrica" aria-label="Servicio o unidad">
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- Barra de progreso -->
+                <div class="progress-track">
+                    <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progreso del formulario">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <span class="progress-label" id="progressLabel" aria-live="polite">Paso 1 de 5</span>
+                </div>
+
+                <!-- Paso 1: Condiciones clínicas -->
+                <article class="step active" id="step1" data-step="1">
+                    <div class="step-header" role="button" tabindex="0" aria-expanded="true" aria-label="Paso 1: Condiciones clínicas">
+                        <span class="step-badge">1</span>
+                        <h3>Condiciones clínicas</h3>
+                        <span class="step-summary" aria-live="polite"></span>
+                    </div>
+                    <div class="step-content">
+                        <p class="hint">Seleccione el área o servicio clínico del paciente.</p>
+                        <div class="options" id="areas"></div>
+                    </div>
+                </article>
+
+                <!-- Paso 2: Diagnóstico NANDA -->
+                <article class="step" id="step2" data-step="2">
+                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 2: Diagnóstico de enfermería">
+                        <span class="step-badge">2</span>
+                        <h3>Diagnóstico de enfermería (NANDA)</h3>
+                        <span class="step-summary" aria-live="polite"></span>
+                    </div>
+                    <div class="step-content">
+                        <input type="search" class="search-box" id="searchDiag" placeholder="Buscar diagnóstico…" aria-label="Buscar diagnóstico">
+                        <div class="options" id="diagnosticos"></div>
+                    </div>
+                </article>
+
+                <!-- Paso 3: Intervenciones NIC (multi-select con confirmación) -->
+                <article class="step" id="step3" data-step="3">
+                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 3: Intervenciones NIC">
+                        <span class="step-badge">3</span>
+                        <h3>Intervenciones NIC</h3>
+                        <span class="step-summary" aria-live="polite"></span>
+                    </div>
+                    <div class="step-content">
+                        <p class="hint">Seleccione una o varias intervenciones y confirme cuando termine.</p>
+                        <input type="search" class="search-box" id="searchNic" placeholder="Buscar intervención…" aria-label="Buscar intervención">
+                        <div class="options" id="intervenciones"></div>
+                        <div class="nic-confirm-bar">
+                            <span class="nic-confirm-hint" id="nicConfirmHint">Seleccione al menos una intervención</span>
+                            <button type="button" class="nic-confirm-btn" id="nicConfirmBtn" disabled>
+                                Continuar →
+                            </button>
+                        </div>
+                    </div>
+                </article>
+
+                <!-- Paso 4: NOC -->
+                <article class="step" id="step4" data-step="4">
+                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 4: Resultado esperado NOC">
+                        <span class="step-badge">4</span>
+                        <h3>Resultado esperado (NOC)</h3>
+                        <span class="step-summary" aria-live="polite"></span>
+                    </div>
+                    <div class="step-content">
+                        <p class="hint">Seleccione el resultado que orienta la meta del cuidado.</p>
+                        <div class="options" id="nocs"></div>
+                    </div>
+                </article>
+
+                <!-- Paso 5: Evaluación B6 -->
+                <article class="step" id="step5" data-step="5">
+                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 5: Evaluación Escala B6">
+                        <span class="step-badge">5</span>
+                        <h3>Evaluación — Escala B6</h3>
+                        <span class="step-summary" aria-live="polite"></span>
+                    </div>
+                    <div class="step-content">
+                        <p class="hint">Indique el nivel de logro del NOC (1 = menor logro · 5 = óptimo).</p>
+                        <div class="options" id="evaluaciones"></div>
+                    </div>
+                </article>
+
+                <!-- Estado de la meta — aparece al completar el paso 5 -->
+                <div class="meta-block" id="metaBlock" hidden>
+                    <label for="metaLograda">Estado de la meta al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                    <select id="metaLograda" aria-label="Estado de la meta al cierre del turno">
+                        <option value="en progreso">En progreso</option>
+                        <option value="lograda">Lograda</option>
+                        <option value="no lograda">No lograda</option>
+                        <option value="parcialmente lograda">Parcialmente lograda</option>
+                    </select>
+                </div>
+
+                <!-- Acciones de nota — zona de copia al pie del flujo -->
+                <div class="workflow-actions">
+                    <div class="note-status" id="noteStatus" aria-live="polite"></div>
+                    <button type="button" class="copy-btn" id="copyBtn" disabled aria-disabled="true">
+                        Copiar nota
+                    </button>
+                </div>
+
+            </section>
+
+        </main>
+    </div>
+
+    <script src="js/app-data.js"></script>
+    <script src="js/app.js" defer></script>
+</body>
+</html>

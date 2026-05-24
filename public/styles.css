@@ -1,0 +1,1093 @@
+/* ================================================================
+   SISTEMA DE DISEÑO — Automatizador de Notas de Enfermería
+   Fundación Clínica Santa Fe de Bogotá
+   ================================================================ */
+
+/* === TOKENS DE DISEÑO === */
+:root {
+  /* Paleta de marca */
+  --navy:         #001d4a;
+  --blue-dark:    #0039a6;
+  --blue:         #0055cc;
+  --blue-mid:     #1a6fe0;
+  --blue-light:   #4898f5;
+  --blue-pale:    #e8f1ff;
+
+  /* Superficies */
+  --white:        #ffffff;
+  --surface-1:    #f6f9ff;
+  --surface-2:    #edf3ff;
+  --surface-3:    #dce8ff;
+
+  /* Bordes */
+  --border-faint: #e0eaf6;
+  --border:       #c5d5eb;
+  --border-focus: #1a6fe0;
+
+  /* Texto */
+  --text-primary:   #0a1929;
+  --text-secondary: #344f6a;
+  --text-muted:     #6b84a0;
+  --text-on-dark:   #ffffff;
+
+  /* Semántico */
+  --success:     #087443;
+  --success-bg:  #ecfdf5;
+
+  /* Espaciado */
+  --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+  --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+  --sp-8: 32px; --sp-10: 40px; --sp-12: 48px;
+
+  /* Radios */
+  --r-xs:   4px;
+  --r-sm:   8px;
+  --r-md:   12px;
+  --r-lg:   16px;
+  --r-xl:   24px;
+  --r-full: 9999px;
+
+  /* Sombras */
+  --shadow-xs: 0 1px 2px rgba(0, 29, 74, .06);
+  --shadow-sm: 0 2px 8px rgba(0, 29, 74, .08);
+  --shadow-md: 0 4px 16px rgba(0, 29, 74, .10);
+  --shadow-lg: 0 12px 36px rgba(0, 29, 74, .13);
+  --shadow-xl: 0 24px 64px rgba(0, 29, 74, .18);
+
+  /* Easing */
+  --ease: cubic-bezier(.4, 0, .2, 1);
+  --fast: 150ms;
+  --mid:  260ms;
+  --slow: 420ms;
+}
+
+/* === RESET === */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html { scroll-behavior: smooth; }
+
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  background:
+    radial-gradient(ellipse at top right, #1a5bc4 0%, transparent 55%),
+    linear-gradient(160deg, var(--navy) 0%, var(--blue-dark) 50%, #0c4db0 100%);
+  min-height: 100vh;
+  padding: var(--sp-8) var(--sp-6);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar refinada */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--r-full);
+}
+::-webkit-scrollbar-thumb:hover { background: var(--border-focus); }
+
+/* === CONTENEDOR === */
+.container {
+  max-width: 1320px;
+  margin: 0 auto;
+  background: var(--white);
+  border-radius: var(--r-xl);
+  box-shadow: var(--shadow-xl);
+  overflow: hidden;
+}
+
+/* === HEADER === */
+.header {
+  background: linear-gradient(135deg, var(--navy) 0%, var(--blue-dark) 55%, var(--blue) 100%);
+  color: var(--text-on-dark);
+  padding: var(--sp-8) var(--sp-12);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-6);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Círculos decorativos */
+.header::before,
+.header::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+}
+.header::before {
+  top: -80px; right: -80px;
+  width: 280px; height: 280px;
+  background: rgba(255, 255, 255, .05);
+}
+.header::after {
+  bottom: -60px; right: 160px;
+  width: 160px; height: 160px;
+  background: rgba(255, 255, 255, .04);
+}
+
+.header-logo {
+  width: 68px;
+  height: 68px;
+  object-fit: contain;
+  background: var(--white);
+  border-radius: var(--r-md);
+  padding: 8px;
+  flex-shrink: 0;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .22);
+  position: relative;
+  z-index: 1;
+}
+
+.header-text {
+  position: relative;
+  z-index: 1;
+}
+
+.header-text h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -.015em;
+}
+
+.header-text h2 {
+  font-size: 0.9rem;
+  font-weight: 400;
+  opacity: .80;
+  margin-top: var(--sp-1);
+}
+
+.header-text p {
+  font-size: 0.78rem;
+  opacity: .58;
+  margin-top: var(--sp-2);
+  letter-spacing: .02em;
+}
+
+/* === LAYOUT PRINCIPAL === */
+.content {
+  padding: var(--sp-8) var(--sp-12);
+  display: grid;
+  grid-template-columns: 1fr 390px;
+  gap: var(--sp-8);
+  align-items: start;
+}
+
+/* El aside está primero en DOM; en desktop lo mandamos a la columna 2 */
+.note-section { order: 2; }
+.workflow     { order: 1; }
+
+/* === WORKFLOW === */
+.workflow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* === BLOQUE DATOS DEL PACIENTE === */
+.patient-block {
+  background: var(--white);
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--border);
+  overflow: hidden;
+}
+
+.patient-block-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--surface-2);
+  border-bottom: 1.5px solid var(--border-faint);
+}
+
+.patient-block-header h3 {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+  flex: 1;
+}
+
+/* Lado derecho del header del paciente (nota + botón reset) */
+.patient-header-right {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-shrink: 0;
+}
+
+/* Botón de reinicio tipo icono */
+.reset-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--fast) var(--ease);
+}
+
+.reset-icon-btn:hover {
+  border-color: #c0392b;
+  color: #c0392b;
+  background: #fff5f5;
+}
+
+.patient-block-body {
+  padding: var(--sp-4) var(--sp-5);
+}
+
+.patient-field-row {
+  display: grid;
+  grid-template-columns: 1fr 1.5fr 2fr;
+  gap: var(--sp-4);
+}
+
+.field-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.field-group label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.field-group input,
+.field-group select {
+  width: 100%;
+  padding: 8px var(--sp-3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.87rem;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.field-group select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236b84a0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+.field-group input:focus,
+.field-group select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
+}
+
+/* === CAMPO FECHA DE NACIMIENTO === */
+/* Fila de tres inputs independientes con separadores */
+.dob-inputs {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Cada sub-campo tiene su propio borde, igual que los demás inputs */
+.dob-field {
+  padding: 8px var(--sp-3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.87rem;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text-primary);
+  text-align: center;
+  outline: none;
+  width: 54px;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dob-field::placeholder {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+.dob-field:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
+}
+
+.dob-field.dob-field-error {
+  border-color: #c0392b;
+  box-shadow: 0 0 0 3px rgba(192, 57, 43, .12);
+}
+
+.dob-field--year { width: 74px; }
+
+/* Separadores "/" */
+.dob-sep {
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 0.9rem;
+  user-select: none;
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+/* Mensaje de error (solo aparece cuando hay error; edad válida no se muestra aquí) */
+.dob-feedback {
+  font-size: 0.74rem;
+  margin-top: var(--sp-1);
+  line-height: 1.3;
+}
+
+.dob-feedback:empty { display: none; }
+
+.dob-feedback.error { color: #c0392b; }
+
+/* Indicadores de obligatorio */
+.required-star {
+  color: #c0392b;
+  font-weight: 700;
+  margin-left: 2px;
+  font-style: normal;
+}
+
+.required-note {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+/* === BLOQUE META (estado al cierre del turno) === */
+.meta-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--success-bg);
+  border: 1.5px solid rgba(8, 116, 67, .22);
+  border-radius: var(--r-md);
+  animation: fadeSlideIn var(--mid) var(--ease);
+}
+
+.meta-block label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--success);
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+
+.meta-block select {
+  width: 100%;
+  padding: 9px var(--sp-3);
+  border: 1.5px solid rgba(8, 116, 67, .35);
+  border-radius: var(--r-sm);
+  font-size: 0.88rem;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text-primary);
+  outline: none;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%23087443' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+}
+
+.meta-block select:focus {
+  border-color: var(--success);
+  box-shadow: 0 0 0 3px rgba(8, 116, 67, .14);
+}
+
+/* === PROGRESS TRACK Y LABEL === */
+.progress-track {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+}
+
+.progress-label {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  text-align: right;
+  letter-spacing: .01em;
+}
+
+/* === BARRA DE PROGRESO === */
+.progress-bar {
+  background: var(--surface-2);
+  height: 5px;
+  border-radius: var(--r-full);
+  overflow: hidden;
+}
+
+.progress-fill {
+  background: linear-gradient(90deg, var(--blue-dark), var(--blue-light));
+  height: 100%;
+  border-radius: var(--r-full);
+  transition: width var(--slow) var(--ease);
+  width: 0%;
+}
+
+/* === STEP === */
+.step {
+  background: var(--surface-1);
+  border-radius: var(--r-md);
+  border: 1.5px solid var(--border-faint);
+  transition: border-color var(--mid) var(--ease),
+              box-shadow   var(--mid) var(--ease),
+              background   var(--mid) var(--ease);
+  overflow: hidden;
+}
+
+.step-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-5);
+  cursor: default;
+}
+
+.step-badge {
+  min-width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: var(--border);
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: background var(--mid) var(--ease), color var(--mid) var(--ease);
+}
+
+.step h3 {
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: color var(--mid) var(--ease);
+  flex: 1;
+}
+
+/* === ESTADO COMPLETADO DEL STEP === */
+.step.completed {
+  background: var(--surface-1);
+  border-color: var(--border-faint);
+}
+
+.step.completed .step-badge {
+  background: var(--success);
+  color: var(--white);
+  /* Mostrar checkmark en lugar de número */
+  font-size: 0;  /* Oculta el número */
+}
+
+.step.completed .step-badge::after {
+  content: '✓';
+  font-size: 0.75rem;
+}
+
+.step.completed h3 {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.step.completed .step-header {
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition: background var(--fast) var(--ease);
+}
+
+.step.completed .step-header:hover {
+  background: var(--surface-2);
+}
+
+.step.completed .step-header:focus-visible {
+  outline: 2px solid var(--blue-mid);
+  outline-offset: 2px;
+}
+
+/* Resumen de lo seleccionado en paso completado */
+.step-summary {
+  font-size: 0.77rem;
+  color: var(--text-muted);
+  font-weight: 400;
+  font-style: italic;
+  margin-left: auto;
+  text-align: right;
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.step.completed .step-summary {
+  color: var(--success);
+  font-style: normal;
+  font-weight: 500;
+}
+
+/* Paso activo Y completado al mismo tiempo (solo paso 5):
+   mantiene el badge verde mientras el contenido sigue visible */
+.step.active.completed .step-badge {
+  background: var(--success);
+  color: var(--white);
+  font-size: 0;
+}
+.step.active.completed .step-badge::after {
+  content: '✓';
+  font-size: 0.75rem;
+}
+
+/* Step activo */
+.step.active {
+  background: var(--white);
+  border-color: var(--blue-mid);
+  box-shadow:
+    0 0 0 3px rgba(26, 111, 224, .10),
+    var(--shadow-md);
+}
+
+.step.active .step-badge {
+  background: var(--blue);
+  color: var(--white);
+}
+
+.step.active h3 {
+  color: var(--text-primary);
+}
+
+.step-content {
+  display: none;
+  padding: 0 var(--sp-5) var(--sp-5);
+  animation: fadeSlideIn var(--mid) var(--ease);
+}
+
+.step.active .step-content {
+  display: block;
+}
+
+@keyframes fadeSlideIn {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* === SEARCH BOX === */
+.search-box {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.88rem;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text-primary);
+  outline: none;
+  margin-bottom: var(--sp-3);
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+}
+
+.search-box::placeholder { color: var(--text-muted); }
+
+.search-box:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
+}
+
+/* === OPTIONS GRID === */
+.options {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: var(--sp-2);
+  max-height: 380px;
+  overflow-y: auto;
+  padding-right: 3px;
+}
+
+/* === OPTION CARD === */
+.option {
+  position: relative;
+  background: var(--white);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border-faint);
+  cursor: pointer;
+  transition: border-color var(--fast) var(--ease),
+              background   var(--fast) var(--ease),
+              transform    var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+  user-select: none;
+}
+
+.option:hover {
+  border-color: var(--blue-mid);
+  background: var(--surface-1);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+}
+
+.option:active {
+  transform: translateY(0);
+}
+
+.option.selected {
+  border-color: var(--blue);
+  background: var(--surface-2);
+}
+
+.option.multi-selected {
+  border-color: var(--blue-dark);
+  background: var(--surface-3);
+}
+
+.option h4 {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+  padding-right: var(--sp-6);
+}
+
+.option p {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  margin-top: 3px;
+  line-height: 1.5;
+}
+
+/* Checkmark circular */
+.option .check-mark {
+  display: none;
+  position: absolute;
+  top: var(--sp-2);
+  right: var(--sp-2);
+  width: 20px;
+  height: 20px;
+  background: var(--blue);
+  color: var(--white);
+  border-radius: 50%;
+  font-size: 0.68rem;
+  font-weight: 700;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.option.selected .check-mark,
+.option.multi-selected .check-mark {
+  display: flex;
+}
+
+.option.multi-selected .check-mark {
+  background: var(--blue-dark);
+}
+
+/* === HINT === */
+.hint {
+  font-size: 0.81rem;
+  color: var(--text-muted);
+  margin-bottom: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-1);
+  border-radius: var(--r-xs);
+  border-left: 3px solid var(--blue-light);
+  line-height: 1.5;
+}
+
+/* === TRANSVERSALES === */
+.trans-list {
+  background: var(--surface-1);
+  border: 1.5px dashed var(--border);
+  border-radius: var(--r-sm);
+  padding: var(--sp-4);
+  font-size: 0.83rem;
+  color: var(--text-secondary);
+  line-height: 1.65;
+  overflow-y: auto;
+  /* max-height lo gestiona JS en syncNotePanelHeight() */
+}
+
+.trans-list ul {
+  margin: var(--sp-2) 0 0 var(--sp-5);
+}
+
+.trans-list li {
+  margin-bottom: 3px;
+}
+
+/* === BARRA DE CONFIRMACIÓN DE NICs === */
+.nic-confirm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1.5px solid var(--border-faint);
+}
+
+.nic-confirm-hint {
+  font-size: 0.79rem;
+  color: var(--text-muted);
+  font-style: italic;
+  flex: 1;
+}
+
+.nic-confirm-btn {
+  border: none;
+  padding: 9px var(--sp-5);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 0.88rem;
+  font-family: inherit;
+  font-weight: 600;
+  white-space: nowrap;
+  background: linear-gradient(135deg, var(--blue-dark), var(--blue-mid));
+  color: var(--white);
+  transition: all var(--fast) var(--ease);
+}
+
+.nic-confirm-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(0, 57, 166, .28);
+}
+
+.nic-confirm-btn:disabled {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+/* === ACCIONES DE NOTA (pie del workflow) === */
+.workflow-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-2);
+}
+
+/* === PANEL DE NOTA === */
+.note-section {
+  background: var(--surface-1);
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--border-faint);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  position: sticky;
+  top: var(--sp-8);
+  overflow: hidden;
+  /* max-height lo gestiona JS en syncNotePanelHeight() */
+}
+
+/* Header del panel */
+.note-panel-header {
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1.5px solid var(--border-faint);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  background: var(--white);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+
+.note-panel-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.note-panel-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-shrink: 0;
+}
+
+.live-badge {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--blue);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  padding: 2px 9px;
+  border-radius: var(--r-full);
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+/* Botón "Ver nota / Ocultar nota" */
+.note-toggle-btn {
+  font-size: 0.76rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: var(--blue);
+  background: var(--surface-2);
+  border: 1.5px solid var(--border);
+  padding: 3px 10px;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  letter-spacing: .01em;
+  transition: all var(--fast) var(--ease);
+  white-space: nowrap;
+}
+
+.note-toggle-btn:hover {
+  background: var(--surface-3);
+  border-color: var(--blue-mid);
+}
+
+.note-toggle-btn.active {
+  background: var(--blue);
+  color: var(--white);
+  border-color: var(--blue);
+}
+
+/* Cuerpo del panel */
+.note-panel-body {
+  padding: var(--sp-4) var(--sp-5) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  /* Sin flex-grow: el cuerpo toma solo el espacio que su contenido necesita */
+}
+
+/* === CAMPOS DEL PACIENTE === */
+.patient-fields {
+  display: grid;
+  gap: var(--sp-2);
+}
+
+.patient-fields label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin-top: var(--sp-2);
+}
+
+.patient-fields label:first-child { margin-top: 0; }
+
+.patient-fields input,
+.patient-fields select {
+  width: 100%;
+  padding: 8px var(--sp-3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.87rem;
+  font-family: inherit;
+  background: var(--white);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.patient-fields select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236b84a0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  padding-right: 36px;
+  cursor: pointer;
+}
+
+.patient-fields input:focus,
+.patient-fields select:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
+}
+
+/* === CONTENIDO DE LA NOTA === */
+.note-content {
+  background: var(--white);
+  padding: var(--sp-4);
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border-faint);
+  overflow-y: auto;
+  font-size: 0.84rem;
+  line-height: 1.75;
+  color: var(--text-primary);
+  /* max-height lo gestiona JS en syncNotePanelHeight() */
+}
+
+/* === EMPTY STATE === */
+.empty-state {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.83rem;
+  text-align: center;
+  padding: var(--sp-6) var(--sp-4);
+  line-height: 1.7;
+}
+
+/* === ESTADO DE LA NOTA (feedback de completitud) === */
+.note-status {
+  font-size: 0.8rem;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-xs);
+  line-height: 1.5;
+  border-left: 3px solid transparent;
+  transition: all var(--mid) var(--ease);
+  min-height: 0;
+}
+
+.note-status:empty { display: none; }
+
+.note-status.incomplete {
+  color: var(--text-muted);
+  background: var(--surface-1);
+  border-left-color: var(--border);
+}
+
+.note-status.complete {
+  color: var(--success);
+  background: var(--success-bg);
+  border-left-color: var(--success);
+  font-weight: 500;
+}
+
+/* === BOTÓN COPIAR === */
+.copy-btn {
+  width: 100%;
+  border: none;
+  padding: 11px var(--sp-5);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-family: inherit;
+  font-weight: 600;
+  letter-spacing: .01em;
+  background: linear-gradient(135deg, var(--blue-dark) 0%, var(--blue-mid) 100%);
+  color: var(--text-on-dark);
+  transition: transform var(--fast) var(--ease),
+              box-shadow var(--fast) var(--ease),
+              background  var(--fast) var(--ease);
+}
+
+.copy-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 57, 166, .32);
+}
+
+.copy-btn:active {
+  transform: translateY(0);
+  box-shadow: none;
+}
+
+.copy-btn.copied {
+  background: linear-gradient(135deg, var(--success), #0a9957);
+}
+
+.copy-btn:disabled,
+.copy-btn[disabled] {
+  background: var(--border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+  transform: none !important;
+  box-shadow: none !important;
+  opacity: 0.7;
+}
+
+/* === RESPONSIVE === */
+@media (max-width: 1100px) {
+  .content {
+    grid-template-columns: 1fr 360px;
+    padding: var(--sp-8);
+  }
+}
+
+@media (max-width: 860px) {
+  body { padding: var(--sp-4); }
+
+  .header {
+    padding: var(--sp-6) var(--sp-6);
+    flex-direction: column;
+    align-items: flex-start;
+    gap: var(--sp-4);
+  }
+
+  .content {
+    grid-template-columns: 1fr;
+    padding: var(--sp-6);
+    gap: var(--sp-6);
+  }
+
+  /* En mobile: el aside (nota) sube al top, el workflow baja */
+  .note-section {
+    position: static;
+    order: -1;
+    max-height: none;      /* Sin límite de altura en mobile; cada hijo controla su propio scroll */
+  }
+  .note-content {
+    min-height: 200px;
+    max-height: 360px;     /* Cap razonable en pantalla pequeña */
+  }
+  .trans-list {
+    max-height: 240px;
+  }
+  .workflow { order: 1; }
+
+  .options {
+    grid-template-columns: 1fr;
+    max-height: 320px;
+  }
+
+  .patient-field-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .field-group--wide,
+  .field-group--dob {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 480px) {
+  .header-text h1 { font-size: 1.25rem; }
+  .content { padding: var(--sp-4); }
+
+  .patient-field-row {
+    grid-template-columns: 1fr;
+  }
+}
