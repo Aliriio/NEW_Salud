@@ -48,8 +48,8 @@ const els = {
 const STEP_LABELS = {
     1: 'Condiciones clínicas',
     2: 'Diagnóstico (NANDA)',
-    3: 'Intervenciones NIC',
-    4: 'Resultado esperado (NOC)',
+    3: 'Resultado esperado (NOC)',
+    4: 'Intervenciones NIC',
     5: 'Evaluación B6',
 };
 
@@ -58,8 +58,8 @@ function stepHasSelection(n) {
     switch (n) {
         case 1: return selected.area !== null;
         case 2: return selected.diagnostico !== null;
-        case 3: return selected.nics.length > 0;
-        case 4: return selected.noc !== null;
+        case 3: return selected.noc !== null;
+        case 4: return selected.nics.length > 0;
         case 5: return selected.b6Puntuacion !== null;
         default: return false;
     }
@@ -75,12 +75,12 @@ function getSummaryForStep(n) {
             return d.length > 52 ? d.slice(0, 52) + '…' : d;
         }
         case 3: {
-            const c = selected.nics.length;
-            return c === 1 ? '1 NIC seleccionada' : `${c} NIC seleccionadas`;
+            const n3 = selected.nocNombre || '';
+            return n3.length > 48 ? n3.slice(0, 48) + '…' : n3;
         }
         case 4: {
-            const n4 = selected.nocNombre || '';
-            return n4.length > 48 ? n4.slice(0, 48) + '…' : n4;
+            const c = selected.nics.length;
+            return c === 1 ? '1 NIC seleccionada' : `${c} NIC seleccionadas`;
         }
         case 5:
             if (!selected.b6Puntuacion) return '';
@@ -153,8 +153,8 @@ function activateStep(n) {
     updateProgress();
     updateStepSummaries();
 
-    // Al volver al paso 3, refrescar el estado del botón de confirmación de NICs
-    if (n === 3) updateNicConfirmBtn();
+    // Al volver al paso 4, refrescar el estado del botón de confirmación de NICs
+    if (n === 4) updateNicConfirmBtn();
 
     syncNotePanelHeight();
 }
@@ -454,9 +454,10 @@ function isNoteComplete() {
     if (!els.servicio || els.servicio.value.trim() === '') missing.push('Servicio / Unidad');
     if (!selected.area)         missing.push('Condiciones clínicas (Paso 1)');
     if (!selected.diagnostico)  missing.push('Diagnóstico (Paso 2)');
-    if (!selected.nics.length)  missing.push('Al menos 1 intervención NIC (Paso 3)');
-    if (selected.noc === null)  missing.push('Resultado NOC (Paso 4)');
+    if (selected.noc === null)  missing.push('Resultado NOC (Paso 3)');
+    if (!selected.nics.length)  missing.push('Al menos 1 intervención NIC (Paso 4)');
     if (!selected.b6Puntuacion) missing.push('Evaluación B6 (Paso 5)');
+    if (!els.metaLograda?.value) missing.push('Estado de la meta al cierre del turno');
 
     return { complete: missing.length === 0, missing };
 }
@@ -569,7 +570,7 @@ function loadDiagnosticos(area) {
 
         els.searchNic.value = '';
         renderTransversales(selected.datosDiag);
-        loadIntervenciones(selected.datosDiag);
+        loadNocs(selected.datosDiag);
         activateStep(3);
         updateNote();
     };
@@ -613,16 +614,12 @@ function loadIntervenciones(datos) {
             selected.nics.push(nicText);
         }
 
-        // Si se desmarcan todos los NICs, limpiar pasos 4 y 5
+        // Si se desmarcan todos los NICs, limpiar paso 5 (B6)
         if (selected.nics.length === 0) {
-            selected.noc = null; selected.nocNombre = null;
             selected.b6Puntuacion = null; selected.b6Descripcion = null;
-            els.nocs.innerHTML = '';
             els.evaluaciones.innerHTML = '';
             showMetaBlock(false);
-            [4, 5].forEach(n => {
-                document.getElementById(`step${n}`)?.classList.remove('completed', 'active');
-            });
+            document.getElementById('step5')?.classList.remove('completed', 'active');
         }
 
         updateNicConfirmBtn();
@@ -657,14 +654,16 @@ function loadNocs(datos) {
         const idx = Number(option.dataset.noc);
         selected.noc = idx;
         selected.nocNombre = nocs[idx];
+        selected.nics = [];
         selected.b6Puntuacion = null;
         selected.b6Descripcion = null;
 
-        document.getElementById('step5')?.classList.remove('completed');
+        [4, 5].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
         showMetaBlock(false);
 
-        loadEvaluaciones(datos, selected.nocNombre);
-        activateStep(5);
+        els.searchNic.value = '';
+        loadIntervenciones(datos);
+        activateStep(4);
         updateNote();
     };
 }
@@ -714,7 +713,7 @@ function loadEvaluaciones(datos, nocNombre) {
 
 /* ─── Obtiene el valor del estado de meta ─── */
 function getMetaLograda() {
-    return els.metaLograda?.value || 'en progreso';
+    return els.metaLograda?.value || '___';
 }
 
 /* ─── Genera y actualiza la nota de enfermería ─── */
@@ -777,12 +776,28 @@ function updateNote() {
     updateCopyBtnState();
 }
 
+/* ─── Convierte HTML de nota a texto plano preservando viñetas ─── */
+function noteToPlainText(el) {
+    function extract(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        const tag = node.nodeName;
+        const children = Array.from(node.childNodes).map(extract).join('');
+        if (tag === 'BR') return '\n';
+        if (tag === 'LI') return '• ' + children.trim() + '\n';
+        if (tag === 'UL' || tag === 'OL') return '\n' + children;
+        if (tag === 'P') return children + '\n';
+        return children;
+    }
+    return extract(el).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /* ─── Copia la nota (solo si está completa) ─── */
 function copyNote() {
     const { complete } = isNoteComplete();
     if (!complete) { updateCopyBtnState(); return; }
 
-    const text = els.noteContent.innerText;
+    const text = noteToPlainText(els.noteContent);
 
     navigator.clipboard.writeText(text).then(() => {
         els.copyBtn.textContent = '✓ ¡Copiado!';
@@ -839,6 +854,7 @@ function resetWorkflow() {
 
     els.searchDiag.value = '';
     els.searchNic.value  = '';
+    if (els.metaLograda) els.metaLograda.value = '';
     if (els.dobDia)  els.dobDia.value  = '';
     if (els.dobMes)  els.dobMes.value  = '';
     if (els.dobAnio) els.dobAnio.value = '';
@@ -896,11 +912,8 @@ function init() {
     // Botón confirmar NICs
     els.nicConfirmBtn?.addEventListener('click', () => {
         if (selected.nics.length === 0) return;
-        // Cargar NOCs solo si aún no hay selección (primera vez)
-        if (selected.noc === null) {
-            loadNocs(selected.datosDiag);
-        }
-        activateStep(4);
+        loadEvaluaciones(selected.datosDiag, selected.nocNombre);
+        activateStep(5);
     });
 
     // Toggle nota

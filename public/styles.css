@@ -158,6 +158,14 @@ body {
   letter-spacing: -.015em;
 }
 
+.header-text .header-subtitle {
+  font-size: 0.82rem;
+  font-weight: 400;
+  opacity: .70;
+  margin-top: var(--sp-1);
+  letter-spacing: .01em;
+}
+
 .header-text h2 {
   font-size: 0.9rem;
   font-weight: 400;
