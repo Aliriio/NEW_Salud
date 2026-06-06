@@ -290,19 +290,28 @@ function setupDobNavigation() {
         });
     });
 
-    // Auto-avance al completar DD o MM
-    function autoAdvance(from, to, maxLen) {
+    // Auto-avance al completar DD o MM, solo si el valor es válido
+    function autoAdvance(from, to, maxLen, maxVal) {
         from.addEventListener('input', () => {
             if (from.value.length >= maxLen) {
-                to.focus();
-                to.setSelectionRange(0, to.value.length);
+                const v = parseInt(from.value, 10);
+                if (!isNaN(v) && v >= 1 && v <= maxVal) {
+                    to.focus();
+                    to.setSelectionRange(0, to.value.length);
+                }
             }
             onDobChange();
         });
     }
-    autoAdvance(dia, mes, 2);
-    autoAdvance(mes, anio, 2);
-    anio.addEventListener('input', onDobChange);
+    autoAdvance(dia, mes, 2, 31);
+    autoAdvance(mes, anio, 2, 12);
+    anio.addEventListener('input', () => {
+        onDobChange();
+        if (anio.value.length === 4 && validateDOB().valid) {
+            serv?.focus();
+            serv?.setSelectionRange?.(0, serv.value.length);
+        }
+    });
 
     // Enter / ArrowRight / ArrowLeft para moverse entre los campos DOB
     const chain = [dia, mes, anio];
@@ -445,6 +454,39 @@ function toggleNote() {
     }
 }
 
+/* ─── Verifica si los datos del paciente están completos y válidos ─── */
+function isPatientDataComplete() {
+    if (!els.sexo || els.sexo.value === '___') return false;
+    if (!validateDOB().valid) return false;
+    if (!els.servicio || els.servicio.value.trim() === '') return false;
+    return true;
+}
+
+/* ─── Bloquea/desbloquea el paso 1 según datos del paciente ─── */
+function updateStep1Lock() {
+    const step1El = document.getElementById('step1');
+    if (!step1El) return;
+    const locked = !isPatientDataComplete();
+    step1El.classList.toggle('step--locked', locked);
+
+    if (locked) {
+        // Replegar paso 1 si está activo
+        if (step1El.classList.contains('active')) {
+            step1El.classList.remove('active');
+            const header = step1El.querySelector('.step-header');
+            if (header) {
+                header.setAttribute('aria-expanded', 'false');
+                header.setAttribute('tabindex', '-1');
+            }
+        }
+    } else {
+        // Expandir paso 1 solo si el usuario aún no ha avanzado más allá
+        if (!step1El.classList.contains('active') && !step1El.classList.contains('completed') && currentStep <= 1) {
+            activateStep(1);
+        }
+    }
+}
+
 /* ─── Verifica si la nota está completa ─── */
 function isNoteComplete() {
     const missing = [];
@@ -460,6 +502,23 @@ function isNoteComplete() {
     if (!els.metaLograda?.value) missing.push('Estado de la meta al cierre del turno');
 
     return { complete: missing.length === 0, missing };
+}
+
+/* ─── Rayitas doradas alrededor del botón "Ver nota" al aparecer ─── */
+function triggerBtnBurst(btn) {
+    const burst = document.createElement('span');
+    burst.className = 'btn-burst';
+    btn.appendChild(burst);
+    for (let i = 0; i < 8; i++) {
+        const wrap = document.createElement('span');
+        wrap.className = 'btn-burst-ray-w';
+        wrap.style.transform = `rotate(${i * 45}deg)`;
+        const ray = document.createElement('span');
+        ray.className = 'btn-burst-ray';
+        wrap.appendChild(ray);
+        burst.appendChild(wrap);
+    }
+    setTimeout(() => burst.remove(), 650);
 }
 
 /* ─── Habilita/deshabilita el botón copiar y muestra el estado ─── */
@@ -478,6 +537,32 @@ function updateCopyBtnState() {
         els.noteStatus.className = 'note-status incomplete';
         els.noteStatus.textContent = `Pendiente: ${missing[0]}`;
     }
+
+    // Mostrar/ocultar el botón "Ver nota" según completitud
+    if (els.noteToggleBtn) {
+        const wasHidden = els.noteToggleBtn.hidden;
+        els.noteToggleBtn.hidden = !complete;
+        if (complete && wasHidden) {
+            // Aparece por primera vez: animar
+            els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
+            void els.noteToggleBtn.offsetWidth;
+            els.noteToggleBtn.classList.add('note-toggle-btn--ready');
+            const cleanAnim = (e) => {
+                if (e.target !== els.noteToggleBtn) return;
+                els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
+                els.noteToggleBtn.removeEventListener('animationend', cleanAnim);
+            };
+            els.noteToggleBtn.addEventListener('animationend', cleanAnim);
+            triggerBtnBurst(els.noteToggleBtn);
+        }
+        if (!complete && noteVisible) {
+            // Si la nota estaba visible y la completitud se pierde, ocultarla
+            noteVisible = true; // toggleNote() lo invierte
+            toggleNote();
+        }
+    }
+
+    updateStep1Lock();
 }
 
 /* ─── Crea una tarjeta de opción ─── */
@@ -517,6 +602,7 @@ function loadAreas() {
     });
 
     els.areas.onclick = (e) => {
+        if (!isPatientDataComplete()) return;
         const option = e.target.closest('.option');
         if (!option) return;
 
@@ -871,7 +957,8 @@ function resetWorkflow() {
     if (els.noteToggleBtn) {
         els.noteToggleBtn.textContent = 'Ver nota';
         els.noteToggleBtn.setAttribute('aria-expanded', 'false');
-        els.noteToggleBtn.classList.remove('active');
+        els.noteToggleBtn.classList.remove('active', 'note-toggle-btn--ready');
+        els.noteToggleBtn.hidden = true;
     }
 
     showMetaBlock(false);
@@ -891,6 +978,7 @@ function init() {
     updateNote();
     updateCopyBtnState();
     updateNicConfirmBtn();
+    updateStep1Lock();
     enableStepNavigation();
 
     // Búsqueda

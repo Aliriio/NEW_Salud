@@ -851,18 +851,6 @@ body {
   flex-shrink: 0;
 }
 
-.live-badge {
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--blue);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  padding: 2px 9px;
-  border-radius: var(--r-full);
-  letter-spacing: .04em;
-  text-transform: uppercase;
-}
-
 /* Botón "Ver nota / Ocultar nota" */
 .note-toggle-btn {
   font-size: 0.76rem;
@@ -877,6 +865,8 @@ body {
   letter-spacing: .01em;
   transition: all var(--fast) var(--ease);
   white-space: nowrap;
+  position: relative;
+  overflow: visible;
 }
 
 .note-toggle-btn:hover {
@@ -888,6 +878,52 @@ body {
   background: var(--blue);
   color: var(--white);
   border-color: var(--blue);
+}
+
+@keyframes toggle-emerge {
+  0%   { opacity: 0; transform: scale(0.82); }
+  65%  { opacity: 1; transform: scale(1.07); }
+  100% { opacity: 1; transform: scale(1); }
+}
+
+.note-toggle-btn--ready {
+  animation: toggle-emerge 0.38s cubic-bezier(.34,1.56,.64,1) forwards;
+}
+
+/* Contenedor de rayitas doradas */
+.btn-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 20;
+}
+
+/* Wrapper de rotación para cada rayo — centrado en el botón */
+.btn-burst-ray-w {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+}
+
+/* Cada rayita individual */
+.btn-burst-ray {
+  position: absolute;
+  left: -1.5px;
+  bottom: 13px;
+  width: 3px;
+  height: 7px;
+  background: #d4a017;
+  border-radius: 2px;
+  animation: ray-out 0.52s cubic-bezier(.22,.61,.36,1) forwards;
+}
+
+@keyframes ray-out {
+  0%   { opacity: 0; height: 0;  bottom: 12px; }
+  22%  { opacity: 1; height: 7px; bottom: 17px; }
+  75%  { opacity: 0.85; }
+  100% { opacity: 0; height: 5px; bottom: 27px; }
 }
 
 /* Cuerpo del panel */
@@ -947,6 +983,20 @@ body {
   box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
 }
 
+/* === PASO BLOQUEADO (datos del paciente incompletos) === */
+.step--locked .options {
+  opacity: 0.32;
+  pointer-events: none;
+  user-select: none;
+}
+
+.step-lock-hint {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-bottom: var(--sp-3);
+}
+
 /* === CONTENIDO DE LA NOTA === */
 .note-content {
   background: var(--white);
@@ -958,6 +1008,12 @@ body {
   line-height: 1.75;
   color: var(--text-primary);
   /* max-height lo gestiona JS en syncNotePanelHeight() */
+}
+
+.note-content ul,
+.note-content ol {
+  padding-left: var(--sp-6);
+  margin: var(--sp-1) 0;
 }
 
 /* === EMPTY STATE === */
