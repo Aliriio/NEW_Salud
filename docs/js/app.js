@@ -48,8 +48,8 @@ const els = {
 const STEP_LABELS = {
     1: 'Condiciones clínicas',
     2: 'Diagnóstico (NANDA)',
-    3: 'Intervenciones NIC',
-    4: 'Resultado esperado (NOC)',
+    3: 'Resultado esperado (NOC)',
+    4: 'Intervenciones NIC',
     5: 'Evaluación B6',
 };
 
@@ -58,8 +58,8 @@ function stepHasSelection(n) {
     switch (n) {
         case 1: return selected.area !== null;
         case 2: return selected.diagnostico !== null;
-        case 3: return selected.nics.length > 0;
-        case 4: return selected.noc !== null;
+        case 3: return selected.noc !== null;
+        case 4: return selected.nics.length > 0;
         case 5: return selected.b6Puntuacion !== null;
         default: return false;
     }
@@ -75,12 +75,12 @@ function getSummaryForStep(n) {
             return d.length > 52 ? d.slice(0, 52) + '…' : d;
         }
         case 3: {
-            const c = selected.nics.length;
-            return c === 1 ? '1 NIC seleccionada' : `${c} NIC seleccionadas`;
+            const n3 = selected.nocNombre || '';
+            return n3.length > 48 ? n3.slice(0, 48) + '…' : n3;
         }
         case 4: {
-            const n4 = selected.nocNombre || '';
-            return n4.length > 48 ? n4.slice(0, 48) + '…' : n4;
+            const c = selected.nics.length;
+            return c === 1 ? '1 NIC seleccionada' : `${c} NIC seleccionadas`;
         }
         case 5:
             if (!selected.b6Puntuacion) return '';
@@ -153,8 +153,8 @@ function activateStep(n) {
     updateProgress();
     updateStepSummaries();
 
-    // Al volver al paso 3, refrescar el estado del botón de confirmación de NICs
-    if (n === 3) updateNicConfirmBtn();
+    // Al volver al paso 4, refrescar el estado del botón de confirmación de NICs
+    if (n === 4) updateNicConfirmBtn();
 
     syncNotePanelHeight();
 }
@@ -290,19 +290,28 @@ function setupDobNavigation() {
         });
     });
 
-    // Auto-avance al completar DD o MM
-    function autoAdvance(from, to, maxLen) {
+    // Auto-avance al completar DD o MM, solo si el valor es válido
+    function autoAdvance(from, to, maxLen, maxVal) {
         from.addEventListener('input', () => {
             if (from.value.length >= maxLen) {
-                to.focus();
-                to.setSelectionRange(0, to.value.length);
+                const v = parseInt(from.value, 10);
+                if (!isNaN(v) && v >= 1 && v <= maxVal) {
+                    to.focus();
+                    to.setSelectionRange(0, to.value.length);
+                }
             }
             onDobChange();
         });
     }
-    autoAdvance(dia, mes, 2);
-    autoAdvance(mes, anio, 2);
-    anio.addEventListener('input', onDobChange);
+    autoAdvance(dia, mes, 2, 31);
+    autoAdvance(mes, anio, 2, 12);
+    anio.addEventListener('input', () => {
+        onDobChange();
+        if (anio.value.length === 4 && validateDOB().valid) {
+            serv?.focus();
+            serv?.setSelectionRange?.(0, serv.value.length);
+        }
+    });
 
     // Enter / ArrowRight / ArrowLeft para moverse entre los campos DOB
     const chain = [dia, mes, anio];
@@ -445,6 +454,39 @@ function toggleNote() {
     }
 }
 
+/* ─── Verifica si los datos del paciente están completos y válidos ─── */
+function isPatientDataComplete() {
+    if (!els.sexo || els.sexo.value === '___') return false;
+    if (!validateDOB().valid) return false;
+    if (!els.servicio || els.servicio.value.trim() === '') return false;
+    return true;
+}
+
+/* ─── Bloquea/desbloquea el paso 1 según datos del paciente ─── */
+function updateStep1Lock() {
+    const step1El = document.getElementById('step1');
+    if (!step1El) return;
+    const locked = !isPatientDataComplete();
+    step1El.classList.toggle('step--locked', locked);
+
+    if (locked) {
+        // Replegar paso 1 si está activo
+        if (step1El.classList.contains('active')) {
+            step1El.classList.remove('active');
+            const header = step1El.querySelector('.step-header');
+            if (header) {
+                header.setAttribute('aria-expanded', 'false');
+                header.setAttribute('tabindex', '-1');
+            }
+        }
+    } else {
+        // Expandir paso 1 solo si el usuario aún no ha avanzado más allá
+        if (!step1El.classList.contains('active') && !step1El.classList.contains('completed') && currentStep <= 1) {
+            activateStep(1);
+        }
+    }
+}
+
 /* ─── Verifica si la nota está completa ─── */
 function isNoteComplete() {
     const missing = [];
@@ -454,11 +496,29 @@ function isNoteComplete() {
     if (!els.servicio || els.servicio.value.trim() === '') missing.push('Servicio / Unidad');
     if (!selected.area)         missing.push('Condiciones clínicas (Paso 1)');
     if (!selected.diagnostico)  missing.push('Diagnóstico (Paso 2)');
-    if (!selected.nics.length)  missing.push('Al menos 1 intervención NIC (Paso 3)');
-    if (selected.noc === null)  missing.push('Resultado NOC (Paso 4)');
+    if (selected.noc === null)  missing.push('Resultado NOC (Paso 3)');
+    if (!selected.nics.length)  missing.push('Al menos 1 intervención NIC (Paso 4)');
     if (!selected.b6Puntuacion) missing.push('Evaluación B6 (Paso 5)');
+    if (!els.metaLograda?.value) missing.push('Estado de la meta al cierre del turno');
 
     return { complete: missing.length === 0, missing };
+}
+
+/* ─── Rayitas doradas alrededor del botón "Ver nota" al aparecer ─── */
+function triggerBtnBurst(btn) {
+    const burst = document.createElement('span');
+    burst.className = 'btn-burst';
+    btn.appendChild(burst);
+    for (let i = 0; i < 8; i++) {
+        const wrap = document.createElement('span');
+        wrap.className = 'btn-burst-ray-w';
+        wrap.style.transform = `rotate(${i * 45}deg)`;
+        const ray = document.createElement('span');
+        ray.className = 'btn-burst-ray';
+        wrap.appendChild(ray);
+        burst.appendChild(wrap);
+    }
+    setTimeout(() => burst.remove(), 650);
 }
 
 /* ─── Habilita/deshabilita el botón copiar y muestra el estado ─── */
@@ -477,6 +537,32 @@ function updateCopyBtnState() {
         els.noteStatus.className = 'note-status incomplete';
         els.noteStatus.textContent = `Pendiente: ${missing[0]}`;
     }
+
+    // Mostrar/ocultar el botón "Ver nota" según completitud
+    if (els.noteToggleBtn) {
+        const wasHidden = els.noteToggleBtn.hidden;
+        els.noteToggleBtn.hidden = !complete;
+        if (complete && wasHidden) {
+            // Aparece por primera vez: animar
+            els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
+            void els.noteToggleBtn.offsetWidth;
+            els.noteToggleBtn.classList.add('note-toggle-btn--ready');
+            const cleanAnim = (e) => {
+                if (e.target !== els.noteToggleBtn) return;
+                els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
+                els.noteToggleBtn.removeEventListener('animationend', cleanAnim);
+            };
+            els.noteToggleBtn.addEventListener('animationend', cleanAnim);
+            setTimeout(() => triggerBtnBurst(els.noteToggleBtn), 190);
+        }
+        if (!complete && noteVisible) {
+            // Si la nota estaba visible y la completitud se pierde, ocultarla
+            noteVisible = true; // toggleNote() lo invierte
+            toggleNote();
+        }
+    }
+
+    updateStep1Lock();
 }
 
 /* ─── Crea una tarjeta de opción ─── */
@@ -516,6 +602,7 @@ function loadAreas() {
     });
 
     els.areas.onclick = (e) => {
+        if (!isPatientDataComplete()) return;
         const option = e.target.closest('.option');
         if (!option) return;
 
@@ -569,7 +656,7 @@ function loadDiagnosticos(area) {
 
         els.searchNic.value = '';
         renderTransversales(selected.datosDiag);
-        loadIntervenciones(selected.datosDiag);
+        loadNocs(selected.datosDiag);
         activateStep(3);
         updateNote();
     };
@@ -613,16 +700,12 @@ function loadIntervenciones(datos) {
             selected.nics.push(nicText);
         }
 
-        // Si se desmarcan todos los NICs, limpiar pasos 4 y 5
+        // Si se desmarcan todos los NICs, limpiar paso 5 (B6)
         if (selected.nics.length === 0) {
-            selected.noc = null; selected.nocNombre = null;
             selected.b6Puntuacion = null; selected.b6Descripcion = null;
-            els.nocs.innerHTML = '';
             els.evaluaciones.innerHTML = '';
             showMetaBlock(false);
-            [4, 5].forEach(n => {
-                document.getElementById(`step${n}`)?.classList.remove('completed', 'active');
-            });
+            document.getElementById('step5')?.classList.remove('completed', 'active');
         }
 
         updateNicConfirmBtn();
@@ -657,14 +740,16 @@ function loadNocs(datos) {
         const idx = Number(option.dataset.noc);
         selected.noc = idx;
         selected.nocNombre = nocs[idx];
+        selected.nics = [];
         selected.b6Puntuacion = null;
         selected.b6Descripcion = null;
 
-        document.getElementById('step5')?.classList.remove('completed');
+        [4, 5].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
         showMetaBlock(false);
 
-        loadEvaluaciones(datos, selected.nocNombre);
-        activateStep(5);
+        els.searchNic.value = '';
+        loadIntervenciones(datos);
+        activateStep(4);
         updateNote();
     };
 }
@@ -714,7 +799,7 @@ function loadEvaluaciones(datos, nocNombre) {
 
 /* ─── Obtiene el valor del estado de meta ─── */
 function getMetaLograda() {
-    return els.metaLograda?.value || 'en progreso';
+    return els.metaLograda?.value || '___';
 }
 
 /* ─── Genera y actualiza la nota de enfermería ─── */
@@ -777,12 +862,28 @@ function updateNote() {
     updateCopyBtnState();
 }
 
+/* ─── Convierte HTML de nota a texto plano preservando viñetas ─── */
+function noteToPlainText(el) {
+    function extract(node) {
+        if (node.nodeType === Node.TEXT_NODE) return node.textContent;
+        if (node.nodeType !== Node.ELEMENT_NODE) return '';
+        const tag = node.nodeName;
+        const children = Array.from(node.childNodes).map(extract).join('');
+        if (tag === 'BR') return '\n';
+        if (tag === 'LI') return '• ' + children.trim() + '\n';
+        if (tag === 'UL' || tag === 'OL') return '\n' + children;
+        if (tag === 'P') return children + '\n';
+        return children;
+    }
+    return extract(el).replace(/\n{3,}/g, '\n\n').trim();
+}
+
 /* ─── Copia la nota (solo si está completa) ─── */
 function copyNote() {
     const { complete } = isNoteComplete();
     if (!complete) { updateCopyBtnState(); return; }
 
-    const text = els.noteContent.innerText;
+    const text = noteToPlainText(els.noteContent);
 
     navigator.clipboard.writeText(text).then(() => {
         els.copyBtn.textContent = '✓ ¡Copiado!';
@@ -839,6 +940,7 @@ function resetWorkflow() {
 
     els.searchDiag.value = '';
     els.searchNic.value  = '';
+    if (els.metaLograda) els.metaLograda.value = '';
     if (els.dobDia)  els.dobDia.value  = '';
     if (els.dobMes)  els.dobMes.value  = '';
     if (els.dobAnio) els.dobAnio.value = '';
@@ -855,7 +957,8 @@ function resetWorkflow() {
     if (els.noteToggleBtn) {
         els.noteToggleBtn.textContent = 'Ver nota';
         els.noteToggleBtn.setAttribute('aria-expanded', 'false');
-        els.noteToggleBtn.classList.remove('active');
+        els.noteToggleBtn.classList.remove('active', 'note-toggle-btn--ready');
+        els.noteToggleBtn.hidden = true;
     }
 
     showMetaBlock(false);
@@ -875,6 +978,7 @@ function init() {
     updateNote();
     updateCopyBtnState();
     updateNicConfirmBtn();
+    updateStep1Lock();
     enableStepNavigation();
 
     // Búsqueda
@@ -896,11 +1000,8 @@ function init() {
     // Botón confirmar NICs
     els.nicConfirmBtn?.addEventListener('click', () => {
         if (selected.nics.length === 0) return;
-        // Cargar NOCs solo si aún no hay selección (primera vez)
-        if (selected.noc === null) {
-            loadNocs(selected.datosDiag);
-        }
-        activateStep(4);
+        loadEvaluaciones(selected.datosDiag, selected.nocNombre);
+        activateStep(5);
     });
 
     // Toggle nota

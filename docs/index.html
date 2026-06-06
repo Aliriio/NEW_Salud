@@ -3,19 +3,19 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automatizador notas enfermería — Fundación Clínica Santa Fe de Bogotá</title>
+    <title>CareFlow — Automatización asistida de notas de enfermería</title>
     <link rel="stylesheet" href="styles.css">
-    <link rel="icon" href="assets/logo-fcsb.png" type="image/png">
+    <link rel="icon" href="assets/logo_fix.png" type="image/png">
 </head>
 <body>
     <div class="container">
 
         <header class="header">
-            <img src="assets/logo-fcsb.png" alt="Logo Fundación Clínica Santa Fe de Bogotá" class="header-logo" width="68" height="68">
+            <img src="assets/logo_fix.png" alt="Logo Fundación Clínica Santa Fe de Bogotá" class="header-logo" width="68" height="68">
             <div class="header-text">
-                <h1>Automatizador de notas de enfermería</h1>
-                <h2>Fundación Clínica Santa Fe de Bogotá</h2>
-                <p>Plan de Atención Integral (PAI) · Todas las áreas clínicas</p>
+                <h1>CareFlow</h1>
+                <h2>Automatización asistida de notas de enfermería</h2>
+                <p>Fase 1 · Adaptación clínica y validación operativa para Fundación Santa Fe de Bogotá</p>
             </div>
         </header>
 
@@ -27,8 +27,7 @@
                 <div class="note-panel-header">
                     <h3>Nota de enfermería</h3>
                     <div class="note-panel-header-actions">
-                        <span class="live-badge">En vivo</span>
-                        <button type="button" class="note-toggle-btn" id="noteToggleBtn" aria-expanded="false">
+                        <button type="button" class="note-toggle-btn" id="noteToggleBtn" aria-expanded="false" hidden>
                             Ver nota
                         </button>
                     </div>
@@ -130,10 +129,23 @@
                     </div>
                 </article>
 
-                <!-- Paso 3: Intervenciones NIC (multi-select con confirmación) -->
+                <!-- Paso 3: NOC -->
                 <article class="step" id="step3" data-step="3">
-                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 3: Intervenciones NIC">
+                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 3: Resultado esperado NOC">
                         <span class="step-badge">3</span>
+                        <h3>Resultado esperado (NOC)</h3>
+                        <span class="step-summary" aria-live="polite"></span>
+                    </div>
+                    <div class="step-content">
+                        <p class="hint">Seleccione el resultado que orienta la meta del cuidado.</p>
+                        <div class="options" id="nocs"></div>
+                    </div>
+                </article>
+
+                <!-- Paso 4: Intervenciones NIC (multi-select con confirmación) -->
+                <article class="step" id="step4" data-step="4">
+                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 4: Intervenciones NIC">
+                        <span class="step-badge">4</span>
                         <h3>Intervenciones NIC</h3>
                         <span class="step-summary" aria-live="polite"></span>
                     </div>
@@ -147,19 +159,6 @@
                                 Continuar →
                             </button>
                         </div>
-                    </div>
-                </article>
-
-                <!-- Paso 4: NOC -->
-                <article class="step" id="step4" data-step="4">
-                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 4: Resultado esperado NOC">
-                        <span class="step-badge">4</span>
-                        <h3>Resultado esperado (NOC)</h3>
-                        <span class="step-summary" aria-live="polite"></span>
-                    </div>
-                    <div class="step-content">
-                        <p class="hint">Seleccione el resultado que orienta la meta del cuidado.</p>
-                        <div class="options" id="nocs"></div>
                     </div>
                 </article>
 
@@ -180,6 +179,7 @@
                 <div class="meta-block" id="metaBlock" hidden>
                     <label for="metaLograda">Estado de la meta al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
                     <select id="metaLograda" aria-label="Estado de la meta al cierre del turno">
+                        <option value="" disabled selected>Seleccione el estado…</option>
                         <option value="en progreso">En progreso</option>
                         <option value="lograda">Lograda</option>
                         <option value="no lograda">No lograda</option>
