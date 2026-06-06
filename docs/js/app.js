@@ -553,7 +553,7 @@ function updateCopyBtnState() {
                 els.noteToggleBtn.removeEventListener('animationend', cleanAnim);
             };
             els.noteToggleBtn.addEventListener('animationend', cleanAnim);
-            triggerBtnBurst(els.noteToggleBtn);
+            setTimeout(() => triggerBtnBurst(els.noteToggleBtn), 190);
         }
         if (!complete && noteVisible) {
             // Si la nota estaba visible y la completitud se pierde, ocultarla
