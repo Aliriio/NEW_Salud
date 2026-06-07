@@ -40,8 +40,9 @@ const els = {
     dobMes:         document.getElementById('dobMes'),
     dobAnio:        document.getElementById('dobAnio'),
     dobFeedback:    document.getElementById('dobFeedback'),
-    metaLograda:    document.getElementById('metaLograda'),
-    metaBlock:      document.getElementById('metaBlock'),
+    metaLograda:       document.getElementById('metaLograda'),
+    metaBlock:         document.getElementById('metaBlock'),
+    otrosComentarios:  document.getElementById('otrosComentarios'),
 };
 
 /* ─── Etiquetas de paso para el label de progreso ─── */
@@ -858,6 +859,12 @@ function updateNote() {
     note += `<br><br>Dadas estas intervenciones y al finalizar el turno, se evaluó la meta del cuidado, `;
     note += `la cual se encuentra <strong>${metaEstado}</strong>.`;
 
+    // Observaciones adicionales (campo opcional)
+    const comentarios = els.otrosComentarios?.value.trim();
+    if (comentarios) {
+        note += `<br><br><strong>Observaciones:</strong><br>${comentarios}`;
+    }
+
     els.noteContent.innerHTML = note;
     updateCopyBtnState();
 }
@@ -941,6 +948,7 @@ function resetWorkflow() {
     els.searchDiag.value = '';
     els.searchNic.value  = '';
     if (els.metaLograda) els.metaLograda.value = '';
+    if (els.otrosComentarios) els.otrosComentarios.value = '';
     if (els.dobDia)  els.dobDia.value  = '';
     if (els.dobMes)  els.dobMes.value  = '';
     if (els.dobAnio) els.dobAnio.value = '';
@@ -996,6 +1004,9 @@ function init() {
     // Estado de meta
     els.metaLograda?.addEventListener('change', updateNote);
     els.metaLograda?.addEventListener('input',  updateNote);
+
+    // Observaciones opcionales
+    els.otrosComentarios?.addEventListener('input', updateNote);
 
     // Botón confirmar NICs
     els.nicConfirmBtn?.addEventListener('click', () => {
