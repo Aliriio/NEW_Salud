@@ -862,7 +862,7 @@ function updateNote() {
     // Observaciones adicionales (campo opcional)
     const comentarios = els.otrosComentarios?.value.trim();
     if (comentarios) {
-        note += `<br><br><strong>Observaciones adicionales:</strong><br>${comentarios}`;
+        note += `<br><br><strong>Observaciones:</strong><br>${comentarios}`;
     }
 
     els.noteContent.innerHTML = note;
