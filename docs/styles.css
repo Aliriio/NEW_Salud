@@ -803,6 +803,142 @@ body {
   box-shadow: none;
 }
 
+/* === BLOQUE OBSERVACIONES OPCIONALES === */
+.obs-block {
+  background: var(--white);
+  border: 1.5px solid var(--border-faint);
+  border-radius: var(--r-md);
+  padding: var(--sp-4) var(--sp-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.obs-block-header {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+.obs-label {
+  font-size: 0.73rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  cursor: default;
+}
+
+.obs-badges {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.obs-optional-badge {
+  font-size: 0.63rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  padding: 1px 8px;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* Ícono de información + tooltip */
+.obs-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  color: var(--text-muted);
+  cursor: help;
+  outline: none;
+}
+
+.obs-info-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  transition: color var(--fast) var(--ease);
+}
+
+.obs-info:hover .obs-info-icon,
+.obs-info:focus .obs-info-icon {
+  color: var(--blue);
+}
+
+.obs-tooltip {
+  position: absolute;
+  bottom: calc(100% + 9px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--navy);
+  color: var(--white);
+  font-size: 0.72rem;
+  font-weight: 400;
+  line-height: 1.5;
+  letter-spacing: 0;
+  text-transform: none;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  width: 272px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--fast) var(--ease);
+  z-index: 100;
+  box-shadow: var(--shadow-md);
+}
+
+/* Flecha del tooltip */
+.obs-tooltip::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: var(--navy);
+}
+
+.obs-info:hover .obs-tooltip,
+.obs-info:focus .obs-tooltip {
+  opacity: 1;
+}
+
+/* Textarea */
+.obs-textarea {
+  width: 100%;
+  min-height: 68px;
+  max-height: 160px;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  font-size: 0.85rem;
+  font-family: inherit;
+  color: var(--text-primary);
+  background: var(--white);
+  resize: vertical;
+  outline: none;
+  line-height: 1.6;
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+}
+
+.obs-textarea::placeholder {
+  color: var(--text-muted);
+  font-style: italic;
+  font-size: 0.82rem;
+}
+
+.obs-textarea:focus {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
+}
+
 /* === ACCIONES DE NOTA (pie del workflow) === */
 .workflow-actions {
   display: flex;
