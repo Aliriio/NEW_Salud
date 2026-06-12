@@ -264,7 +264,8 @@ body {
 
 .patient-field-row {
   display: grid;
-  grid-template-columns: 1fr 1.5fr 2fr;
+  /* La columna de fecha (1.7fr) da espacio a DD/MM/AAAA sin comprimirlos */
+  grid-template-columns: 1fr 1.7fr 2fr;
   gap: var(--sp-4);
 }
 
@@ -354,7 +355,17 @@ body {
   box-shadow: 0 0 0 3px rgba(192, 57, 43, .12);
 }
 
-.dob-field--year { width: 88px; }
+/* Los anchos de los campos de fecha necesitan mayor especificidad para vencer a
+   `.field-group input { width: 100% }` (de lo contrario el flex los iguala y corta
+   el año, ej. "2002"). flex-shrink: 0 evita que se compriman; el padding horizontal
+   se reduce para dar holgura a los dígitos en estos campos pequeños. */
+.dob-inputs .dob-field {
+  width: 52px;
+  flex-shrink: 0;
+  padding-left: var(--sp-2);
+  padding-right: var(--sp-2);
+}
+.dob-inputs .dob-field--year { width: 72px; }
 
 /* Separadores "/" */
 .dob-sep {
