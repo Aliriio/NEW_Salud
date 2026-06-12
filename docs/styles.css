@@ -354,7 +354,7 @@ body {
   box-shadow: 0 0 0 3px rgba(192, 57, 43, .12);
 }
 
-.dob-field--year { width: 90px; }
+.dob-field--year { width: 100px; min-width: 100px; flex-shrink: 0; }
 
 /* Separadores "/" */
 .dob-sep {
