@@ -544,7 +544,7 @@ function updateCopyBtnState() {
         const wasHidden = els.noteToggleBtn.hidden;
         els.noteToggleBtn.hidden = !complete;
         if (complete && wasHidden) {
-            // Aparece por primera vez: animar
+            // Aparece por primera vez: animar y mostrar la nota automáticamente
             els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
             void els.noteToggleBtn.offsetWidth;
             els.noteToggleBtn.classList.add('note-toggle-btn--ready');
@@ -555,6 +555,9 @@ function updateCopyBtnState() {
             };
             els.noteToggleBtn.addEventListener('animationend', cleanAnim);
             setTimeout(() => triggerBtnBurst(els.noteToggleBtn), 190);
+            // Auto-mostrar la nota sin pasar por toggleNote para no invertir estado erróneo
+            noteVisible = false;
+            toggleNote();
         }
         if (!complete && noteVisible) {
             // Si la nota estaba visible y la completitud se pierde, ocultarla

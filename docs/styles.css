@@ -354,7 +354,7 @@ body {
   box-shadow: 0 0 0 3px rgba(192, 57, 43, .12);
 }
 
-.dob-field--year { width: 74px; }
+.dob-field--year { width: 82px; }
 
 /* Separadores "/" */
 .dob-sep {
@@ -1141,6 +1141,7 @@ body {
   font-size: 0.84rem;
   line-height: 1.75;
   color: var(--text-primary);
+  user-select: none;
   /* max-height lo gestiona JS en syncNotePanelHeight() */
 }
 
