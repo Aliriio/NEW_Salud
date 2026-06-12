@@ -264,8 +264,9 @@ body {
 
 .patient-field-row {
   display: grid;
-  /* La columna de fecha (1.7fr) da espacio a DD/MM/AAAA sin comprimirlos */
-  grid-template-columns: 1fr 1.7fr 2fr;
+  /* La columna de fecha es `auto`: mide justo lo que ocupan DD/MM/AAAA, de modo
+     que el espacio a izquierda (sexo→día) y derecha (año→servicio) sea simétrico. */
+  grid-template-columns: 1fr auto 2fr;
   gap: var(--sp-4);
 }
 
