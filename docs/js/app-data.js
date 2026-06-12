@@ -143,7 +143,7 @@ window.datosProPai = {
                                                                   ]
                                                                 }
                                                               },
-                                    "Riesgo de infección  (ej. peritonitis, infecciones hepáticas)": {
+                                    "Riesgo de infección (ej. peritonitis, infecciones hepáticas)": {
                                       "noc": [
                                         "Ausencia de infección",
                                         "signos inflamatorios controlados"
@@ -241,7 +241,7 @@ window.datosProPai = {
   "Quirúrgicas Abdominales": {
                                     "Riesgo de infección de la herida quirúrgica": {
                                       "noc": [
-                                        "Cicatrización de heridas:Estado de infección"
+                                        "Cicatrización de heridas: Estado de infección"
                                       ],
                                       "nic": [
                                         "Control glucémico",
@@ -261,7 +261,7 @@ window.datosProPai = {
                                         "Valoración continua del dolor"
                                       ],
                                       "b6_por_noc": {
-                                        "Cicatrización de heridas:Estado de infección": [
+                                        "Cicatrización de heridas: Estado de infección": [
                                           "1. Extenso",
                                           "2. Sustancial",
                                           "3. Moderado",
@@ -336,7 +336,7 @@ window.datosProPai = {
                                       "b6_por_noc": {
                                         "Recuperación de peristalsis": [
                                           "1. Peristalsis Gravemente comprometida",
-                                          "2. Peristalsis  Sustancialmente comprometida",
+                                          "2. Peristalsis Sustancialmente comprometida",
                                           "3. Peristalsis Moderadamente comprometida",
                                           "4. Peristalsis Levemente comprometida",
                                           "5. Peristalsis No comprometida"
@@ -1002,7 +1002,7 @@ window.datosProPai = {
                                                                                                     ],
                                                                                                     "nic": [
                                                                                                       "Monitoreo de coloración en la piel y mucosas",
-                                                                                                      "Motivar la exposicion del neonato a la luz solar",
+                                                                                                      "Motivar la exposición del neonato a la luz solar",
                                                                                                       "Promover lactancia frecuente"
                                                                                                     ],
                                                                                                     "trans": [
@@ -1206,8 +1206,8 @@ window.datosProPai = {
                                           "Proporcionar ejercicios de mejora de la autoestima diseñados para aumentar la autoestima positiva (escribir una lista de talentos y rasgos positivos de la personalidad)"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1250,8 +1250,8 @@ window.datosProPai = {
                                                                                           "Fomentar el uso de técnicas no farmacológicas antes, durante y después de los tratamientos (relajacion, musicoterapia, imaginacion simple dirigida)"
                                                                                         ],
                                                                                         "trans": [
-                                                                                          "Administracion de analgesicos segun necesidad",
-                                                                                          "Administracion de antiemeticos",
+                                                                                          "Administración de analgésicos según necesidad",
+                                                                                          "Administración de antieméticos",
                                                                                           "Apoyo emocional",
                                                                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                                                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1287,8 +1287,8 @@ window.datosProPai = {
                                           "Proporcionar oportunidades de práctica de actividad física"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1322,8 +1322,8 @@ window.datosProPai = {
                                                                                               "Proporcionar un programa de entrenamiento de fuerza compatible con la edad y el estado de salud"
                                                                                             ],
                                                                                             "trans": [
-                                                                                              "Administracion de analgesicos segun necesidad",
-                                                                                              "Administracion de antiemeticos",
+                                                                                              "Administración de analgésicos según necesidad",
+                                                                                              "Administración de antieméticos",
                                                                                               "Apoyo emocional",
                                                                                               "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                                                                               "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1357,8 +1357,8 @@ window.datosProPai = {
                                           "Manejo del confort (Entorno, temperatura, descanso)"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1392,8 +1392,8 @@ window.datosProPai = {
                                                                                                 "Disminucion ansiedad"
                                                                                               ],
                                                                                               "trans": [
-                                                                                                "Administracion de analgesicos segun necesidad",
-                                                                                                "Administracion de antiemeticos",
+                                                                                                "Administración de analgésicos según necesidad",
+                                                                                                "Administración de antieméticos",
                                                                                                 "Apoyo emocional",
                                                                                                 "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                                                                                 "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1429,8 +1429,8 @@ window.datosProPai = {
                                           "Planificacion de las comidas segun el gusto del paciente"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1473,8 +1473,8 @@ window.datosProPai = {
                                                                                           "Prevencion lesiones por presion"
                                                                                         ],
                                                                                         "trans": [
-                                                                                          "Administracion de analgesicos segun necesidad",
-                                                                                          "Administracion de antiemeticos",
+                                                                                          "Administración de analgésicos según necesidad",
+                                                                                          "Administración de antieméticos",
                                                                                           "Apoyo emocional",
                                                                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                                                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1508,8 +1508,8 @@ window.datosProPai = {
                                           "Monitorizar si se producen alteraciones en la integridad de la piel y tratarlas adecuadamente"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1536,8 +1536,8 @@ window.datosProPai = {
                                                                                             "Monitorizar los cambios en el estado hídrico utilizando datos obtenidos regularmente"
                                                                                           ],
                                                                                           "trans": [
-                                                                                            "Administracion de analgesicos segun necesidad",
-                                                                                            "Administracion de antiemeticos",
+                                                                                            "Administración de analgésicos según necesidad",
+                                                                                            "Administración de antieméticos",
                                                                                             "Apoyo emocional",
                                                                                             "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                                                                             "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1565,8 +1565,8 @@ window.datosProPai = {
                                           "Promover ingesta de liquidos"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1601,8 +1601,8 @@ window.datosProPai = {
                                                                                           "Vigilancia de signos de infección"
                                                                                         ],
                                                                                         "trans": [
-                                                                                          "Administracion de analgesicos segun necesidad",
-                                                                                          "Administracion de antiemeticos",
+                                                                                          "Administración de analgésicos según necesidad",
+                                                                                          "Administración de antieméticos",
                                                                                           "Apoyo emocional",
                                                                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                                                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1636,8 +1636,8 @@ window.datosProPai = {
                                           "Educación sobre signos de sangrado"
                                         ],
                                         "trans": [
-                                          "Administracion de analgesicos segun necesidad",
-                                          "Administracion de antiemeticos",
+                                          "Administración de analgésicos según necesidad",
+                                          "Administración de antieméticos",
                                           "Apoyo emocional",
                                           "Educacion al paciente y su familia sobre el proceso de la enfermedad",
                                           "Medidas no farmacologicas para el dolor (posicionamiento técnicas de relajación, aplicacion calor/frío)",
@@ -1785,13 +1785,9 @@ window.datosProPai = {
                                   ],
                                   "b6_por_noc": {
                                     "Nivel de energía adecuado": [
-                                      "1 . Severamente comprometido",
-                                      "1.Severamente comprometido",
-                                      "2 . Moderadamente comprometido",
+                                      "1. Severamente comprometido",
                                       "2. Moderadamente comprometido",
-                                      "3 . Levemente comprometido",
                                       "3. Levemente comprometido",
-                                      "4 . Adecuado",
                                       "4. Adecuado"
                                     ]
                                   }
@@ -1868,7 +1864,7 @@ window.datosProPai = {
                                                                                                         ],
                                                                                                         "b6_por_noc": {
                                                                                                           "Equilibrio de líquidos restaurado": [
-                                                                                                            "1.Severamente comprometido",
+                                                                                                            "1. Severamente comprometido",
                                                                                                             "2. Moderadamente comprometido",
                                                                                                             "3. Leve alteración",
                                                                                                             "4. Adecuado"
@@ -2162,12 +2158,12 @@ window.datosProPai = {
                                 ],
                                 "trans": [
                                   "Control de infecciones: implementar y supervisar prácticas de asepsia e higiene en la atención directa",
-                                  "Manejo de líquidos: mantener equilibrio hídrico medianteControl de ingesta, pérdidas y administración de fluidos",
+                                  "Manejo de líquidos: mantener equilibrio hídrico mediante control de ingesta, pérdidas y administración de fluidos",
                                   "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
-                                  "Monitorización de signos vitales:Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
+                                  "Monitorización de signos vitales: Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
                                   "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                  "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente",
-                                  "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos"
+                                  "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente",
+                                  "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos"
                                 ],
                                 "b6_por_noc": {
                                   "Nivel de ansiedad.": [
@@ -2201,19 +2197,19 @@ window.datosProPai = {
                                                                                         "Reposo, equilibrio entre actividad y descanso, apoyo emocional."
                                                                                       ],
                                                                                       "trans": [
-                                                                                        "4.Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                                                                        "5.Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente.",
-                                                                                        "6.Control de infecciones: implementar y supervisar prácticas de asepsia e higiene en la atención directa",
-                                                                                        "7.Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos.",
+                                                                                        "4. Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
+                                                                                        "5. Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente.",
+                                                                                        "6. Control de infecciones: implementar y supervisar prácticas de asepsia e higiene en la atención directa",
+                                                                                        "7. Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos.",
                                                                                         "Control de infecciones: implementar y supervisar prácticas de asepsia e higiene en la atención directa",
                                                                                         "Manejo de líquidos: mantener equilibrio hídrico mediante control de ingesta, pérdidas y administración de fluidos.",
-                                                                                        "Manejo de líquidos: mantener equilibrio hídrico medianteControl de ingesta, pérdidas y administración de fluidos",
+                                                                                        "Manejo de líquidos: mantener equilibrio hídrico mediante control de ingesta, pérdidas y administración de fluidos",
                                                                                         "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
                                                                                         "Monitorización de signos vitales: controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos.",
-                                                                                        "Monitorización de signos vitales:Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
+                                                                                        "Monitorización de signos vitales: Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
                                                                                         "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                                                                        "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente",
-                                                                                        "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos"
+                                                                                        "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente",
+                                                                                        "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos"
                                                                                       ],
                                                                                       "b6_por_noc": {
                                                                                         "Energía adecuada .": [
@@ -2253,12 +2249,12 @@ window.datosProPai = {
                                 ],
                                 "trans": [
                                   "Control de infecciones: implementar y supervisar prácticas de asepsia e higiene en la atención directa",
-                                  "Manejo de líquidos: mantener equilibrio hídrico medianteControl de ingesta, pérdidas y administración de fluidos",
+                                  "Manejo de líquidos: mantener equilibrio hídrico mediante control de ingesta, pérdidas y administración de fluidos",
                                   "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
-                                  "Monitorización de signos vitales:Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
+                                  "Monitorización de signos vitales: Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
                                   "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                  "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente",
-                                  "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos"
+                                  "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente",
+                                  "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos"
                                 ],
                                 "b6_por_noc": {
                                   "Control del dolor.": [
@@ -2296,8 +2292,8 @@ window.datosProPai = {
                                                                                         "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
                                                                                         "Monitorización de signos vitales: controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos.",
                                                                                         "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                                                                        "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente.",
-                                                                                        "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos."
+                                                                                        "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente.",
+                                                                                        "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos."
                                                                                       ],
                                                                                       "b6_por_noc": {
                                                                                         "Termorregulación": [
@@ -2336,8 +2332,8 @@ window.datosProPai = {
                                   "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
                                   "Monitorización de signos vitales: controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos.",
                                   "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                  "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente.",
-                                  "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos."
+                                  "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente.",
+                                  "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos."
                                 ],
                                 "b6_por_noc": {
                                   "Ventilación adecuada, gases arteriales normales .": [
@@ -2382,8 +2378,8 @@ window.datosProPai = {
                                                                                             "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
                                                                                             "Monitorización de signos vitales: controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos.",
                                                                                             "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                                                                            "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente.",
-                                                                                            "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos."
+                                                                                            "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente.",
+                                                                                            "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos."
                                                                                           ],
                                                                                           "b6_por_noc": {
                                                                                             "Ausencia de signos de aspiración": [
@@ -2416,12 +2412,12 @@ window.datosProPai = {
                                 ],
                                 "trans": [
                                   "Control de infecciones: implementar y supervisar prácticas de asepsia e higiene en la atención directa",
-                                  "Manejo de líquidos: mantener equilibrio hídrico medianteControl de ingesta, pérdidas y administración de fluidos",
+                                  "Manejo de líquidos: mantener equilibrio hídrico mediante control de ingesta, pérdidas y administración de fluidos",
                                   "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
-                                  "Monitorización de signos vitales:Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
+                                  "Monitorización de signos vitales: Controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos",
                                   "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                  "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente",
-                                  "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos"
+                                  "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente",
+                                  "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos"
                                 ],
                                 "b6_por_noc": {
                                   "Prevención de caídas.": [
@@ -2460,8 +2456,8 @@ window.datosProPai = {
                                                                                           "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
                                                                                           "Monitorización de signos vitales: controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos.",
                                                                                           "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                                                                          "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente.",
-                                                                                          "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos."
+                                                                                          "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente.",
+                                                                                          "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos."
                                                                                         ],
                                                                                         "b6_por_noc": {
                                                                                           "Ajusta las estrategias de control de riesgos": [
@@ -2508,9 +2504,9 @@ window.datosProPai = {
                                   "Manejo de vías respiratorias: asegurar la permeabilidad de las vías respiratorias por posición, succión o humidificación",
                                   "Monitorización de signos vitales: controlar periódicamente temperatura, FC, FR, PA y SpO₂ para detectar cambios tempranos.",
                                   "Monitorización respiratoria: vigilar patrones respiratorios, sonidos pulmonares y saturación de O₂",
-                                  "Oxigenoterapia : Administrar oxígeno suplementario y valorar la respuesta del paciente.",
-                                  "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos",
-                                  "Protección contra infecciones: establecer medidas preventivas frente a  exposición a agentes patógenos."
+                                  "Oxigenoterapia: Administrar oxígeno suplementario y valorar la respuesta del paciente.",
+                                  "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos",
+                                  "Protección contra infecciones: establecer medidas preventivas frente a exposición a agentes patógenos."
                                 ],
                                 "b6_por_noc": {
                                   "Severidad del shock: séptico": [
@@ -2629,7 +2625,7 @@ window.datosProPai = {
                                                 "2. Afectación Sustancial",
                                                 "3. Afectación Moderada",
                                                 "4. Afectación Leve",
-                                                "5. Sin  afectación"
+                                                "5. Sin afectación"
                                               ]
                                             }
                                           },
@@ -2661,7 +2657,7 @@ window.datosProPai = {
                                                                                                   "2. Afectación Sustancial",
                                                                                                   "3. Afectación Moderada",
                                                                                                   "4. Afectación Leve",
-                                                                                                  "5. Sin  afectación"
+                                                                                                  "5. Sin afectación"
                                                                                                 ]
                                                                                               }
                                                                                             },

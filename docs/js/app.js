@@ -820,7 +820,7 @@ function updateNote() {
     }
 
     const now = new Date();
-    const fecha = now.toLocaleDateString('es-CO');
+    const fecha = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
     const hora = now.toLocaleTimeString('es-CO', { hour12: false });
 
     const sexo       = els.sexo?.value || '___';
