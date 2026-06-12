@@ -5,13 +5,13 @@
 
 /* === TOKENS DE DISEÑO === */
 :root {
-  /* Paleta de marca */
+  /* Paleta de marca — azul institucional CareFlow (#003ec0 · #2499fd) */
   --navy:         #001d4a;
-  --blue-dark:    #0039a6;
-  --blue:         #0055cc;
-  --blue-mid:     #1a6fe0;
-  --blue-light:   #4898f5;
-  --blue-pale:    #e8f1ff;
+  --blue-dark:    #003ec0;
+  --blue:         #1565e0;
+  --blue-mid:     #2499fd;
+  --blue-light:   #5cb3ff;
+  --blue-pale:    #e9f3ff;
 
   /* Superficies */
   --white:        #ffffff;

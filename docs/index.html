@@ -1,233 +1,200 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" class="cf">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CareFlow — Automatización asistida de notas de enfermería</title>
-    <link rel="stylesheet" href="styles.css">
-    <link rel="icon" href="assets/logo_fix.png" type="image/png">
+    <title>CareFlow — Documentación clínica asistida</title>
+    <meta name="description" content="CareFlow es una plataforma de documentación clínica asistida para equipos de enfermería. Notas estructuradas a partir de campos guiados, siempre revisadas y aprobadas por el profesional.">
+    <link rel="icon" href="assets/logo_favicon.png" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/careflow.css">
 </head>
-<body>
-    <div class="container">
+<body class="cf">
 
-        <header class="header">
-            <img src="assets/logo_fix.png" alt="Logo Fundación Clínica Santa Fe de Bogotá" class="header-logo" width="68" height="68">
-            <div class="header-text">
-                <h1>CareFlow</h1>
-                <h2>Automatización asistida de notas de enfermería</h2>
-                <p>Fase 1 · Adaptación clínica y validación operativa para Fundación Santa Fe de Bogotá</p>
+    <!-- ===== NAVBAR ===== -->
+    <nav class="cf-nav" aria-label="Navegación principal">
+        <a class="cf-nav-brand" href="index.html">
+            <img class="cf-logo-mark" src="assets/logo_nobg.png" alt="CareFlow">
+            <span>CareFlow</span>
+        </a>
+        <div class="cf-nav-links">
+            <a href="#que-es">Qué es</a>
+            <a href="#por-que">Por qué</a>
+            <a href="#modulos">Módulos</a>
+        </div>
+        <div class="cf-nav-cta">
+            <a class="cf-btn cf-btn-primary" href="login.html">Iniciar sesión</a>
+        </div>
+    </nav>
+
+    <!-- ===== HERO ===== -->
+    <header class="cf-hero">
+        <canvas class="cf-particles" data-density="1.3" aria-hidden="true"></canvas>
+        <div class="cf-hero-mask" aria-hidden="true"></div>
+        <div class="cf-hero-inner">
+            <div class="cf-hero-brand cf-hero-after">
+                <img class="cf-logo-mark" src="assets/logo_nobg.png" alt="CareFlow">
+                <span class="cf-brand-name">CareFlow</span>
             </div>
-        </header>
+            <h1 data-typewriter data-text="Carefully built for|clinical care"></h1>
+            <p class="cf-hero-sub cf-hero-after">
+                Documentación clínica asistida para equipos de enfermería. Convierte campos guiados en
+                notas claras, estandarizadas y trazables.
+            </p>
+            <div class="cf-hero-actions cf-hero-after">
+                <a class="cf-btn cf-btn-primary cf-btn-lg" href="login.html">Iniciar sesión</a>
+                <a class="cf-btn cf-btn-ghost cf-btn-lg" href="#que-es">Conocer CareFlow</a>
+            </div>
+        </div>
+        <a class="cf-scroll-cue" href="#que-es" aria-label="Desplázate para conocer más">
+            <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+        </a>
+    </header>
 
-        <main class="content">
-
-            <!-- Panel lateral — primero en DOM para que en mobile aparezca arriba -->
-            <aside class="note-section" aria-label="Nota de enfermería generada">
-
-                <div class="note-panel-header">
-                    <h3>Nota de enfermería</h3>
-                    <div class="note-panel-header-actions">
-                        <button type="button" class="note-toggle-btn" id="noteToggleBtn" aria-expanded="false" hidden>
-                            Ver nota
-                        </button>
+    <!-- ===== QUÉ ES ===== -->
+    <section class="cf-section" id="que-es">
+        <div class="cf-split">
+            <div class="cf-split-text cf-reveal" data-reveal="fade">
+                <span class="cf-eyebrow">Qué es CareFlow</span>
+                <h2>Una plataforma de documentación asistida, no un reemplazo del criterio clínico.</h2>
+                <p>
+                    CareFlow guía al personal de enfermería a través de campos estructurados y, a partir de
+                    ellos, genera una nota clínica organizada y lista para revisar. La herramienta acelera la
+                    redacción y estandariza la calidad — pero la decisión siempre es humana.
+                </p>
+                <ul class="cf-check-list">
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        El profesional revisa, corrige y aprueba cada nota antes de usarla.
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        No toma decisiones médicas ni sustituye el juicio clínico.
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        Reduce errores de redacción y mejora la trazabilidad del cuidado.
+                    </li>
+                </ul>
+            </div>
+            <div class="cf-split-visual cf-reveal" data-reveal="zoom">
+                <div class="cf-mock-note">
+                    <div class="ln w1"></div>
+                    <div class="ln w2"></div>
+                    <div class="ln w3"></div>
+                    <div class="ln w4"></div>
+                    <div class="ln w5"></div>
+                    <div class="cf-mock-chip">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
+                        Nota lista para revisar
                     </div>
                 </div>
+            </div>
+        </div>
+    </section>
 
-                <div class="note-panel-body">
-                    <!-- Transversales: visible por defecto -->
-                    <div class="trans-list" id="transversales"></div>
-                    <!-- Nota: oculta por defecto, se muestra al hacer clic en "Ver nota" -->
-                    <div class="note-content" id="noteContent" hidden role="document" aria-live="polite"></div>
-                </div>
-
-            </aside>
-
-            <!-- Flujo de trabajo -->
-            <section class="workflow" aria-label="Flujo de trabajo">
-
-                <!-- Datos del paciente — siempre visible, encabezado con botón de reinicio -->
-                <section class="patient-block" id="patientBlock" aria-label="Datos del paciente">
-                    <div class="patient-block-header">
-                        <h3>Datos del paciente</h3>
-                        <div class="patient-header-right">
-                            <span class="required-note">* Obligatorios</span>
-                            <button type="button" class="reset-icon-btn" id="resetBtn"
-                                    title="Reiniciar proceso" aria-label="Reiniciar todo el proceso">
-                                ↺
-                            </button>
-                        </div>
-                    </div>
-                    <div class="patient-block-body">
-                        <div class="patient-field-row">
-                            <div class="field-group">
-                                <label for="sexo">Sexo <span class="required-star" aria-label="obligatorio">*</span></label>
-                                <select id="sexo" aria-label="Sexo del paciente">
-                                    <option value="___">Seleccionar…</option>
-                                    <option value="Femenino">Femenino</option>
-                                    <option value="Masculino">Masculino</option>
-                                </select>
-                            </div>
-                            <div class="field-group field-group--dob">
-                                <label>Fecha de nacimiento <span class="required-star" aria-label="obligatorio">*</span></label>
-                                <div class="dob-inputs" role="group" aria-label="Fecha de nacimiento">
-                                    <input type="text" inputmode="numeric" id="dobDia"
-                                           maxlength="2" placeholder="DD"
-                                           aria-label="Día de nacimiento"
-                                           class="dob-field" autocomplete="off">
-                                    <span class="dob-sep" aria-hidden="true">/</span>
-                                    <input type="text" inputmode="numeric" id="dobMes"
-                                           maxlength="2" placeholder="MM"
-                                           aria-label="Mes de nacimiento"
-                                           class="dob-field" autocomplete="off">
-                                    <span class="dob-sep" aria-hidden="true">/</span>
-                                    <input type="text" inputmode="numeric" id="dobAnio"
-                                           maxlength="4" placeholder="AAAA"
-                                           aria-label="Año de nacimiento"
-                                           class="dob-field dob-field--year" autocomplete="off">
-                                </div>
-                                <div class="dob-feedback" id="dobFeedback" aria-live="polite"></div>
-                            </div>
-                            <div class="field-group field-group--wide">
-                                <label for="servicio">Servicio / Unidad <span class="required-star" aria-label="obligatorio">*</span></label>
-                                <input type="text" id="servicio" placeholder="Ej: Hospitalización pediátrica" aria-label="Servicio o unidad">
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Barra de progreso -->
-                <div class="progress-track">
-                    <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progreso del formulario">
-                        <div class="progress-fill" id="progressFill"></div>
-                    </div>
-                    <span class="progress-label" id="progressLabel" aria-live="polite">Paso 1 de 5</span>
-                </div>
-
-                <!-- Paso 1: Condiciones clínicas -->
-                <article class="step active" id="step1" data-step="1">
-                    <div class="step-header" role="button" tabindex="0" aria-expanded="true" aria-label="Paso 1: Condiciones clínicas">
-                        <span class="step-badge">1</span>
-                        <h3>Condiciones clínicas</h3>
-                        <span class="step-summary" aria-live="polite"></span>
-                    </div>
-                    <div class="step-content">
-                        <p class="hint">Seleccione el área o servicio clínico del paciente.</p>
-                        <div class="options" id="areas"></div>
-                    </div>
+    <!-- ===== POR QUÉ ===== -->
+    <section class="cf-section" id="por-que" style="max-width:none;border-top:1px solid var(--cf-border);border-bottom:1px solid var(--cf-border);">
+        <div style="max-width:var(--cf-maxw);margin:0 auto;">
+            <div class="cf-section-head cf-reveal" data-reveal="fade">
+                <span class="cf-eyebrow">Por qué CareFlow</span>
+                <h2>Diseñado para el flujo hospitalario real</h2>
+                <p>Menos tiempo redactando, más tiempo cuidando. CareFlow estandariza la documentación sin quitarte el control.</p>
+            </div>
+            <div class="cf-grid-3" data-stagger>
+                <article class="cf-card cf-reveal" data-reveal="scale">
+                    <div class="cf-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div>
+                    <h3>Ahorro de tiempo</h3>
+                    <p>Genera notas completas en una fracción del tiempo que toma redactarlas a mano.</p>
                 </article>
-
-                <!-- Paso 2: Diagnóstico NANDA -->
-                <article class="step" id="step2" data-step="2">
-                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 2: Diagnóstico de enfermería">
-                        <span class="step-badge">2</span>
-                        <h3>Diagnóstico de enfermería (NANDA)</h3>
-                        <span class="step-summary" aria-live="polite"></span>
-                    </div>
-                    <div class="step-content">
-                        <input type="search" class="search-box" id="searchDiag" placeholder="Buscar diagnóstico…" aria-label="Buscar diagnóstico">
-                        <div class="options" id="diagnosticos"></div>
-                    </div>
+                <article class="cf-card cf-reveal" data-reveal="scale">
+                    <div class="cf-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h16M4 12h16M4 18h10"/></svg></div>
+                    <h3>Estandarización clínica</h3>
+                    <p>Estructura consistente y lenguaje uniforme en cada turno y cada servicio.</p>
                 </article>
-
-                <!-- Paso 3: NOC -->
-                <article class="step" id="step3" data-step="3">
-                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 3: Resultado esperado NOC">
-                        <span class="step-badge">3</span>
-                        <h3>Resultado esperado (NOC)</h3>
-                        <span class="step-summary" aria-live="polite"></span>
-                    </div>
-                    <div class="step-content">
-                        <p class="hint">Seleccione el resultado que orienta la meta del cuidado.</p>
-                        <div class="options" id="nocs"></div>
-                    </div>
+                <article class="cf-card cf-reveal" data-reveal="scale">
+                    <div class="cf-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg></div>
+                    <h3>Menos errores de redacción</h3>
+                    <p>Campos guiados que reducen omisiones e inconsistencias en la nota final.</p>
                 </article>
-
-                <!-- Paso 4: Intervenciones NIC (multi-select con confirmación) -->
-                <article class="step" id="step4" data-step="4">
-                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 4: Intervenciones NIC">
-                        <span class="step-badge">4</span>
-                        <h3>Intervenciones NIC</h3>
-                        <span class="step-summary" aria-live="polite"></span>
-                    </div>
-                    <div class="step-content">
-                        <p class="hint">Seleccione una o varias intervenciones y confirme cuando termine.</p>
-                        <input type="search" class="search-box" id="searchNic" placeholder="Buscar intervención…" aria-label="Buscar intervención">
-                        <div class="options" id="intervenciones"></div>
-                        <div class="nic-confirm-bar">
-                            <span class="nic-confirm-hint" id="nicConfirmHint">Seleccione al menos una intervención</span>
-                            <button type="button" class="nic-confirm-btn" id="nicConfirmBtn" disabled>
-                                Continuar →
-                            </button>
-                        </div>
-                    </div>
+                <article class="cf-card cf-reveal" data-reveal="scale">
+                    <div class="cf-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></div>
+                    <h3>Mejor trazabilidad</h3>
+                    <p>Documentación clara y consistente que facilita el seguimiento del cuidado.</p>
                 </article>
-
-                <!-- Paso 5: Evaluación B6 -->
-                <article class="step" id="step5" data-step="5">
-                    <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 5: Evaluación Escala B6">
-                        <span class="step-badge">5</span>
-                        <h3>Evaluación — Escala B6</h3>
-                        <span class="step-summary" aria-live="polite"></span>
-                    </div>
-                    <div class="step-content">
-                        <p class="hint">Indique el nivel de logro del NOC (1 = menor logro · 5 = óptimo).</p>
-                        <div class="options" id="evaluaciones"></div>
-                    </div>
+                <article class="cf-card cf-reveal" data-reveal="scale">
+                    <div class="cf-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></div>
+                    <h3>Escalable</h3>
+                    <p>De la entrega de turno a múltiples tipos de nota dentro de una sola plataforma.</p>
                 </article>
+                <article class="cf-card cf-reveal" data-reveal="scale">
+                    <div class="cf-card-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+                    <h3>Pensado para el turno</h3>
+                    <p>Flujo ágil que acompaña el ritmo real del personal en piso.</p>
+                </article>
+            </div>
+        </div>
+    </section>
 
-                <!-- Estado de la meta — aparece al completar el paso 5 -->
-                <div class="meta-block" id="metaBlock" hidden>
-                    <label for="metaLograda">Estado de la meta al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
-                    <select id="metaLograda" aria-label="Estado de la meta al cierre del turno">
-                        <option value="" disabled selected>Seleccione el estado…</option>
-                        <option value="en progreso">En progreso</option>
-                        <option value="lograda">Lograda</option>
-                        <option value="no lograda">No lograda</option>
-                        <option value="parcialmente lograda">Parcialmente lograda</option>
-                    </select>
+    <!-- ===== MÓDULOS ===== -->
+    <section class="cf-section" id="modulos">
+        <div class="cf-section-head cf-reveal" data-reveal="fade">
+            <span class="cf-eyebrow">Módulos</span>
+            <h2>Una plataforma que crece contigo</h2>
+            <p>CareFlow no es una sola nota: es un ecosistema de documentación clínica en expansión.</p>
+        </div>
+        <div class="cf-modules" data-stagger>
+            <article class="cf-module is-available cf-reveal" data-reveal="scale">
+                <div class="cf-module-top">
+                    <div class="cf-module-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg></div>
+                    <span class="cf-badge cf-badge-available"><span class="cf-badge-dot"></span>Disponible</span>
                 </div>
-
-                <!-- Observaciones opcionales -->
-                <div class="obs-block">
-                    <div class="obs-block-header">
-                        <label for="otrosComentarios" class="obs-label">Otros comentarios u observaciones</label>
-                        <div class="obs-badges">
-                            <span class="obs-optional-badge">Opcional</span>
-                            <span class="obs-info" tabindex="0" aria-label="Información sobre este campo">
-                                <svg class="obs-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                    <circle cx="8" cy="8" r="6.5"/>
-                                    <line x1="8" y1="7.5" x2="8" y2="11"/>
-                                    <circle cx="8" cy="5.2" r="0.6" fill="currentColor" stroke="none"/>
-                                </svg>
-                                <span class="obs-tooltip" role="tooltip">
-                                    Este es un espacio opcional en el que puede describir, con sus propias palabras, situaciones, observaciones o información relevante que no haya sido contemplada en los apartados anteriores.
-                                </span>
-                            </span>
-                        </div>
-                    </div>
-                    <textarea
-                        id="otrosComentarios"
-                        class="obs-textarea"
-                        rows="3"
-                        placeholder="Ejemplo: paciente irritable durante el examen, poco colaborador o con dificultad para seguir indicaciones."
-                        aria-label="Otros comentarios u observaciones (opcional)"
-                    ></textarea>
+                <h3>Entrega</h3>
+                <p>Nota de entrega de turno estructurada, generada desde campos guiados y lista para revisar.</p>
+            </article>
+            <article class="cf-module is-soon cf-reveal" data-reveal="scale">
+                <div class="cf-module-top">
+                    <div class="cf-module-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+                    <span class="cf-badge cf-badge-soon">Próximamente</span>
                 </div>
-
-                <!-- Acciones de nota — zona de copia al pie del flujo -->
-                <div class="workflow-actions">
-                    <div class="note-status" id="noteStatus" aria-live="polite"></div>
-                    <button type="button" class="copy-btn" id="copyBtn" disabled aria-disabled="true">
-                        Copiar nota
-                    </button>
+                <h3>Recibo de turno</h3>
+                <p>Registro de recepción del turno con el estado del paciente al inicio del cuidado.</p>
+            </article>
+            <article class="cf-module is-soon cf-reveal" data-reveal="scale">
+                <div class="cf-module-top">
+                    <div class="cf-module-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7h6zM15 7h-2a2 2 0 0 0-2 2v11h6V9a2 2 0 0 0-2-2zM21 4h-2a2 2 0 0 0-2 2v14h6V6a2 2 0 0 0-2-2z"/></svg></div>
+                    <span class="cf-badge cf-badge-soon">Próximamente</span>
                 </div>
+                <h3>Valoración</h3>
+                <p>Valoración de enfermería integral por dominios para una documentación más completa.</p>
+            </article>
+        </div>
+    </section>
 
-            </section>
+    <!-- ===== FOOTER ===== -->
+    <footer class="cf-footer">
+        <div class="cf-footer-inner">
+            <a class="cf-footer-brand" href="index.html">
+                <img class="cf-logo-mark" src="assets/logo_nobg.png" alt="CareFlow">
+                <span>CareFlow</span>
+            </a>
+            <div class="cf-footer-trust">
+                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>Documentación segura</span>
+                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Revisión humana</span>
+                <span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>Notas trazables</span>
+            </div>
+        </div>
+        <div class="cf-footer-copy">
+            © 2026 CareFlow · Documentación clínica asistida para equipos de enfermería.
+            <span class="cf-footer-made">Hecho con <span class="cf-heart">♥</span> por CareFlow Solutions S.A.S.</span>
+        </div>
+    </footer>
 
-        </main>
-    </div>
-
-    <script src="js/app-data.js"></script>
-    <script src="js/app.js" defer></script>
+    <script src="js/particles.js"></script>
+    <script src="js/typewriter.js"></script>
+    <script src="js/landing.js"></script>
 </body>
 </html>

@@ -1,30 +1,53 @@
-# Automatizador de Notas de Enfermería
+# CareFlow — Plataforma de documentación asistida de enfermería
 
-Aplicación web para automatizar la generación de notas de enfermería según el Plan de Atención Integral (PAI) de la Fundación Clínica Santa Fe de Bogotá.
+Plataforma web (SaaS clínico) para automatizar y agilizar la creación de notas de enfermería.
+La enfermera ingresa información estructurada en campos guiados y CareFlow genera una nota
+clínica organizada y lista para revisar, corregir y aprobar. Adaptación clínica y validación
+operativa para la Fundación Santa Fe de Bogotá.
+
+> CareFlow **no** reemplaza el criterio clínico ni toma decisiones médicas: la enfermera
+> siempre revisa y aprueba la nota antes de usarla.
+
+## 🧭 Flujo del producto
+
+`index.html` (landing) → `login.html` → `dashboard.html` → módulo **Entrega** (`entrega.html`).
+
+- **Entrega** — disponible (note app completo de entrega de turno).
+- **Recibo de turno** y **Valoración** — “Próximamente”.
+
+Acceso de demostración: usuario `demo@santafe.com` · contraseña `careflow2026`.
+El dominio del correo activa el co-branding del cliente (ej. `@santafe.com` carga el logo de la institución en el header).
 
 ## 🏗️ Estructura del Proyecto
 
 ```
 Demo_Fcsb/
-├── public/                          # Archivos estáticos
-│   ├── index.html                   # Página principal
-│   ├── styles.css                   # Estilos CSS
-│   └── assets/
-│       ├── logo-fcsb.png           # Logo principal
-│       └── logo.png                 # Logo alterno
-├── src/                             # Código fuente
-│   ├── app.js                       # Lógica principal de la aplicación
-│   └── app-data.js                  # Datos del PAI (áreas, diagnósticos, NICs, NOCs)
-├── data/                            # Archivos de datos
-│   └── plan-cuidados_enfermeria.xlsx # Plan de cuidados Excel
-├── scripts/                         # Scripts auxiliares
-│   ├── actualizar-datos.bat         # Script para actualizar datos (Windows)
-│   ├── iniciar.bat                  # Script para iniciar la aplicación (Windows)
-│   └── exportar_excel.py            # Script Python para exportar datos
-├── .gitignore                       # Archivos a ignorar en git
-├── README.md                        # Este archivo
-└── .git/                            # Repositorio git
+├── public/                          # Archivos estáticos (fuente de desarrollo)
+│   ├── index.html                   # Landing pública (hero + partículas + typewriter)
+│   ├── login.html                   # Inicio de sesión institucional (demo)
+│   ├── dashboard.html               # Home interno: selector de módulos + secciones
+│   ├── entrega.html                 # Módulo Entrega = note app dentro del shell
+│   ├── styles.css                   # Estilos del note app (intactos)
+│   ├── css/
+│   │   ├── tokens.css               # Design tokens de marca (compartidos)
+│   │   └── careflow.css             # Shell, landing, login, dashboard + integración
+│   ├── js/
+│   │   ├── app.js                   # Lógica del note app (sin cambios)
+│   │   ├── app-data.js              # Datos del PAI (áreas, diagnósticos, NIC, NOC, B6)
+│   │   ├── particles.js             # Red de partículas interactiva (canvas)
+│   │   ├── typewriter.js            # Efecto typewriter del eslogan
+│   │   ├── landing.js               # Nav sticky, scroll-reveal, anclas
+│   │   ├── auth.js                  # Login demo, sesión y guard de páginas
+│   │   └── shell.js                 # Sidebar, cambio de vistas, logout
+│   └── assets/                      # Logos (logo_fix.png, logo.png, logo-fcsb.png)
+├── docs/                            # Copia desplegada por GitHub Pages (/docs)
+├── data/                            # plan_cuidados_enfermeria.xlsx
+├── scripts/                         # Scripts auxiliares (.bat / exportar_excel.py)
+├── README.md
+└── .git/
 ```
+
+> **Despliegue:** GitHub Pages sirve la carpeta `docs/`. Editar siempre en `public/` y copiar a `docs/` antes de commitear.
 
 ## 🚀 Inicio Rápido
 

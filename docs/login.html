@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es" class="cf">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Iniciar sesión — CareFlow</title>
+    <link rel="icon" href="assets/logo_favicon.png" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/careflow.css">
+</head>
+<body class="cf">
+
+    <div class="cf-login">
+
+        <!-- Panel de marca -->
+        <aside class="cf-login-brand">
+            <canvas class="cf-particles" data-mode="network" data-density="1" aria-hidden="true"></canvas>
+            <div class="cf-login-brand-top">
+                <a class="cf-login-brand-logo" href="index.html">
+                    <img class="cf-logo-mark" src="assets/logo_nobg.png" alt="CareFlow">
+                    <span>CareFlow</span>
+                </a>
+            </div>
+            <div class="cf-login-brand-mid">
+                <p class="cf-login-phrase">Carefully built for<br><em>clinical care.</em></p>
+            </div>
+            <div class="cf-login-brand-bottom">
+                <ul class="cf-login-trust">
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        Acceso institucional seguro
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+                        Documentación revisada por el profesional
+                    </li>
+                    <li>
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+                        Notas clínicas trazables
+                    </li>
+                </ul>
+            </div>
+        </aside>
+
+        <!-- Formulario -->
+        <main class="cf-login-form-wrap">
+            <form class="cf-login-form" id="loginForm" novalidate>
+                <a class="cf-login-back" href="index.html">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                    Volver
+                </a>
+
+                <h1>Ingresar a CareFlow</h1>
+                <p class="cf-login-lead">Accede con tus credenciales institucionales.</p>
+
+                <div class="cf-login-error" id="loginError" role="alert">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+                    <span id="loginErrorText">Credenciales incorrectas. Verifica e intenta de nuevo.</span>
+                </div>
+
+                <div class="cf-field">
+                    <label for="loginUser">Correo institucional o usuario</label>
+                    <input class="cf-input" type="text" id="loginUser" autocomplete="username"
+                           placeholder="nombre@institucion.com" required>
+                </div>
+
+                <div class="cf-field">
+                    <label for="loginPass">Contraseña</label>
+                    <div class="cf-input-pw">
+                        <input class="cf-input" type="password" id="loginPass" autocomplete="current-password"
+                               placeholder="••••••••" required>
+                        <button type="button" class="cf-pw-toggle" id="pwToggle" aria-label="Mostrar contraseña">
+                            <svg id="pwIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="cf-btn cf-btn-primary cf-btn-block cf-btn-lg" style="margin-top:var(--cf-4);">
+                    Ingresar a CareFlow
+                </button>
+
+                <div class="cf-login-hint">
+                    Acceso de demostración — usuario: <code>demo@santafe.com</code> · contraseña: <code>careflow2026</code>
+                </div>
+            </form>
+        </main>
+
+    </div>
+
+    <script src="js/auth.js"></script>
+    <script src="js/particles.js"></script>
+    <script>
+    (function () {
+        if (window.CareFlowAuth && window.CareFlowAuth.isAuthed()) {
+            window.location.replace('dashboard.html');
+            return;
+        }
+
+        var form = document.getElementById('loginForm');
+        var err  = document.getElementById('loginError');
+        var errText = document.getElementById('loginErrorText');
+        var userEl = document.getElementById('loginUser');
+        var passEl = document.getElementById('loginPass');
+
+        var toggle = document.getElementById('pwToggle');
+        toggle.addEventListener('click', function () {
+            var show = passEl.type === 'password';
+            passEl.type = show ? 'text' : 'password';
+            toggle.setAttribute('aria-label', show ? 'Ocultar contraseña' : 'Mostrar contraseña');
+        });
+
+        function showError(msg) { errText.textContent = msg; err.classList.add('show'); }
+
+        form.addEventListener('submit', function (e) {
+            e.preventDefault();
+            err.classList.remove('show');
+
+            var u = userEl.value.trim();
+            var p = passEl.value.trim();
+
+            if (!u || !p) { showError('Por favor ingresa tu usuario y contraseña.'); return; }
+
+            if (window.CareFlowAuth.login(u, p)) {
+                window.location.href = 'dashboard.html';
+            } else {
+                showError('Credenciales incorrectas. Verifica e intenta de nuevo.');
+                passEl.focus();
+                passEl.select();
+            }
+        });
+    })();
+    </script>
+</body>
+</html>

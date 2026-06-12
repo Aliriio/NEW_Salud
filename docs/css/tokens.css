@@ -1,0 +1,107 @@
+/* ================================================================
+   CareFlow — TOKENS DE DISEÑO (sistema compartido)
+   Plataforma SaaS clínica · landing · login · dashboard · módulos
+   ================================================================ */
+
+:root {
+  /* ─── Paleta de marca (logo #003ec0 → #2499fd) ─── */
+  --cf-blue-900: #001d4a;
+  --cf-blue-800: #002a7a;
+  --cf-blue-700: #003ec0;   /* azul profundo de marca */
+  --cf-blue-600: #0a55d6;
+  --cf-blue-500: #1366e0;
+  --cf-blue-400: #2499fd;   /* celeste de marca */
+  --cf-blue-300: #6cbcff;
+  --cf-blue-200: #a9d2ff;
+  --cf-blue-100: #d6e9ff;
+  --cf-blue-50:  #eef5ff;
+
+  /* ─── Superficies y fondos — BLANCO PURO ─── */
+  --cf-bg:        #ffffff;  /* lienzo: blanco puro, alto contraste */
+  --cf-bg-soft:   #fafbfd;  /* casi-blanco, solo para hovers sutiles */
+  --cf-surface:   #ffffff;
+  --cf-surface-2: #f7f9fc;  /* gris-azul tenue para hovers/insets discretos */
+
+  /* ─── Acentos para partículas ─── */
+  --cf-accent-violet: #6b5bff;
+  --cf-accent-cyan:   #18c6e6;
+
+  /* ─── Texto ─── */
+  --cf-text:      #0a1424;  /* casi negro, máximo contraste sobre blanco */
+  --cf-text-2:    #3a516c;
+  --cf-muted:     #6a7e95;
+  --cf-on-dark:   #ffffff;
+
+  /* ─── Bordes (finos, casi imperceptibles sobre blanco) ─── */
+  --cf-border:       #eef1f6;
+  --cf-border-2:     #e2e7f0;
+  --cf-border-focus: #2499fd;
+
+  /* ─── Semántico ─── */
+  --cf-success:    #0a9e63;
+  --cf-success-bg: #e9fbf3;
+  --cf-warn:       #b6791f;
+  --cf-warn-bg:    #fff6e6;
+  --cf-danger:     #c0392b;
+
+  /* ─── Gradientes de marca ─── */
+  --cf-grad:        linear-gradient(135deg, #003ec0 0%, #2499fd 100%);
+  --cf-grad-soft:   linear-gradient(135deg, #0a55d6 0%, #4bb0ff 100%);
+  --cf-grad-deep:   linear-gradient(150deg, #001d4a 0%, #003ec0 55%, #1f7ff0 100%);
+  --cf-grad-text:   linear-gradient(120deg, #003ec0 0%, #2499fd 100%);
+
+  /* ─── Espaciado ─── */
+  --cf-1: 4px;   --cf-2: 8px;   --cf-3: 12px;  --cf-4: 16px;
+  --cf-5: 20px;  --cf-6: 24px;  --cf-8: 32px;  --cf-10: 40px;
+  --cf-12: 48px; --cf-16: 64px; --cf-20: 80px; --cf-24: 96px;
+
+  /* ─── Radios ─── */
+  --cf-r-sm:  10px;
+  --cf-r-md:  14px;
+  --cf-r-lg:  20px;
+  --cf-r-xl:  28px;
+  --cf-r-full: 9999px;
+
+  /* ─── Sombras premium (suaves, difusas, casi imperceptibles) ─── */
+  --cf-shadow-xs: 0 1px 2px rgba(16, 33, 64, .04);
+  --cf-shadow-sm: 0 2px 8px rgba(16, 33, 64, .05), 0 1px 2px rgba(16, 33, 64, .04);
+  --cf-shadow-md: 0 6px 22px rgba(16, 33, 64, .07), 0 2px 6px rgba(16, 33, 64, .04);
+  --cf-shadow-lg: 0 16px 44px rgba(16, 33, 64, .10), 0 4px 12px rgba(16, 33, 64, .05);
+  --cf-shadow-xl: 0 28px 70px rgba(12, 26, 56, .14), 0 8px 20px rgba(12, 26, 56, .06);
+  --cf-glow:      0 10px 34px rgba(36, 153, 253, .28);
+
+  /* ─── Easing y duración ─── */
+  --cf-ease:      cubic-bezier(.4, 0, .2, 1);
+  --cf-ease-out:  cubic-bezier(.22, .61, .36, 1);
+  --cf-spring:    cubic-bezier(.34, 1.56, .64, 1);
+  --cf-fast: 150ms;
+  --cf-mid:  280ms;
+  --cf-slow: 520ms;
+
+  /* ─── Tipografía (geométrica premium) ─── */
+  --cf-font: 'Plus Jakarta Sans', 'Inter', 'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', sans-serif;
+  --cf-tracking-tight:  -0.02em;
+  --cf-tracking-tighter: -0.035em;  /* titulares grandes, empaque premium */
+  --cf-tracking-wide:    0.04em;
+
+  /* ─── Layout ─── */
+  --cf-sidebar-w: 256px;
+  --cf-topbar-h:  68px;
+  --cf-maxw:      1200px;
+}
+
+/* ─── Reset base compartido (solo para páginas del shell CareFlow) ─── */
+.cf, .cf *, .cf *::before, .cf *::after {
+  box-sizing: border-box;
+}
+
+/* Scrollbar refinada para el shell */
+.cf ::-webkit-scrollbar { width: 9px; height: 9px; }
+.cf ::-webkit-scrollbar-track { background: transparent; }
+.cf ::-webkit-scrollbar-thumb {
+  background: var(--cf-border-2);
+  border-radius: var(--cf-r-full);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.cf ::-webkit-scrollbar-thumb:hover { background: var(--cf-blue-300); background-clip: padding-box; }
