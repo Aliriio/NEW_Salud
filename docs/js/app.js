@@ -87,7 +87,7 @@ function getSummaryForStep(n) {
             if (!selected.b6Puntuacion) return '';
             // Extraer solo la etiqueta descriptiva (ej: "Severamente comprometido")
             const raw = selected.b6Descripcion || '';
-            const label = raw.replace(/^\d+\s*[\.\-]\s*/, '');
+            const label = raw.replace(/^\d+\s*[.,\-=:]\s*/, '');
             return `Nivel ${selected.b6Puntuacion} — ${label}`;
         default: return '';
     }
@@ -757,8 +757,9 @@ function loadNocs(datos) {
 
 /* ─── Parsea nivel B6 ─── */
 function parseB6(nivel) {
-    const m = nivel.trim().match(/^(\d+)\s*[\.\-]\s*(.+)$/);
-    return m ? { puntuacion: m[1], descripcion: nivel.trim() } : { puntuacion: '', descripcion: nivel.trim() };
+    const t = nivel.trim();
+    const m = t.match(/^(\d+)/);   // nivel numérico, sea cual sea el separador (. , - = …)
+    return m ? { puntuacion: m[1], descripcion: t } : { puntuacion: '', descripcion: t };
 }
 
 /* ─── Carga evaluaciones B6 ─── */
@@ -774,6 +775,7 @@ function loadEvaluaciones(datos, nocNombre) {
 
     niveles.forEach((nivel, i) => {
         const { puntuacion, descripcion } = parseB6(nivel);
+        if (!puntuacion) return;                       // ignora entradas no numéricas (datos sueltos)
         const opt = createOption(`Nivel ${puntuacion}`, descripcion, { nivel: String(i) });
         els.evaluaciones.appendChild(opt);
     });
