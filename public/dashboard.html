@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="es" class="cf">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CareFlow — Inicio</title>
+    <link rel="icon" href="assets/logo_favicon.png" type="image/png">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="css/tokens.css">
+    <link rel="stylesheet" href="css/careflow.css">
+    <script src="js/auth.js"></script>
+    <script>if (window.CareFlowAuth) window.CareFlowAuth.guard();</script>
+</head>
+<body class="cf">
+
+    <div class="cf-shell" id="shell">
+
+        <!-- ===== SIDEBAR ===== -->
+        <aside class="cf-sidebar">
+            <a class="cf-sidebar-brand" href="dashboard.html">
+                <img class="cf-logo-mark" src="assets/logo_nobg.png" alt="CareFlow">
+                <span>CareFlow</span>
+            </a>
+
+            <nav aria-label="Navegación interna">
+                <ul class="cf-nav-list">
+                    <li><button class="cf-nav-item active" data-view="inicio" data-title="Inicio">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10l9-7 9 7v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+                        Inicio
+                    </button></li>
+                    <li><button class="cf-nav-item" data-view="config" data-title="Configuración">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                        Configuración
+                    </button></li>
+                </ul>
+            </nav>
+
+            <div class="cf-sidebar-version">CareFlow · v1.0</div>
+        </aside>
+
+        <!-- ===== MAIN ===== -->
+        <div class="cf-main">
+            <header class="cf-topbar">
+                <div class="cf-topbar-left">
+                    <button class="cf-hamburger" aria-label="Mostrar u ocultar menú">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+                    </button>
+                    <span class="cf-topbar-title" data-cf-topbar-title>Inicio</span>
+                </div>
+                <div class="cf-topbar-right">
+                    <div class="cf-cobrand" data-cf-cobrand hidden title="Institución">
+                        <img data-cf-cobrand-logo alt="Institución">
+                    </div>
+                    <div class="cf-usermenu-wrap">
+                        <button class="cf-avatar-btn" data-cf-avatar aria-haspopup="true" aria-expanded="false">
+                            <div class="cf-avatar" data-cf-initials>CF</div>
+                            <svg class="cf-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+                        </button>
+                        <div class="cf-usermenu" data-cf-menu hidden>
+                            <div class="cf-usermenu-head">
+                                <div class="cf-avatar" data-cf-initials>CF</div>
+                                <div class="cf-user-meta">
+                                    <strong data-cf-user>demo@santafe.com</strong>
+                                    <small data-cf-inst>Institución</small>
+                                </div>
+                            </div>
+                            <button class="cf-usermenu-item danger" data-cf-logout>
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></svg>
+                                Cerrar sesión
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </header>
+
+            <div class="cf-content">
+                <div class="cf-content-narrow">
+
+                    <!-- ===== VISTA: INICIO ===== -->
+                    <section class="cf-view active" id="view-inicio">
+                        <div class="cf-welcome">
+                            <h1>Hola de nuevo <span class="cf-wave">👋</span></h1>
+                            <p>Selecciona el tipo de nota clínica que deseas crear.</p>
+                        </div>
+
+                        <div class="cf-section-label">Módulos de nota</div>
+                        <div class="cf-dash-modules">
+                            <article class="cf-dash-module is-available">
+                                <div class="cf-module-top">
+                                    <div class="cf-module-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 13h6M9 17h4"/></svg></div>
+                                    <span class="cf-badge cf-badge-available"><span class="cf-badge-dot"></span>Disponible</span>
+                                </div>
+                                <h3>Entrega</h3>
+                                <p>Genera una nota de entrega de turno estructurada y lista para revisar.</p>
+                                <a class="cf-btn cf-btn-primary" href="entrega.html">
+                                    Crear nota
+                                    <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                                </a>
+                            </article>
+
+                            <article class="cf-dash-module is-soon">
+                                <div class="cf-module-top">
+                                    <div class="cf-module-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+                                    <span class="cf-badge cf-badge-soon">Próximamente</span>
+                                </div>
+                                <h3>Recibo de turno</h3>
+                                <p>Registro de recepción del turno con el estado del paciente al inicio del cuidado.</p>
+                                <button class="cf-btn cf-btn-ghost" disabled>No disponible aún</button>
+                            </article>
+
+                            <article class="cf-dash-module is-soon">
+                                <div class="cf-module-top">
+                                    <div class="cf-module-mark"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11H5a2 2 0 0 0-2 2v7h6zM15 7h-2a2 2 0 0 0-2 2v11h6V9a2 2 0 0 0-2-2zM21 4h-2a2 2 0 0 0-2 2v14h6V6a2 2 0 0 0-2-2z"/></svg></div>
+                                    <span class="cf-badge cf-badge-soon">Próximamente</span>
+                                </div>
+                                <h3>Valoración</h3>
+                                <p>Valoración de enfermería integral por dominios para una documentación más completa.</p>
+                                <button class="cf-btn cf-btn-ghost" disabled>No disponible aún</button>
+                            </article>
+                        </div>
+
+                        <div class="cf-section-label" style="margin-top:var(--cf-10);">Cómo funciona</div>
+                        <div class="cf-howit">
+                            <div class="cf-howit-step">
+                                <span class="cf-howit-num">01</span>
+                                <div><strong>Selecciona el módulo</strong><p>Elige el tipo de nota clínica que necesitas documentar.</p></div>
+                            </div>
+                            <div class="cf-howit-step">
+                                <span class="cf-howit-num">02</span>
+                                <div><strong>Completa los campos guiados</strong><p>CareFlow estructura la información a medida que avanzas.</p></div>
+                            </div>
+                            <div class="cf-howit-step">
+                                <span class="cf-howit-num">03</span>
+                                <div><strong>Revisa, aprueba y copia</strong><p>Validas la nota generada y la copias lista para usar.</p></div>
+                            </div>
+                        </div>
+                    </section>
+
+                    <!-- ===== VISTA: CONFIGURACIÓN ===== -->
+                    <section class="cf-view" id="view-config">
+                        <div class="cf-welcome">
+                            <h1>Configuración</h1>
+                            <p>Tu cuenta y preferencias de la plataforma.</p>
+                        </div>
+
+                        <div class="cf-settings-card">
+                            <div class="cf-settings-head">
+                                <div class="cf-avatar cf-avatar-lg" data-cf-initials>CF</div>
+                                <div class="cf-user-meta">
+                                    <strong data-cf-user>demo@santafe.com</strong>
+                                    <small data-cf-inst>Institución</small>
+                                </div>
+                            </div>
+                            <div class="cf-settings-rows">
+                                <div class="cf-settings-row">
+                                    <span class="cf-settings-k">Correo</span>
+                                    <span class="cf-settings-v" data-cf-user>demo@santafe.com</span>
+                                </div>
+                                <div class="cf-settings-row">
+                                    <span class="cf-settings-k">Institución</span>
+                                    <span class="cf-settings-v" data-cf-inst>Institución</span>
+                                </div>
+                                <div class="cf-settings-row">
+                                    <span class="cf-settings-k">Idioma</span>
+                                    <span class="cf-settings-v">Español</span>
+                                </div>
+                                <div class="cf-settings-row">
+                                    <span class="cf-settings-k">Tema</span>
+                                    <span class="cf-settings-v">Claro</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="cf-settings-soon">
+                            <span class="cf-badge cf-badge-soon">Próximamente</span>
+                            <p>Más preferencias de cuenta, plantillas y gestión de equipo estarán disponibles pronto.</p>
+                        </div>
+                    </section>
+
+                </div>
+            </div>
+        </div>
+
+        <div class="cf-scrim" aria-hidden="true"></div>
+    </div>
+
+    <script src="js/shell.js"></script>
+</body>
+</html>
