@@ -52,6 +52,7 @@ const els = {
     copyBtn:        document.getElementById('copyBtn'),
     nicConfirmBtn:  document.getElementById('nicConfirmBtn'),
     nicConfirmHint: document.getElementById('nicConfirmHint'),
+    searchAreas:    document.getElementById('searchAreas'),
     searchDiag:     document.getElementById('searchDiag'),
     searchNic:      document.getElementById('searchNic'),
     servicio:       document.getElementById('servicio'),
@@ -140,7 +141,7 @@ function updateProgress() {
 }
 
 /* ─── Activa un paso y marca como completados los anteriores con selección válida ─── */
-function activateStep(n) {
+function activateStep(n, opts = {}) {
     for (let i = 1; i <= TOTAL_STEPS; i++) {
         const stepEl = document.getElementById(`step${i}`);
         if (!stepEl) continue;
@@ -169,7 +170,8 @@ function activateStep(n) {
         }
     }
 
-    document.getElementById(`step${n}`)?.classList.add('active');
+    const stepEl = document.getElementById(`step${n}`);
+    stepEl?.classList.add('active');
     currentStep = n;
     updateProgress();
     updateStepSummaries();
@@ -178,6 +180,11 @@ function activateStep(n) {
     if (n === 4) updateNicConfirmBtn();
 
     syncNotePanelHeight();
+
+    if (opts.focus) {
+        scrollSoft(stepEl, 'nearest');   // acompaña visualmente al usuario
+        focusStepEntry(n);
+    }
 }
 
 /* ─── Fecha de nacimiento: helpers ─── */
@@ -282,6 +289,79 @@ function onDobChange() {
 
     updateNote();
     syncNotePanelHeight();
+}
+
+/* ─── Grupo segmentado genérico (radiogroup) ───
+   Respalda el valor en un input hidden; clic/flechas seleccionan (con wrap-around);
+   Espacio selecciona en sitio; Enter selecciona y avanza al siguiente campo
+   (onConfirm). Usado por Sexo y Meta. */
+function setupSegmentedGroup(group, hidden, { onChange, onConfirm } = {}) {
+    if (!group || !hidden) return;
+    const btns = [...group.querySelectorAll('[role="radio"]')];
+
+    const select = (btn) => {
+        if (!btn) return;
+        btns.forEach((b) => {
+            const on = b === btn;
+            b.setAttribute('aria-checked', on ? 'true' : 'false');
+            b.tabIndex = on ? 0 : -1;
+        });
+        hidden.value = btn.dataset.value;
+        if (onChange) onChange();
+    };
+
+    group.addEventListener('click', (e) => {
+        const btn = e.target.closest('[role="radio"]');
+        if (btn) { select(btn); btn.focus(); }
+    });
+
+    group.addEventListener('keydown', (e) => {
+        const idx = btns.indexOf(document.activeElement);
+        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+            e.preventDefault();
+            const next = btns[(Math.max(idx, 0) + 1) % btns.length];
+            select(next); next.focus();
+        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+            e.preventDefault();
+            const prev = btns[(Math.max(idx, 0) - 1 + btns.length) % btns.length];
+            select(prev); prev.focus();
+        } else if (e.key === ' ') {
+            e.preventDefault();
+            const cur = btns[idx] || btns[0];
+            select(cur); cur.focus();
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            const cur = btns[idx] || btns[0];
+            select(cur);
+            if (onConfirm) onConfirm(); else cur.focus();
+        }
+    });
+}
+
+/* Sexo: respalda el valor en #sexo (hidden) conservando el centinela '___'.
+   Enter avanza al campo de día de nacimiento. */
+function setupSexoControl() {
+    setupSegmentedGroup(document.getElementById('sexoSeg'), els.sexo, {
+        onChange: updateNote,
+        onConfirm: () => { els.dobDia?.focus(); els.dobDia?.select?.(); },
+    });
+}
+
+/* Meta: respalda el valor en #metaLograda (hidden), '' = sin elegir.
+   Enter avanza al campo de observaciones. */
+function setupMetaControl() {
+    setupSegmentedGroup(document.getElementById('metaSeg'), els.metaLograda, {
+        onChange: updateNote,
+        onConfirm: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); },
+    });
+}
+
+/* Enfoca el chip tabulable del estado de meta (encadena el cierre tras elegir B6) */
+function focusMeta() {
+    const group = document.getElementById('metaSeg');
+    if (!group || els.metaBlock?.hidden) return;
+    const target = group.querySelector('[role="radio"][tabindex="0"]') || group.querySelector('[role="radio"]');
+    target?.focus();
 }
 
 /* Configura navegación por teclado, auto-avance y formato de los campos DOB */
@@ -396,6 +476,7 @@ function showMetaBlock(visible) {
     if (!els.metaBlock) return;
     els.metaBlock.hidden = !visible;
     syncNotePanelHeight();
+    if (visible) scrollSoft(els.metaBlock, 'nearest');
 }
 
 /* ─── Colapsa el paso 5 sin avanzar a un paso inexistente ─── */
@@ -424,7 +505,7 @@ function enableStepNavigation() {
 
         const handleNav = () => {
             if (!stepEl.classList.contains('completed')) return;
-            activateStep(n);
+            activateStep(n, { focus: true });
         };
 
         header.addEventListener('click', handleNav);
@@ -598,17 +679,245 @@ function createOption(title, desc, dataset = {}) {
     return div;
 }
 
-/* ─── Filtra opciones por búsqueda ─── */
-function filterOptions(container, query) {
-    const q = query.toLowerCase().trim();
-    container.querySelectorAll('.option').forEach((opt) => {
-        // Las tarjetas de "agregar" y las personalizadas siempre visibles
-        if (opt.classList.contains('option--add') || opt.classList.contains('option--custom')) {
-            opt.style.display = '';
-            return;
-        }
-        opt.style.display = !q || opt.textContent.toLowerCase().includes(q) ? '' : 'none';
+/* ─── Normaliza texto para comparar sin acentos ni mayúsculas ─── */
+function normalizeText(s) {
+    return String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
+}
+
+/* ─── ¿El usuario prefiere movimiento reducido? ─── */
+const prefersReducedMotion = () =>
+    window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+/* ─── Desplaza un elemento a la vista de forma suave y mínima (sin saltos bruscos) ─── */
+function scrollSoft(el, block = 'nearest') {
+    if (!el) return;
+    try {
+        el.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block, inline: 'nearest' });
+    } catch (_) {
+        el.scrollIntoView(false);
+    }
+}
+
+/* ─── Opciones actualmente visibles de un contenedor (omite las filtradas) ─── */
+function visibleOptions(container) {
+    return [...container.querySelectorAll('.option')].filter((o) => o.style.display !== 'none');
+}
+
+/* ─── Mueve el foco a una opción aplicando roving tabindex (modelo NOC/B6) ─── */
+function focusOption(opt, container) {
+    if (!opt) return;
+    container.querySelectorAll('.option').forEach((o) => o.setAttribute('tabindex', '-1'));
+    opt.setAttribute('tabindex', '0');
+    opt.focus();
+    scrollSoft(opt, 'nearest');
+}
+
+/* ─── Marca roles ARIA, ids e índice de orden tras cada render ───
+   No toca el roving tabindex (eso lo hace primeRoving, solo en listas roving). */
+function markOptions(container) {
+    container.setAttribute('role', 'listbox');
+    const opts = [...container.querySelectorAll('.option')];
+    opts.forEach((o, i) => {
+        o.setAttribute('role', 'option');
+        if (!o.id) o.id = `${container.id}-opt-${i}`;
+        if (!o.hasAttribute('tabindex')) o.setAttribute('tabindex', '-1');
+        // Orden clínico original (data order), asignado solo la 1ª vez tras el render
+        if (o.dataset.ord === undefined) o.dataset.ord = String(i);
+        const sel = o.classList.contains('selected') || o.classList.contains('multi-selected');
+        o.setAttribute('aria-selected', sel ? 'true' : 'false');
     });
+}
+
+/* ─── Roving tabindex: exactamente una opción tabulable (solo listas NOC/B6) ─── */
+function primeRoving(container) {
+    const opts = [...container.querySelectorAll('.option')];
+    const visible = opts.filter((o) => o.style.display !== 'none');
+    if (!visible.length) return;
+    opts.forEach((o) => o.setAttribute('tabindex', '-1'));
+    const sel = visible.find((o) => o.classList.contains('selected') || o.classList.contains('multi-selected'));
+    (sel || visible[0]).setAttribute('tabindex', '0');
+}
+
+/* ─── Nº de columnas de la rejilla, según la posición visual real ─── */
+function gridColumns(items) {
+    if (items.length < 2) return 1;
+    const top0 = items[0].getBoundingClientRect().top;
+    let c = 1;
+    for (let i = 1; i < items.length; i++) {
+        if (Math.abs(items[i].getBoundingClientRect().top - top0) < 2) c++;
+        else break;
+    }
+    return c;
+}
+
+/* ─── MODO NAVEGACIÓN: teclado sobre las opciones (foco en la opción, roving) ───
+   Flechas grid-aware (↑/↓ por fila, ←/→ por columna); Enter selecciona/alterna;
+   Shift+Enter avanza (multi). Escribir una letra → vuelve al buscador y filtra
+   (opts.searchInput); si no hay buscador, type-ahead. ↑ en la 1ª fila → buscador. */
+function enableOptionKeyboard(container, opts = {}) {
+    if (!container || container.dataset.kbReady) return;
+    container.dataset.kbReady = '1';
+    let typeBuf = '';
+    let typeTimer = null;
+
+    const toSearch = (ch) => {
+        const s = opts.searchInput;
+        if (!s) return false;
+        if (ch != null) s.value += ch;
+        s.focus();
+        const len = s.value.length;
+        s.setSelectionRange?.(len, len);
+        if (ch != null) s.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+    };
+
+    container.addEventListener('keydown', (e) => {
+        // No interceptar mientras se escribe en un editor inline (opción personalizada)
+        if (e.target.closest('.custom-form')) return;
+        const items = visibleOptions(container);
+        if (!items.length) return;
+        const current = document.activeElement?.closest?.('.option');
+        const idx = current ? items.indexOf(current) : -1;
+        const cols = gridColumns(items);
+
+        switch (e.key) {
+            case 'ArrowRight':
+                e.preventDefault();
+                focusOption(items[idx < 0 ? 0 : Math.min(idx + 1, items.length - 1)], container);
+                break;
+            case 'ArrowLeft':
+                e.preventDefault();
+                focusOption(items[idx <= 0 ? 0 : idx - 1], container);
+                break;
+            case 'ArrowDown':
+                e.preventDefault();
+                focusOption(items[idx < 0 ? 0 : Math.min(idx + cols, items.length - 1)], container);
+                break;
+            case 'ArrowUp':
+                e.preventDefault();
+                if (idx >= 0 && idx < cols && opts.searchInput) {
+                    toSearch(null);                 // 1ª fila → volver al buscador
+                } else {
+                    focusOption(items[Math.max(idx - cols, 0)], container);
+                }
+                break;
+            case 'Home':
+                e.preventDefault();
+                focusOption(items[0], container);
+                break;
+            case 'End':
+                e.preventDefault();
+                focusOption(items[items.length - 1], container);
+                break;
+            case ' ':
+                if (current && !current.querySelector('.custom-form')) {
+                    e.preventDefault();
+                    current.click();
+                }
+                break;
+            case 'Enter':
+                if (e.shiftKey) {                   // Shift+Enter: confirmar y avanzar (multi)
+                    if (opts.multi && opts.onAdvance) { e.preventDefault(); opts.onAdvance(); }
+                    break;
+                }
+                if (current && !current.querySelector('.custom-form')) {
+                    e.preventDefault();
+                    current.click();                // single: selecciona+avanza · multi: alterna
+                }
+                break;
+            default:
+                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    if (opts.searchInput) {         // escribir → modo búsqueda
+                        e.preventDefault();
+                        toSearch(e.key);
+                    } else {                        // sin buscador: type-ahead
+                        typeBuf += normalizeText(e.key);
+                        clearTimeout(typeTimer);
+                        typeTimer = setTimeout(() => { typeBuf = ''; }, 600);
+                        const match = items.find((o) =>
+                            normalizeText(o.querySelector('h4')?.textContent || o.textContent).startsWith(typeBuf));
+                        if (match) { e.preventDefault(); focusOption(match, container); }
+                    }
+                }
+        }
+    });
+}
+
+/* ─── Lista con foco-en-opción (roving): NOC y B6. Llamar tras cada render. ─── */
+function setupOptionList(container, opts) {
+    if (!container) return;
+    markOptions(container);
+    primeRoving(container);
+    enableOptionKeyboard(container, opts);
+}
+
+/* ─── MODO BÚSQUEDA → NAVEGACIÓN: conecta un buscador con su lista ───
+   Escribir filtra; Enter o ↓ pasan el foco a la 1ª opción visible (modo navegación). */
+function wireSearch(input, container) {
+    if (!input || !container) return;
+    input.addEventListener('input', () => filterOptions(container, input.value));
+    input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === 'ArrowDown') {
+            const items = visibleOptions(container);
+            const first = items.find((o) => !o.classList.contains('option--add')) || items[0];
+            if (first) { e.preventDefault(); focusOption(first, container); }
+        }
+    });
+}
+
+/* ─── Enfoca el punto de entrada natural de un paso (buscador o 1ª opción) ───
+   Síncrono: se invoca tras activar el paso, cuando su contenido ya es visible.
+   Pasos con buscador (1,2,4) → su input; pasos sin buscador (3,5) → 1ª opción. */
+function focusStepEntry(n) {
+    const searchBox = { 1: els.searchAreas, 2: els.searchDiag, 4: els.searchNic }[n];
+    if (searchBox) { searchBox.focus(); return; }
+    if (n === 5) {
+        const picker = document.getElementById('b6ScalePicker');
+        const sel = document.getElementById('b6ScaleSelect');
+        if (picker && !picker.hidden && sel) { sel.focus(); return; }
+    }
+    const container = { 3: els.nocs, 5: els.evaluaciones }[n];
+    if (!container) return;
+    const first = visibleOptions(container)[0];
+    if (first) focusOption(first, container);
+}
+
+/* ─── Puntúa la relevancia de una opción frente al texto buscado ─── */
+function scoreOption(opt, q) {
+    const title = normalizeText(opt.querySelector('h4')?.textContent || '');
+    if (title.startsWith(q)) return 3;                                  // prefijo del título
+    if (title.split(/\s+/).some((w) => w.startsWith(q))) return 2;      // prefijo de palabra
+    if (title.includes(q)) return 1;                                    // substring en título
+    return 0;                                                           // solo en la descripción
+}
+
+/* ─── Filtra y ordena opciones por búsqueda (acento-insensible + ranking) ───
+   Reordena el DOM solo durante búsqueda activa; al limpiar, restaura el orden
+   clínico original (data-ord). Las tarjetas "+ agregar"/personalizadas van al final. */
+function filterOptions(container, query) {
+    const q = normalizeText(query.trim());
+    const all = [...container.querySelectorAll('.option')];
+    const isSpecial = (o) => o.classList.contains('option--add') || o.classList.contains('option--custom');
+    const special = all.filter(isSpecial);
+    const regular = all.filter((o) => !isSpecial(o));
+    const ord = (o) => Number(o.dataset.ord || 0);
+
+    // Visibilidad
+    regular.forEach((o) => { o.style.display = !q || normalizeText(o.textContent).includes(q) ? '' : 'none'; });
+    special.forEach((o) => { o.style.display = ''; });
+
+    // Orden: por relevancia durante búsqueda; por orden clínico original al limpiar
+    if (q) {
+        regular.sort((a, b) => scoreOption(b, q) - scoreOption(a, q) || ord(a) - ord(b));
+    } else {
+        regular.sort((a, b) => ord(a) - ord(b));
+    }
+    regular.forEach((o) => container.appendChild(o));   // appendChild mueve el nodo existente
+    special.sort((a, b) => ord(a) - ord(b)).forEach((o) => container.appendChild(o));
+
+    // Re-preparar roles y roving tabindex sobre las opciones que quedaron visibles
+    markOptions(container);
+    primeRoving(container);
 }
 
 /* ─── Renderiza intervenciones transversales ─── */
@@ -629,6 +938,7 @@ function loadAreas() {
         const opt = createOption(area, `${count} diagnóstico(s) de enfermería`, { area });
         els.areas.appendChild(opt);
     });
+    setupOptionList(els.areas, { searchInput: els.searchAreas });
 
     els.areas.onclick = (e) => {
         if (!isPatientDataComplete()) return;
@@ -651,7 +961,7 @@ function loadAreas() {
 
         els.searchDiag.value = '';
         loadDiagnosticos(selected.area);
-        activateStep(2);
+        activateStep(2, { focus: true });
         renderTransversales(null);
         updateNote();
     };
@@ -667,6 +977,7 @@ function loadDiagnosticos(area) {
         const opt = createOption(nombre, `NOC: ${nocPreview}${(datos.noc || []).length > 2 ? '…' : ''}`, { diagnostico: nombre });
         els.diagnosticos.appendChild(opt);
     });
+    setupOptionList(els.diagnosticos, { searchInput: els.searchDiag });
 
     els.diagnosticos.onclick = (e) => {
         const option = e.target.closest('.option');
@@ -689,7 +1000,7 @@ function loadDiagnosticos(area) {
         els.searchNic.value = '';
         renderTransversales(selected.datosDiag);
         loadNocs(selected.datosDiag);
-        activateStep(3);
+        activateStep(3, { focus: true });
         updateNote();
     };
 }
@@ -699,6 +1010,15 @@ function escapeHtml(s) {
     return String(s).replace(/[&<>"']/g, (c) => (
         { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
     ));
+}
+
+/* ─── Formatea texto libre (observaciones): escapa HTML, preserva saltos
+   de línea como <br> y convierte viñetas "- " / "* " en "• " ─── */
+function formatFreeText(text) {
+    return text
+        .split('\n')
+        .map((line) => escapeHtml(line).replace(/^(\s*)[-*]\s+/, '$1• '))
+        .join('<br>');
 }
 
 /* ─── Editor inline reutilizable para registrar una opción personalizada ─── */
@@ -737,7 +1057,8 @@ function buildCustomForm({ placeholder, value = '', onCommit, onCancel }) {
     });
     // Los clics dentro del editor no deben propagarse al onclick del contenedor
     form.addEventListener('click', (e) => e.stopPropagation());
-    requestAnimationFrame(() => input.focus());
+    // Enfocar tras la inserción (setTimeout sí dispara en pestañas en segundo plano)
+    setTimeout(() => input.focus(), 0);
     return form;
 }
 
@@ -777,7 +1098,7 @@ function proceedAfterNoc(datos) {
     showMetaBlock(false);
     els.searchNic.value = '';
     loadIntervenciones(datos);
-    activateStep(4);
+    activateStep(4, { focus: true });
     updateNote();
 }
 
@@ -822,8 +1143,9 @@ function openNicCustomForm(datos) {
             }
             loadIntervenciones(datos);   // re-render: muestra la nueva tarjeta + "agregar"
             updateNote();
+            els.searchNic?.focus();      // devolver el foco al combobox para seguir
         },
-        onCancel: () => loadIntervenciones(datos),
+        onCancel: () => { loadIntervenciones(datos); els.searchNic?.focus(); },
     });
     add.replaceWith(form);
 }
@@ -853,6 +1175,13 @@ function loadIntervenciones(datos) {
 
     // Tarjeta para agregar una intervención personalizada
     els.intervenciones.appendChild(buildAddCard('Otra intervención (personalizada)'));
+    // Modo navegación (multi): Enter alterna la NIC enfocada; Shift+Enter o el botón
+    // Continuar avanzan (sin avances accidentales). El buscador entrega aquí con Enter/↓.
+    setupOptionList(els.intervenciones, {
+        searchInput: els.searchNic,
+        multi: true,
+        onAdvance: () => { if (!els.nicConfirmBtn?.disabled) els.nicConfirmBtn.click(); },
+    });
 
     updateNicConfirmBtn();
 
@@ -872,9 +1201,11 @@ function loadIntervenciones(datos) {
         const nicText = nics[Number(option.dataset.nic)];
         if (option.classList.contains('multi-selected')) {
             option.classList.remove('multi-selected');
+            option.setAttribute('aria-selected', 'false');
             selected.nics = selected.nics.filter((n) => n !== nicText);
         } else {
             option.classList.add('multi-selected');
+            option.setAttribute('aria-selected', 'true');
             selected.nics.push(nicText);
         }
         clearB6IfNoNics();
@@ -936,6 +1267,7 @@ function loadNocs(datos) {
             ? buildCustomNocCard()
             : buildAddCard('Otro resultado (personalizado)')
     );
+    setupOptionList(els.nocs);
 
     els.nocs.onclick = (e) => {
         if (e.target.closest('.custom-form')) return;           // clics dentro del editor
@@ -972,6 +1304,7 @@ function renderB6Levels(escala) {
         }
         els.evaluaciones.appendChild(opt);
     });
+    setupOptionList(els.evaluaciones);
 
     els.evaluaciones.onclick = (e) => {
         const option = e.target.closest('.option');
@@ -987,6 +1320,7 @@ function renderB6Levels(escala) {
         collapseStep5();
         showMetaBlock(true);
         updateNote();
+        focusMeta();
     };
 }
 
@@ -1236,7 +1570,7 @@ function updateNote() {
     // Observaciones adicionales (campo opcional)
     const comentarios = els.otrosComentarios?.value.trim();
     if (comentarios) {
-        note += `<br><br><strong>Observaciones:</strong><br>${comentarios}`;
+        note += `<br><br><strong>Observaciones:</strong><br>${formatFreeText(comentarios)}`;
     }
 
     els.noteContent.innerHTML = note;
@@ -1320,9 +1654,14 @@ function resetWorkflow() {
         }
     }
 
+    if (els.searchAreas) els.searchAreas.value = '';
     els.searchDiag.value = '';
     els.searchNic.value  = '';
     if (els.metaLograda) els.metaLograda.value = '';
+    document.querySelectorAll('#metaSeg [role="radio"]').forEach((b, i) => {
+        b.setAttribute('aria-checked', 'false');
+        b.tabIndex = i === 0 ? 0 : -1;
+    });
     if (els.otrosComentarios) els.otrosComentarios.value = '';
     if (els.dobDia)  els.dobDia.value  = '';
     if (els.dobMes)  els.dobMes.value  = '';
@@ -1371,30 +1710,44 @@ function init() {
     updateStep1Lock();
     enableStepNavigation();
 
-    // Búsqueda
-    els.searchDiag?.addEventListener('input', () => filterOptions(els.diagnosticos, els.searchDiag.value));
-    els.searchNic?.addEventListener('input',  () => filterOptions(els.intervenciones, els.searchNic.value));
+    // Buscadores: escribir filtra; Enter o ↓ pasan a modo navegación (1ª opción)
+    wireSearch(els.searchAreas, els.areas);
+    wireSearch(els.searchDiag,  els.diagnosticos);
+    wireSearch(els.searchNic,   els.intervenciones);
 
     // Campos del paciente
-    [els.servicio, els.sexo].forEach((el) => {
-        el?.addEventListener('input',  () => updateNote());
-        el?.addEventListener('change', () => updateNote());
+    els.servicio?.addEventListener('input',  () => updateNote());
+    els.servicio?.addEventListener('change', () => updateNote());
+    // Servicio: Enter avanza a Condiciones clínicas si los datos están completos
+    els.servicio?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && isPatientDataComplete()) {
+            e.preventDefault();
+            if (currentStep <= 1) activateStep(1, { focus: true });
+            else focusStepEntry(1);
+        }
     });
+    // Sexo: control segmentado (teclado + clic), Enter avanza a Día
+    setupSexoControl();
     // Fecha de nacimiento (navegación, auto-avance y validación)
     setupDobNavigation();
 
-    // Estado de meta
-    els.metaLograda?.addEventListener('change', updateNote);
-    els.metaLograda?.addEventListener('input',  updateNote);
+    // Estado de meta (chips), Enter avanza a Observaciones
+    setupMetaControl();
 
-    // Observaciones opcionales
+    // Observaciones: escribir actualiza la nota; Ctrl/⌘+Enter avanza a "Copiar nota"
     els.otrosComentarios?.addEventListener('input', updateNote);
+    els.otrosComentarios?.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+            e.preventDefault();
+            if (!els.copyBtn?.disabled) { els.copyBtn.focus(); scrollSoft(els.copyBtn); }
+        }
+    });
 
     // Botón confirmar NICs
     els.nicConfirmBtn?.addEventListener('click', () => {
         if (selected.nics.length === 0) return;
         loadEvaluaciones(selected.datosDiag, selected.nocNombre);
-        activateStep(5);
+        activateStep(5, { focus: true });
     });
 
     // Toggle nota
@@ -1404,8 +1757,20 @@ function init() {
     document.getElementById('copyBtn')?.addEventListener('click', copyNote);
     document.getElementById('resetBtn')?.addEventListener('click', resetWorkflow);
 
+    // Atajo "/": enfoca el buscador del paso activo (sin interrumpir escritura)
+    document.addEventListener('keydown', (e) => {
+        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
+        const tag = document.activeElement?.tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        const box = { 1: els.searchAreas, 2: els.searchDiag, 4: els.searchNic }[currentStep];
+        if (box) { e.preventDefault(); box.focus(); box.select?.(); }
+    });
+
     // Recalcular techo del panel al redimensionar la ventana
     window.addEventListener('resize', syncNotePanelHeight);
+
+    // Listo para empezar: enfocar el primer chip de Sexo
+    document.getElementById('sexoSeg')?.querySelector('[role="radio"]')?.focus();
 }
 
 init();

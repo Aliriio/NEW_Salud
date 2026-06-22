@@ -120,12 +120,12 @@
                                 <div class="patient-block-body">
                                     <div class="patient-field-row">
                                         <div class="field-group">
-                                            <label for="sexo">Sexo <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <select id="sexo" aria-label="Sexo del paciente">
-                                                <option value="___">Seleccionar…</option>
-                                                <option value="Femenino">Femenino</option>
-                                                <option value="Masculino">Masculino</option>
-                                            </select>
+                                            <label id="sexoLabel">Sexo <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <div class="seg-control" role="radiogroup" aria-labelledby="sexoLabel" id="sexoSeg">
+                                                <button type="button" class="seg-btn" role="radio" aria-checked="false" data-value="Femenino" tabindex="0">Femenino</button>
+                                                <button type="button" class="seg-btn" role="radio" aria-checked="false" data-value="Masculino" tabindex="-1">Masculino</button>
+                                            </div>
+                                            <input type="hidden" id="sexo" value="___">
                                         </div>
                                         <div class="field-group field-group--dob">
                                             <label>Fecha de nacimiento <span class="required-star" aria-label="obligatorio">*</span></label>
@@ -162,14 +162,15 @@
                                 <span class="progress-label" id="progressLabel" aria-live="polite">Paso 1 de 5</span>
                             </div>
 
-                            <article class="step active" id="step1" data-step="1">
-                                <div class="step-header" role="button" tabindex="0" aria-expanded="true" aria-label="Paso 1: Condiciones clínicas">
+                            <article class="step step--locked" id="step1" data-step="1">
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 1: Condiciones clínicas">
                                     <span class="step-badge">1</span>
                                     <h3>Condiciones clínicas</h3>
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
                                 <div class="step-content">
-                                    <p class="hint">Seleccione el área o servicio clínico del paciente.</p>
+                                    <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter para elegir.</p>
+                                    <input type="search" class="search-box" id="searchAreas" placeholder="Buscar condición clínica…" aria-label="Buscar condición clínica">
                                     <div class="options" id="areas"></div>
                                 </div>
                             </article>
@@ -181,6 +182,7 @@
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
                                 <div class="step-content">
+                                    <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter para elegir.</p>
                                     <input type="search" class="search-box" id="searchDiag" placeholder="Buscar diagnóstico…" aria-label="Buscar diagnóstico">
                                     <div class="options" id="diagnosticos"></div>
                                 </div>
@@ -205,7 +207,7 @@
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
                                 <div class="step-content">
-                                    <p class="hint">Seleccione una o varias intervenciones y confirme cuando termine.</p>
+                                    <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter marca/desmarca · Shift+Enter (o Continuar) para seguir.</p>
                                     <input type="search" class="search-box" id="searchNic" placeholder="Buscar intervención…" aria-label="Buscar intervención">
                                     <div class="options" id="intervenciones"></div>
                                     <div class="nic-confirm-bar">
@@ -236,14 +238,14 @@
                             </article>
 
                             <div class="meta-block" id="metaBlock" hidden>
-                                <label for="metaLograda">Estado de la meta al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
-                                <select id="metaLograda" aria-label="Estado de la meta al cierre del turno">
-                                    <option value="" disabled selected>Seleccione el estado…</option>
-                                    <option value="en progreso">En progreso</option>
-                                    <option value="lograda">Lograda</option>
-                                    <option value="no lograda">No lograda</option>
-                                    <option value="parcialmente lograda">Parcialmente lograda</option>
-                                </select>
+                                <label id="metaLabel">Estado de la meta al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                                <div class="meta-chip-group" role="radiogroup" aria-labelledby="metaLabel" id="metaSeg">
+                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="en progreso" tabindex="0">En progreso</button>
+                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="lograda" tabindex="-1">Lograda</button>
+                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="no lograda" tabindex="-1">No lograda</button>
+                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="parcialmente lograda" tabindex="-1">Parcialmente lograda</button>
+                                </div>
+                                <input type="hidden" id="metaLograda" value="">
                             </div>
 
                             <div class="obs-block">

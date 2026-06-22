@@ -315,6 +315,64 @@ body {
   box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
 }
 
+/* === CONTROL SEGMENTADO (Sexo) === */
+/* Sustituye al <select> por dos botones tipo toggle; 1 sola acción y operable
+   con teclado (flechas + Enter/Espacio). Respalda el valor en #sexo (hidden). */
+.seg-control {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--white);
+  transition: border-color var(--fast) var(--ease),
+              box-shadow   var(--fast) var(--ease);
+}
+
+.seg-control:focus-within {
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .14);
+}
+
+.seg-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 6px var(--sp-2);
+  border-radius: calc(var(--r-sm) - 4px);
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+  transition: background var(--fast) var(--ease),
+              color      var(--fast) var(--ease);
+}
+
+.seg-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-1);
+}
+
+.seg-btn[aria-checked="true"] {
+  background: var(--blue);
+  color: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+
+.seg-btn[aria-checked="true"]:hover {
+  background: var(--blue);
+  color: var(--white);
+}
+
+.seg-btn:focus-visible {
+  box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--border-focus);
+}
+
 /* === CAMPO FECHA DE NACIMIENTO === */
 /* Fila de tres inputs independientes con separadores */
 .dob-inputs {
@@ -448,6 +506,52 @@ body {
 .meta-block select:focus {
   border-color: var(--success);
   box-shadow: 0 0 0 3px rgba(8, 116, 67, .14);
+}
+
+/* Chips de estado de meta (radiogroup, tema success) */
+.meta-chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.meta-chip {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 1.5px solid rgba(8, 116, 67, .35);
+  background: var(--white);
+  color: var(--text-secondary);
+  padding: 7px var(--sp-4);
+  border-radius: var(--r-full);
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+  transition: background var(--fast) var(--ease),
+              color      var(--fast) var(--ease),
+              border-color var(--fast) var(--ease);
+}
+
+.meta-chip:hover {
+  border-color: var(--success);
+  background: var(--success-bg);
+}
+
+.meta-chip[aria-checked="true"] {
+  background: var(--success);
+  border-color: var(--success);
+  color: var(--white);
+}
+
+.meta-chip[aria-checked="true"]:hover {
+  background: var(--success);
+  color: var(--white);
+}
+
+.meta-chip:focus-visible {
+  box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--success);
 }
 
 /* === PROGRESS TRACK Y LABEL === */
@@ -684,6 +788,15 @@ body {
 .option:active {
   transform: translateY(0);
 }
+
+/* Anillo de foco premium — solo en navegación por teclado */
+.option:focus { outline: none; }
+.option:focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+  box-shadow: 0 0 0 3px rgba(26, 111, 224, .18);
+}
+
 
 .option.selected {
   border-color: var(--blue);
