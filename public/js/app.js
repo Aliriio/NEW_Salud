@@ -2,6 +2,7 @@ const datosProPai = window.datosProPai;
 
 const TOTAL_STEPS = 5;
 let currentStep = 1;
+let maxReachedStep = 1;  // paso más profundo alcanzado: permite "recuperar" el avance con ↓
 let noteVisible = false;  // La nota empieza oculta
 
 const selected = {
@@ -173,6 +174,7 @@ function activateStep(n, opts = {}) {
     const stepEl = document.getElementById(`step${n}`);
     stepEl?.classList.add('active');
     currentStep = n;
+    if (n > maxReachedStep) maxReachedStep = n;
     updateProgress();
     updateStepSummaries();
 
@@ -291,11 +293,11 @@ function onDobChange() {
     syncNotePanelHeight();
 }
 
-/* ─── Grupo segmentado genérico (radiogroup) ───
-   Respalda el valor en un input hidden; clic/flechas seleccionan (con wrap-around);
-   Espacio selecciona en sitio; Enter selecciona y avanza al siguiente campo
-   (onConfirm). Usado por Sexo y Meta. */
-function setupSegmentedGroup(group, hidden, { onChange, onConfirm } = {}) {
+/* ─── Grupo segmentado genérico (radiogroup, fila horizontal) ───
+   ←/→ navegan entre opciones (con wrap-around) y Espacio selecciona en sitio.
+   Como es una sola fila, ↑/↓ salen a la sección anterior/siguiente (onUp/onDown).
+   Enter selecciona y avanza (onConfirm). Shift+flechas → atajos globales. */
+function setupSegmentedGroup(group, hidden, { onChange, onConfirm, onUp, onDown } = {}) {
     if (!group || !hidden) return;
     const btns = [...group.querySelectorAll('[role="radio"]')];
 
@@ -316,15 +318,20 @@ function setupSegmentedGroup(group, hidden, { onChange, onConfirm } = {}) {
     });
 
     group.addEventListener('keydown', (e) => {
+        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return; // atajos globales
         const idx = btns.indexOf(document.activeElement);
-        if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+        if (e.key === 'ArrowRight') {
             e.preventDefault();
             const next = btns[(Math.max(idx, 0) + 1) % btns.length];
             select(next); next.focus();
-        } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+        } else if (e.key === 'ArrowLeft') {
             e.preventDefault();
             const prev = btns[(Math.max(idx, 0) - 1 + btns.length) % btns.length];
             select(prev); prev.focus();
+        } else if (e.key === 'ArrowUp') {
+            if (onUp) { e.preventDefault(); onUp(); }
+        } else if (e.key === 'ArrowDown') {
+            if (onDown) { e.preventDefault(); onDown(); }
         } else if (e.key === ' ') {
             e.preventDefault();
             const cur = btns[idx] || btns[0];
@@ -339,20 +346,25 @@ function setupSegmentedGroup(group, hidden, { onChange, onConfirm } = {}) {
 }
 
 /* Sexo: respalda el valor en #sexo (hidden) conservando el centinela '___'.
-   Enter avanza al campo de día de nacimiento. */
+   Enter/↓ avanzan al campo de día de nacimiento (siguiente dentro de datos). */
 function setupSexoControl() {
+    const toDia = () => { els.dobDia?.focus(); els.dobDia?.select?.(); };
     setupSegmentedGroup(document.getElementById('sexoSeg'), els.sexo, {
         onChange: updateNote,
-        onConfirm: () => { els.dobDia?.focus(); els.dobDia?.select?.(); },
+        onConfirm: toDia,
+        onDown: toDia,
     });
 }
 
 /* Meta: respalda el valor en #metaLograda (hidden), '' = sin elegir.
-   Enter avanza al campo de observaciones. */
+   Enter/↓ avanzan a observaciones; ↑ vuelve a la evaluación B6 (sección anterior). */
 function setupMetaControl() {
+    const toObs = () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); };
     setupSegmentedGroup(document.getElementById('metaSeg'), els.metaLograda, {
         onChange: updateNote,
-        onConfirm: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); },
+        onConfirm: toObs,
+        onDown: toObs,
+        onUp: () => focusAdjacentSection('meta', -1),
     });
 }
 
@@ -361,6 +373,13 @@ function focusMeta() {
     const group = document.getElementById('metaSeg');
     if (!group || els.metaBlock?.hidden) return;
     const target = group.querySelector('[role="radio"][tabindex="0"]') || group.querySelector('[role="radio"]');
+    target?.focus();
+}
+
+/* Enfoca el chip tabulable de Sexo (vuelta atrás desde el campo de día) */
+function focusSexo() {
+    const group = document.getElementById('sexoSeg');
+    const target = group?.querySelector('[role="radio"][tabindex="0"]') || group?.querySelector('[role="radio"]');
     target?.focus();
 }
 
@@ -430,6 +449,7 @@ function setupDobNavigation() {
             } else if (e.key === 'ArrowLeft' && atStart) {
                 e.preventDefault();
                 if (prev) { prev.focus(); prev.setSelectionRange(prev.value.length, prev.value.length); }
+                else focusSexo();   // Día es el primer campo: volver a Sexo para corregirlo
             }
         });
     });
@@ -774,11 +794,15 @@ function enableOptionKeyboard(container, opts = {}) {
     container.addEventListener('keydown', (e) => {
         // No interceptar mientras se escribe en un editor inline (opción personalizada)
         if (e.target.closest('.custom-form')) return;
+        // Shift/Ctrl + flechas son atajos globales de salto entre secciones
+        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
         const items = visibleOptions(container);
         if (!items.length) return;
         const current = document.activeElement?.closest?.('.option');
         const idx = current ? items.indexOf(current) : -1;
         const cols = gridColumns(items);
+        const atTopRow = idx >= 0 && idx < cols;
+        const atBottomRow = idx >= 0 && idx + cols >= items.length;
 
         switch (e.key) {
             case 'ArrowRight':
@@ -791,12 +815,18 @@ function enableOptionKeyboard(container, opts = {}) {
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                focusOption(items[idx < 0 ? 0 : Math.min(idx + cols, items.length - 1)], container);
+                if (atBottomRow) {
+                    focusAdjacentSection(opts.stepNum, +1);   // borde inferior → sección inmediata siguiente
+                } else {
+                    focusOption(items[idx < 0 ? 0 : Math.min(idx + cols, items.length - 1)], container);
+                }
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                if (idx >= 0 && idx < cols && opts.searchInput) {
-                    toSearch(null);                 // 1ª fila → volver al buscador
+                if (atTopRow && opts.searchInput) {
+                    toSearch(null);                           // tope de la sección → su buscador
+                } else if (atTopRow) {
+                    focusAdjacentSection(opts.stepNum, -1);   // tope sin buscador → sección anterior
                 } else {
                     focusOption(items[Math.max(idx - cols, 0)], container);
                 }
@@ -852,15 +882,20 @@ function setupOptionList(container, opts) {
 }
 
 /* ─── MODO BÚSQUEDA → NAVEGACIÓN: conecta un buscador con su lista ───
-   Escribir filtra; Enter o ↓ pasan el foco a la 1ª opción visible (modo navegación). */
-function wireSearch(input, container) {
+   El buscador es el "tope" de la sección: Enter o ↓ entran a la 1ª opción (dentro
+   de la sección); ↑ sale a la sección anterior. Shift+flechas se manejan global. */
+function wireSearch(input, container, stepNum) {
     if (!input || !container) return;
     input.addEventListener('input', () => filterOptions(container, input.value));
     input.addEventListener('keydown', (e) => {
+        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return; // atajos globales
         if (e.key === 'Enter' || e.key === 'ArrowDown') {
             const items = visibleOptions(container);
             const first = items.find((o) => !o.classList.contains('option--add')) || items[0];
             if (first) { e.preventDefault(); focusOption(first, container); }
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            focusAdjacentSection(stepNum, -1);   // ↑ en el tope → sección anterior
         }
     });
 }
@@ -880,6 +915,89 @@ function focusStepEntry(n) {
     if (!container) return;
     const first = visibleOptions(container)[0];
     if (first) focusOption(first, container);
+}
+
+const STEP_CONTAINERS = { 1: 'areas', 2: 'diagnosticos', 3: 'nocs', 4: 'intervenciones', 5: 'evaluaciones' };
+
+/* ─── Enfoca la opción tabulable de un contenedor (la previamente elegida, gracias
+   al roving tabindex), para corregir una selección de un vistazo. ─── */
+function focusContainerTabbable(container) {
+    if (!container) return;
+    const target = container.querySelector('.option.selected, .option.multi-selected')
+        || container.querySelector('.option[tabindex="0"]')
+        || visibleOptions(container)[0];
+    if (target) focusOption(target, container);
+}
+
+/* ─── Activa un paso y aterriza en él: en la opción ya elegida (revisar/corregir)
+   o, si aún no hay selección, en su punto de entrada (buscador o 1ª opción). ─── */
+function goToStepSection(n) {
+    activateStep(n);
+    scrollSoft(document.getElementById(`step${n}`), 'nearest');
+    if (stepHasSelection(n)) focusContainerTabbable(els[STEP_CONTAINERS[n]]);
+    else focusStepEntry(n);
+}
+
+/* ─── Registro ordenado de secciones del flujo, con disponibilidad y enfoque ───
+   `has()` indica si la sección es alcanzable ahora; `focus(dir)` la enfoca según
+   la dirección de llegada (dir<0 = se llega subiendo → aterriza al final/elegido). */
+function sectionList() {
+    return [
+        { id: 'patient', has: () => true, focus: (dir) => {
+            const t = dir < 0 ? els.servicio : document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
+            t?.focus(); t?.select?.(); scrollSoft(t);
+        } },
+        { id: 1, has: () => !document.getElementById('step1')?.classList.contains('step--locked'), focus: () => goToStepSection(1) },
+        { id: 2, has: () => maxReachedStep >= 2, focus: () => goToStepSection(2) },
+        { id: 3, has: () => maxReachedStep >= 3, focus: () => goToStepSection(3) },
+        { id: 4, has: () => maxReachedStep >= 4, focus: () => goToStepSection(4) },
+        { id: 5, has: () => maxReachedStep >= 5, focus: () => goToStepSection(5) },
+        { id: 'meta', has: () => !els.metaBlock?.hidden, focus: () => { scrollSoft(els.metaBlock); focusMeta(); } },
+        { id: 'obs',  has: () => !els.metaBlock?.hidden, focus: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); } },
+        { id: 'copy', has: () => !els.copyBtn?.disabled, focus: () => { els.copyBtn?.focus(); scrollSoft(els.copyBtn); } },
+    ];
+}
+
+/* ─── Identifica en qué sección está el foco actualmente ─── */
+function currentSectionId() {
+    const a = document.activeElement;
+    if (!a) return null;
+    if (a.closest('#sexoSeg') || a === els.dobDia || a === els.dobMes || a === els.dobAnio || a === els.servicio) return 'patient';
+    if (a === els.searchAreas || a.closest?.('#areas')) return 1;
+    if (a === els.searchDiag  || a.closest?.('#diagnosticos')) return 2;
+    if (a.closest?.('#nocs')) return 3;
+    if (a === els.searchNic   || a.closest?.('#intervenciones')) return 4;
+    if (a.closest?.('#evaluaciones') || a.closest?.('#b6ScalePicker')) return 5;
+    if (a.closest?.('#metaSeg')) return 'meta';
+    if (a === els.otrosComentarios) return 'obs';
+    if (a === els.copyBtn) return 'copy';
+    return null;
+}
+
+/* ─── Mueve el foco a la sección adyacente disponible (delta: +1 sig., -1 ant.) ─── */
+function focusAdjacentSection(fromId, delta) {
+    const list = sectionList().filter((s) => s.has());
+    const idx = list.findIndex((s) => s.id === fromId);
+    if (idx < 0) return false;
+    const target = list[idx + delta];
+    if (!target) return false;
+    target.focus(delta);
+    return true;
+}
+
+/* ─── Salta entre secciones (Shift+↑/↓), desde donde sea que esté el foco ─── */
+function jumpSection(delta) {
+    const id = currentSectionId();
+    if (id != null) focusAdjacentSection(id, delta);
+}
+
+/* ─── Atajo: vuelve rápidamente a la sección más avanzada alcanzada ─── */
+function resumeForward() {
+    const list = sectionList().filter((s) => s.has());
+    if (!list.length) return;
+    const curIdx = list.findIndex((s) => s.id === currentSectionId());
+    const lastIdx = list.length - 1;
+    if (lastIdx > curIdx) list[lastIdx].focus(1);
 }
 
 /* ─── Puntúa la relevancia de una opción frente al texto buscado ─── */
@@ -938,7 +1056,7 @@ function loadAreas() {
         const opt = createOption(area, `${count} diagnóstico(s) de enfermería`, { area });
         els.areas.appendChild(opt);
     });
-    setupOptionList(els.areas, { searchInput: els.searchAreas });
+    setupOptionList(els.areas, { searchInput: els.searchAreas, stepNum: 1 });
 
     els.areas.onclick = (e) => {
         if (!isPatientDataComplete()) return;
@@ -957,6 +1075,7 @@ function loadAreas() {
         selected.b6Puntuacion = null; selected.b6Descripcion = null;
 
         [2, 3, 4, 5].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
+        maxReachedStep = 1;   // el avance posterior ya no es válido: se eligió otra área
         showMetaBlock(false);
 
         els.searchDiag.value = '';
@@ -977,7 +1096,7 @@ function loadDiagnosticos(area) {
         const opt = createOption(nombre, `NOC: ${nocPreview}${(datos.noc || []).length > 2 ? '…' : ''}`, { diagnostico: nombre });
         els.diagnosticos.appendChild(opt);
     });
-    setupOptionList(els.diagnosticos, { searchInput: els.searchDiag });
+    setupOptionList(els.diagnosticos, { searchInput: els.searchDiag, stepNum: 2 });
 
     els.diagnosticos.onclick = (e) => {
         const option = e.target.closest('.option');
@@ -995,6 +1114,7 @@ function loadDiagnosticos(area) {
         selected.b6Puntuacion = null; selected.b6Descripcion = null;
 
         [3, 4, 5].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
+        maxReachedStep = 2;   // el avance posterior ya no es válido: se eligió otro diagnóstico
         showMetaBlock(false);
 
         els.searchNic.value = '';
@@ -1095,6 +1215,7 @@ function proceedAfterNoc(datos) {
     selected.b6Puntuacion = null;
     selected.b6Descripcion = null;
     [4, 5].forEach((n) => document.getElementById(`step${n}`)?.classList.remove('completed'));
+    maxReachedStep = 3;   // el avance posterior ya no es válido: se eligió otro NOC
     showMetaBlock(false);
     els.searchNic.value = '';
     loadIntervenciones(datos);
@@ -1109,6 +1230,7 @@ function clearB6IfNoNics() {
         els.evaluaciones.innerHTML = '';
         showMetaBlock(false);
         document.getElementById('step5')?.classList.remove('completed', 'active');
+        if (maxReachedStep > 4) maxReachedStep = 4;
     }
 }
 
@@ -1180,6 +1302,7 @@ function loadIntervenciones(datos) {
     setupOptionList(els.intervenciones, {
         searchInput: els.searchNic,
         multi: true,
+        stepNum: 4,
         onAdvance: () => { if (!els.nicConfirmBtn?.disabled) els.nicConfirmBtn.click(); },
     });
 
@@ -1267,7 +1390,7 @@ function loadNocs(datos) {
             ? buildCustomNocCard()
             : buildAddCard('Otro resultado (personalizado)')
     );
-    setupOptionList(els.nocs);
+    setupOptionList(els.nocs, { stepNum: 3 });
 
     els.nocs.onclick = (e) => {
         if (e.target.closest('.custom-form')) return;           // clics dentro del editor
@@ -1304,7 +1427,7 @@ function renderB6Levels(escala) {
         }
         els.evaluaciones.appendChild(opt);
     });
-    setupOptionList(els.evaluaciones);
+    setupOptionList(els.evaluaciones, { stepNum: 5 });
 
     els.evaluaciones.onclick = (e) => {
         const option = e.target.closest('.option');
@@ -1628,6 +1751,7 @@ function resetWorkflow() {
     if (!window.confirm('¿Reiniciar el proceso? Se perderán todos los datos del turno actual.')) return;
 
     currentStep = 1;
+    maxReachedStep = 1;
     noteVisible = false;
 
     Object.assign(selected, {
@@ -1710,17 +1834,19 @@ function init() {
     updateStep1Lock();
     enableStepNavigation();
 
-    // Buscadores: escribir filtra; Enter o ↓ pasan a modo navegación (1ª opción)
-    wireSearch(els.searchAreas, els.areas);
-    wireSearch(els.searchDiag,  els.diagnosticos);
-    wireSearch(els.searchNic,   els.intervenciones);
+    // Buscadores: escribir filtra; Enter o ↓ entran a la lista; ↑ sale a la sección
+    // anterior. Shift+flechas (saltos) se manejan en el handler global.
+    wireSearch(els.searchAreas, els.areas, 1);
+    wireSearch(els.searchDiag,  els.diagnosticos, 2);
+    wireSearch(els.searchNic,   els.intervenciones, 4);
 
     // Campos del paciente
     els.servicio?.addEventListener('input',  () => updateNote());
     els.servicio?.addEventListener('change', () => updateNote());
-    // Servicio: Enter avanza a Condiciones clínicas si los datos están completos
+    // Servicio: Enter o ↓ avanzan a Condiciones clínicas si los datos están completos
     els.servicio?.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter' && isPatientDataComplete()) {
+        if (e.shiftKey || e.ctrlKey || e.metaKey) return;   // Shift+↓ lo maneja el atajo global
+        if ((e.key === 'Enter' || e.key === 'ArrowDown') && isPatientDataComplete()) {
             e.preventDefault();
             if (currentStep <= 1) activateStep(1, { focus: true });
             else focusStepEntry(1);
@@ -1734,12 +1860,21 @@ function init() {
     // Estado de meta (chips), Enter avanza a Observaciones
     setupMetaControl();
 
-    // Observaciones: escribir actualiza la nota; Ctrl/⌘+Enter avanza a "Copiar nota"
+    // Observaciones: escribir actualiza la nota; Ctrl/⌘+Enter avanza a "Copiar nota";
+    // ↑ en la 1ª línea vuelve a Estado de la meta (corregirla sin usar el mouse)
     els.otrosComentarios?.addEventListener('input', updateNote);
     els.otrosComentarios?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
             if (!els.copyBtn?.disabled) { els.copyBtn.focus(); scrollSoft(els.copyBtn); }
+        } else if (e.key === 'ArrowUp' && !e.shiftKey) {
+            const ta = els.otrosComentarios;
+            const beforeCursor = ta.value.slice(0, ta.selectionStart);
+            if (!beforeCursor.includes('\n')) {
+                e.preventDefault();
+                scrollSoft(els.metaBlock);
+                focusMeta();
+            }
         }
     });
 
@@ -1764,6 +1899,17 @@ function init() {
         if (tag === 'INPUT' || tag === 'TEXTAREA') return;
         const box = { 1: els.searchAreas, 2: els.searchDiag, 4: els.searchNic }[currentStep];
         if (box) { e.preventDefault(); box.focus(); box.select?.(); }
+    });
+
+    // Atajos de salto entre secciones (no interrumpen la selección multilínea):
+    //   Shift+↑/↓        → sección anterior / siguiente, desde donde sea el foco
+    //   Ctrl/⌘+Shift+↓   → volver de un salto a la sección más avanzada alcanzada
+    document.addEventListener('keydown', (e) => {
+        if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !e.shiftKey) return;
+        if (document.activeElement?.tagName === 'TEXTAREA') return;
+        e.preventDefault();
+        if (e.key === 'ArrowDown' && (e.ctrlKey || e.metaKey)) resumeForward();
+        else if (!e.ctrlKey && !e.metaKey) jumpSection(e.key === 'ArrowDown' ? +1 : -1);
     });
 
     // Recalcular techo del panel al redimensionar la ventana
