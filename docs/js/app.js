@@ -118,6 +118,11 @@ const activePos = (n) => activeSteps().findIndex((s) => s.num === n) + 1;  // 1-
 const totalActive = () => activeSteps().length;
 const nextActiveNum = (n) => { const a = activeSteps(); const i = a.findIndex((s) => s.num === n); return i >= 0 && i < a.length - 1 ? a[i + 1].num : null; };
 
+function isEditableElement(el) {
+    const tag = el?.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
+}
+
 /* ─── ¿El paso tiene selección válida? ─── */
 function stepHasSelection(n) {
     switch (n) {
@@ -179,6 +184,7 @@ function updateProgress() {
     let pct = total ? ((pos - 1) / total) * 100 : 0;
     if (selected.b6Puntuacion) pct = 100;
     els.progressFill.style.width = `${pct}%`;
+    els.progressFill.parentElement?.setAttribute('aria-valuenow', String(Math.round(pct)));
 
     if (els.progressLabel) {
         if (inReverse() && !selected.diagnostico) {
@@ -609,7 +615,7 @@ function enableStepNavigation() {
 
         const handleNav = () => {
             if (!stepEl.classList.contains('completed')) return;
-            activateStep(s.num, { focus: true });
+            goToStepSection(s.num, -1);
         };
 
         header.addEventListener('click', handleNav);
@@ -956,6 +962,41 @@ function focusClosestRightOptionByVertical(source, targetContainer) {
     return true;
 }
 
+function confirmButtonForStep(stepNum) {
+    return ({ 3: els.rcConfirmBtn, 4: els.epConfirmBtn, 6: els.nicConfirmBtn })[stepNum] || null;
+}
+
+function focusConfirmButtonForStep(stepNum) {
+    const btn = confirmButtonForStep(stepNum);
+    if (!btn || btn.disabled) return false;
+    btn.focus();
+    scrollSoft(btn, 'nearest');
+    return true;
+}
+
+function focusLastOptionForStep(stepNum) {
+    const container = stepByNum(stepNum)?.container?.();
+    const items = visibleOptions(container);
+    if (!items.length) return false;
+    const target = container.querySelector('.option.selected, .option.multi-selected') || items[items.length - 1];
+    focusOption(target, container);
+    return true;
+}
+
+function setupConfirmButtonNavigation() {
+    [
+        [els.rcConfirmBtn, 3],
+        [els.epConfirmBtn, 4],
+        [els.nicConfirmBtn, 6],
+    ].forEach(([btn, stepNum]) => {
+        btn?.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+            e.preventDefault();
+            focusLastOptionForStep(stepNum);
+        });
+    });
+}
+
 function selectedOptionIn(container) {
     return container?.querySelector('.option.selected, .option.multi-selected') || null;
 }
@@ -1003,6 +1044,7 @@ function enableOptionKeyboard(container, opts = {}) {
     container.addEventListener('keydown', (e) => {
         // No interceptar mientras se escribe en un editor inline (opción personalizada)
         if (e.target.closest('.custom-form')) return;
+        if (isEditableElement(e.target) || (e.target.tagName === 'BUTTON' && !e.target.classList.contains('option'))) return;
         // Shift/Ctrl + flechas son atajos globales de salto entre secciones
         if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
         const items = visibleOptions(container);
@@ -1040,6 +1082,8 @@ function enableOptionKeyboard(container, opts = {}) {
                 }
                 if (atBottomRow && opts.lockVerticalEdges) {
                     focusOption(current || items[items.length - 1], container);
+                } else if (atBottomRow && opts.onBottomEdge && opts.onBottomEdge(current, items)) {
+                    break;
                 } else if (atBottomRow) {
                     focusAdjacentSection(opts.stepNum, +1);   // borde inferior → sección inmediata siguiente
                 } else {
@@ -1080,7 +1124,13 @@ function enableOptionKeyboard(container, opts = {}) {
                 break;
             case 'Enter':
                 if (e.shiftKey) {                   // Shift+Enter: confirmar y avanzar (multi)
-                    if (opts.multi && opts.onAdvance) { e.preventDefault(); opts.onAdvance(); }
+                    if (opts.multi && opts.onAdvance) {
+                        e.preventDefault();
+                        opts.onAdvance();
+                    } else if (current && !current.querySelector('.custom-form')) {
+                        e.preventDefault();
+                        current.click();            // single: selecciona+avanza igual que Enter
+                    }
                     break;
                 }
                 if (current && !current.querySelector('.custom-form')) {
@@ -1123,6 +1173,12 @@ function wireSearch(input, container, stepNum) {
     input.addEventListener('keydown', (e) => {
         if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return; // atajos globales
         if (e.key === 'Enter') {
+            const confirmBtn = confirmButtonForStep(stepNum);
+            if (e.shiftKey && confirmBtn && !confirmBtn.disabled) {
+                e.preventDefault();
+                confirmBtn.click();
+                return;
+            }
             const selectable = visibleSelectableOptions(container);
             if (selectable.length === 1) {
                 e.preventDefault();
@@ -1183,8 +1239,8 @@ function searchForFocusedSection(target = document.activeElement) {
 function sendCharToSectionSearch(ch, box) {
     if (!box || ch.length !== 1) return false;
     box.focus();
-    const start = box.selectionStart ?? box.value.length;
-    const end = box.selectionEnd ?? box.value.length;
+    const start = box.value.length;
+    const end = box.value.length;
     box.value = box.value.slice(0, start) + ch + box.value.slice(end);
     const caret = start + ch.length;
     box.setSelectionRange?.(caret, caret);
@@ -1195,8 +1251,8 @@ function sendCharToSectionSearch(ch, box) {
 function sendDeleteToSectionSearch(key, box) {
     if (!box || (key !== 'Backspace' && key !== 'Delete')) return false;
     box.focus();
-    const start = box.selectionStart ?? box.value.length;
-    const end = box.selectionEnd ?? box.value.length;
+    const start = box.value.length;
+    const end = box.value.length;
     if (start !== end) {
         box.value = box.value.slice(0, start) + box.value.slice(end);
         box.setSelectionRange?.(start, start);
@@ -1275,6 +1331,7 @@ function sectionList() {
         ...steps,
         { id: 'meta', has: () => !els.metaBlock?.hidden, focus: () => { scrollSoft(els.metaBlock); focusMeta(); } },
         { id: 'obs',  has: () => !els.metaBlock?.hidden, focus: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); } },
+        { id: 'note', has: () => !!els.noteToggleBtn && !els.noteToggleBtn.hidden, focus: () => { els.noteToggleBtn?.focus(); scrollSoft(els.noteToggleBtn); } },
         { id: 'copy', has: () => !els.copyBtn?.disabled, focus: () => { els.copyBtn?.focus(); scrollSoft(els.copyBtn); } },
     ];
 }
@@ -1286,10 +1343,12 @@ function currentSectionId() {
     const a = document.activeElement;
     if (!a) return null;
     if (a.closest('#sexoSeg') || a === els.dobDia || a === els.dobMes || a === els.dobAnio || a === els.servicio) return 'patient';
+    if (a.closest?.('#dxLive')) return 1;
     const stepEl = a.closest?.('.step');
     if (stepEl && stepEl.dataset.step) return Number(stepEl.dataset.step);
     if (a.closest?.('#metaSeg')) return 'meta';
     if (a === els.otrosComentarios) return 'obs';
+    if (a === els.noteToggleBtn) return 'note';
     if (a === els.copyBtn) return 'copy';
     return null;
 }
@@ -1318,6 +1377,62 @@ function resumeForward() {
     const curIdx = list.findIndex((s) => s.id === currentSectionId());
     const lastIdx = list.length - 1;
     if (lastIdx > curIdx) list[lastIdx].focus(1);
+}
+
+function advanceCurrentSectionByShortcut() {
+    const id = currentSectionId();
+    if (id == null) return false;
+
+    if (id === 'patient') {
+        if (!isPatientDataComplete()) return false;
+        activateStep(1, { focus: true });
+        return true;
+    }
+    if (typeof id === 'number') {
+        const confirmBtn = confirmButtonForStep(id);
+        if (confirmBtn) {
+            if (confirmBtn.disabled) return false;
+            confirmBtn.click();
+            return true;
+        }
+        if (id === 1 && inReverse() && !selected.diagnostico) {
+            if (!reverse.findingKeys.length) return false;
+            confirmFindings();
+            return true;
+        }
+        if (stepHasSelection(id)) return focusAdjacentSection(id, +1);
+        return false;
+    }
+    if (id === 'meta') {
+        els.otrosComentarios?.focus();
+        scrollSoft(els.otrosComentarios);
+        return true;
+    }
+    if (id === 'obs') {
+        if (els.noteToggleBtn && !els.noteToggleBtn.hidden) {
+            els.noteToggleBtn.focus();
+            scrollSoft(els.noteToggleBtn);
+            return true;
+        }
+        if (!els.copyBtn?.disabled) {
+            els.copyBtn.focus();
+            scrollSoft(els.copyBtn);
+            return true;
+        }
+        return false;
+    }
+    if (id === 'note') {
+        if (els.copyBtn?.disabled) return false;
+        els.copyBtn.focus();
+        scrollSoft(els.copyBtn);
+        return true;
+    }
+    if (id === 'copy') {
+        if (els.copyBtn?.disabled) return false;
+        els.copyBtn.click();
+        return true;
+    }
+    return false;
 }
 
 /* ─── Puntúa la relevancia de una opción frente al texto buscado ─── */
@@ -1461,7 +1576,13 @@ function loadMultiPicker({ container, items, selArr, searchInput, stepNum, onAdv
         if (selArr.includes(txt)) opt.classList.add('multi-selected');
         container.appendChild(opt);
     });
-    setupOptionList(container, { searchInput, multi: true, stepNum, onAdvance });
+    setupOptionList(container, {
+        searchInput,
+        multi: true,
+        stepNum,
+        onAdvance,
+        onBottomEdge: () => focusConfirmButtonForStep(stepNum),
+    });
     updateBtn();
 
     container.onclick = (e) => {
@@ -1704,6 +1825,7 @@ function loadIntervenciones(datos) {
         multi: true,
         stepNum: 6,
         onAdvance: () => { if (!els.nicConfirmBtn?.disabled) els.nicConfirmBtn.click(); },
+        onBottomEdge: () => focusConfirmButtonForStep(6),
     });
 
     updateNicConfirmBtn();
@@ -1957,17 +2079,47 @@ function renderCustomScaleEditor() {
     wrap.appendChild(feedback);
 
     addBtn.addEventListener('click', () => {
-        list.appendChild(buildScaleRow(list.children.length, ''));
+        const row = buildScaleRow(list.children.length, '');
+        list.appendChild(row);
         renumberScaleRows(list);
         syncNotePanelHeight();
+        row.querySelector('.b6-cs-input')?.focus();
     });
     list.addEventListener('click', (e) => {
         const rm = e.target.closest('.b6-cs-remove');
         if (!rm) return;
         if (list.children.length <= 2) { feedback.textContent = 'La escala debe tener al menos 2 niveles.'; return; }
-        rm.closest('.b6-cs-row')?.remove();
+        const row = rm.closest('.b6-cs-row');
+        const rows = [...list.querySelectorAll('.b6-cs-row')];
+        const idx = rows.indexOf(row);
+        row?.remove();
         renumberScaleRows(list);
+        const nextRow = list.querySelectorAll('.b6-cs-row')[Math.min(idx, list.children.length - 1)];
+        nextRow?.querySelector('.b6-cs-input')?.focus();
         syncNotePanelHeight();
+    });
+    list.addEventListener('keydown', (e) => {
+        if (!e.target.classList.contains('b6-cs-input')) return;
+        if ((e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || e.shiftKey || e.ctrlKey || e.metaKey) return;
+        const inputs = [...list.querySelectorAll('.b6-cs-input')];
+        const idx = inputs.indexOf(e.target);
+        if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            if (idx > 0) inputs[idx - 1].focus();
+            else document.getElementById('b6ScaleSelect')?.focus();
+            return;
+        }
+        e.preventDefault();
+        if (idx < inputs.length - 1) inputs[idx + 1].focus();
+        else useBtn.focus();
+    });
+    [addBtn, useBtn].forEach((btn) => {
+        btn.addEventListener('keydown', (e) => {
+            if (e.key !== 'ArrowUp' || e.shiftKey || e.ctrlKey || e.metaKey) return;
+            e.preventDefault();
+            const inputs = list.querySelectorAll('.b6-cs-input');
+            inputs[inputs.length - 1]?.focus();
+        });
     });
     useBtn.addEventListener('click', () => {
         const niv = [...list.querySelectorAll('.b6-cs-input')].map((i) => i.value.trim()).filter(Boolean);
@@ -1978,6 +2130,8 @@ function renderCustomScaleEditor() {
         selected.b6Puntuacion = null;
         selected.b6Descripcion = null;
         renderB6Levels(selected.b6Escala);
+        const firstLevel = visibleOptions(els.evaluaciones)[0];
+        if (firstLevel) focusOption(firstLevel, els.evaluaciones);
         updateNote();
         syncNotePanelHeight();
     });
@@ -2723,6 +2877,11 @@ function setupRouteSwitch() {
     els.searchFindings?.addEventListener('keydown', (e) => {
         if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;  // atajos globales
         if (e.key === 'Enter') {
+            if (e.shiftKey && reverse.findingKeys.length) {
+                e.preventDefault();
+                confirmFindings();
+                return;
+            }
             const selectable = visibleSelectableOptions(els.findingsList);
             if (selectable.length === 1) {
                 e.preventDefault();
@@ -2769,6 +2928,7 @@ function init() {
     updateStep1Lock();
     enableStepNavigation();
     setupRouteSwitch();   // control de ruta (paso 1) + filtro y buscador de hallazgos
+    setupConfirmButtonNavigation();
     setMode('forward');   // estado inicial coherente de los cuerpos de ruta
 
     // Buscadores: escribir filtra; Enter o ↓ entran a la lista; ↑ sale a la sección
@@ -2835,6 +2995,16 @@ function init() {
     document.getElementById('copyBtn')?.addEventListener('click', copyNote);
     document.getElementById('resetBtn')?.addEventListener('click', resetWorkflow);
 
+    // Shift+Enter: continuar desde la sección actual de forma consistente.
+    document.addEventListener('keydown', (e) => {
+        if (e.defaultPrevented || e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (document.activeElement?.closest?.('.custom-form')) return;
+        if (advanceCurrentSectionByShortcut()) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+    });
+
     // Escritura directa: desde cualquier control de una sección, texto/borrado entra al buscador de esa sección.
     document.addEventListener('keydown', (e) => {
         if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -2842,8 +3012,7 @@ function init() {
         const isSearchChar = e.key !== '/' && e.key.length === 1 && !!e.key.trim();
         if (!isSearchChar && !isDeleteKey) return;
         const active = document.activeElement;
-        const tag = active?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || active?.isContentEditable) return;
+        if (isEditableElement(active)) return;
         if (active?.closest?.('.custom-form')) return;
         const box = searchForFocusedSection(active);
         if (!box) return;
@@ -2856,8 +3025,7 @@ function init() {
     // Atajo "/": enfoca el buscador del paso activo (sin interrumpir escritura)
     document.addEventListener('keydown', (e) => {
         if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-        const tag = document.activeElement?.tagName;
-        if (tag === 'INPUT' || tag === 'TEXTAREA') return;
+        if (isEditableElement(document.activeElement)) return;
         const box = reverse.mode === 'reverse'
             ? els.searchFindings
             : { 1: els.searchAreas, 2: els.searchDiag, 3: els.searchRc, 4: els.searchEp, 6: els.searchNic }[currentStep];
@@ -2869,7 +3037,7 @@ function init() {
     //   Ctrl/⌘+Shift+↓   → volver de un salto a la sección más avanzada alcanzada
     document.addEventListener('keydown', (e) => {
         if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown') || !e.shiftKey) return;
-        if (document.activeElement?.tagName === 'TEXTAREA') return;
+        if (isEditableElement(document.activeElement)) return;
         e.preventDefault();
         if (e.key === 'ArrowDown' && (e.ctrlKey || e.metaKey)) resumeForward();
         else if (!e.ctrlKey && !e.metaKey) jumpSection(e.key === 'ArrowDown' ? +1 : -1);
