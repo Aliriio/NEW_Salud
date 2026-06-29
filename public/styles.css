@@ -181,17 +181,27 @@ body {
 }
 
 /* === LAYOUT PRINCIPAL === */
+/* Por defecto el formulario ocupa todo el ancho. El panel lateral (diagnósticos
+   en vivo o la nota generada) aparece solo cuando hace falta, con .has-aside. */
 .content {
   padding: var(--sp-8) var(--sp-12);
   display: grid;
-  grid-template-columns: 1fr 390px;
-  gap: var(--sp-8);
+  grid-template-columns: 1fr;
+  gap: clamp(20px, 1.5vw, 28px);
   align-items: start;
 }
+.content.has-aside {
+  grid-template-columns: minmax(0, 1fr) clamp(320px, 22vw, 380px);
+}
 
-/* El aside está primero en DOM; en desktop lo mandamos a la columna 2 */
-.note-section { order: 2; }
+/* Los asides están primero en DOM; en desktop van a la columna 2 */
+.note-section,
+.dx-live      { order: 2; }
 .workflow     { order: 1; }
+
+/* El atributo [hidden] debe ganar al display:flex de los paneles laterales */
+.note-section[hidden],
+.dx-live[hidden] { display: none !important; }
 
 /* === WORKFLOW === */
 .workflow {
@@ -554,6 +564,337 @@ body {
   box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--success);
 }
 
+/* === RUTA DE IDENTIFICACIÓN: switch + cuerpos por ruta (integrado en el paso 1) === */
+.route-switch-wrap {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin-bottom: var(--sp-4);
+}
+.route-switch {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-full);
+  background: var(--white);
+}
+.route-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  border: none;
+  background: transparent;
+  padding: 6px var(--sp-4);
+  border-radius: var(--r-full);
+  font-family: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  cursor: pointer;
+  white-space: nowrap;
+  outline: none;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.route-btn:hover { color: var(--text-primary); }
+.route-btn[aria-checked="true"] {
+  background: var(--blue);
+  color: var(--white);
+  box-shadow: var(--shadow-sm);
+}
+.route-btn:focus-visible { box-shadow: 0 0 0 2px var(--white), 0 0 0 4px var(--border-focus); }
+
+/* Cuerpos de ruta: el motor muestra el correcto y oculta el otro con [hidden] */
+.route-body[hidden] { display: none; }
+
+/* Fila de filtros: secundaria, claramente separada del buscador */
+.reverse-filter-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  margin: var(--sp-3) 0 var(--sp-3);
+}
+.reverse-filter-label {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+.reverse-filter-group {
+  display: inline-flex;
+  gap: 4px;
+  padding: 3px;
+  border: 1.5px solid var(--border-faint);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+}
+.reverse-filter-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  border-radius: var(--r-xs);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.76rem;
+  font-weight: 700;
+  min-height: 32px;
+  padding: 0 var(--sp-3);
+  white-space: nowrap;
+}
+.reverse-filter-btn[aria-checked="true"] {
+  background: var(--white);
+  color: var(--blue-dark);
+  box-shadow: var(--shadow-sm);
+}
+.reverse-filter-btn:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(26, 111, 224, .18); }
+.reverse-selected-wrap {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-3);
+  align-items: start;
+  padding: 0 var(--sp-5) var(--sp-3);
+}
+.reverse-selected-label {
+  color: var(--text-muted);
+  font-size: 0.73rem;
+  font-weight: 750;
+  line-height: 28px;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.reverse-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+.reverse-selected-chip {
+  -webkit-appearance: none;
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  min-height: 30px;
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-full);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 3px 4px 3px 4px;
+}
+.reverse-selected-chip:hover { border-color: var(--blue-mid); background: var(--white); }
+.reverse-selected-chip:hover .reverse-selected-remove { color: var(--danger); }
+.reverse-selected-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(26, 111, 224, .18); }
+.reverse-selected-kind {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 7px;
+  min-height: 20px;
+  border-radius: var(--r-full);
+  background: var(--white);
+  color: var(--blue-dark);
+  font-size: 0.62rem;
+  font-weight: 800;
+  letter-spacing: .02em;
+}
+.reverse-selected-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.reverse-selected-remove {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  transition: background var(--fast) var(--ease), color var(--fast) var(--ease);
+}
+.reverse-finding-option,
+.reverse-result-option {
+  padding: var(--sp-3) var(--sp-4);
+  border-color: var(--border);
+}
+.reverse-finding-option {
+  padding-right: calc(var(--sp-8) + var(--sp-2));
+}
+.reverse-finding-option.multi-selected {
+  padding-right: calc(var(--sp-12) + var(--sp-6));
+}
+.reverse-finding-option.multi-selected .reverse-kind-badge {
+  right: calc(var(--sp-2) + 28px);
+}
+.reverse-finding-option h4,
+.reverse-result-option h4 {
+  padding-right: 0;
+  font-size: 0.86rem;
+}
+.reverse-result-option {
+  border-color: var(--border);
+  background: var(--white);
+}
+.reverse-result-option:hover {
+  border-color: var(--blue-mid);
+  background: var(--white);
+}
+.reverse-kind-badge {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  display: inline-flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 0 7px;
+  border-radius: var(--r-full);
+  font-size: 0.66rem;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0;
+  border: 1px solid transparent;
+}
+.reverse-kind-badge--rc,
+.reverse-selected-chip--rc .reverse-selected-kind {
+  color: var(--blue-dark);
+  background: var(--surface-2);
+  border-color: rgba(26, 111, 224, .18);
+}
+.reverse-kind-badge--ep,
+.reverse-selected-chip--ep .reverse-selected-kind {
+  color: #176348;
+  background: #e8f6f1;
+  border-color: rgba(23, 99, 72, .18);
+}
+.reverse-kind-badge--both,
+.reverse-selected-chip--both .reverse-selected-kind {
+  color: #654b00;
+  background: #fff4c7;
+  border-color: rgba(101, 75, 0, .18);
+}
+.reverse-result-meta {
+  color: var(--text-muted);
+  font-weight: 700;
+}
+.reverse-match-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: var(--sp-2);
+}
+.reverse-match {
+  display: inline-flex;
+  max-width: 100%;
+  padding: 4px 8px;
+  border-radius: var(--r-xs);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  background: var(--surface-1);
+  border: 1px solid var(--border-faint);
+}
+.reverse-match--rc {
+  color: var(--blue-dark);
+  background: var(--surface-2);
+}
+.reverse-match--ep {
+  color: #176348;
+  background: #e8f6f1;
+}
+.reverse-match--both {
+  color: #654b00;
+  background: #fff4c7;
+}
+.reverse-match--more {
+  color: var(--text-muted);
+  background: var(--white);
+}
+
+/* === PANEL LATERAL: diagnósticos posibles en vivo === */
+.dx-live {
+  background: var(--surface-1);
+  border-radius: var(--r-lg);
+  border: 1.5px solid var(--border-faint);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  flex-direction: column;
+  align-self: start;
+  margin-top: var(--dx-live-offset, 0px);
+  max-height: calc(100vh - var(--sp-8) * 2);
+  overflow: hidden;
+}
+.dx-live-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-5);
+  border-bottom: 1.5px solid var(--border-faint);
+  background: var(--white);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+}
+.dx-live-header h3 {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.dx-live-count {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+.dx-live-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4) var(--sp-4) var(--sp-4);
+  overflow-y: auto;
+}
+.dx-live-hint {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-muted);
+  padding: var(--sp-2) var(--sp-3);
+  background: var(--surface-1);
+  border-radius: var(--r-xs);
+  border-left: 3px solid var(--blue-light);
+}
+/* En el panel lateral, los diagnósticos se listan en una sola columna */
+.dx-live .options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  max-height: none;
+  overflow: visible;
+  padding-right: 0;
+}
+
+@media (max-width: 720px) {
+  .reverse-filter-group {
+    width: 100%;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+  .reverse-filter-btn { padding: 0 var(--sp-2); }
+}
+
 /* === PROGRESS TRACK Y LABEL === */
 .progress-track {
   display: flex;
@@ -756,7 +1097,7 @@ body {
 /* === OPTIONS GRID === */
 .options {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 255px), 1fr));
   gap: var(--sp-2);
   max-height: 380px;
   overflow-y: auto;
@@ -1643,8 +1984,11 @@ body {
 /* === RESPONSIVE === */
 @media (max-width: 1100px) {
   .content {
-    grid-template-columns: 1fr 360px;
+    grid-template-columns: 1fr;
     padding: var(--sp-8);
+  }
+  .content.has-aside {
+    grid-template-columns: minmax(0, 1fr) clamp(320px, 24vw, 360px);
   }
 }
 
@@ -1663,9 +2007,13 @@ body {
     padding: var(--sp-6);
     gap: var(--sp-6);
   }
+  .content.has-aside {
+    grid-template-columns: 1fr;
+  }
 
   /* En mobile: el aside (nota) sube al top, el workflow baja */
-  .note-section {
+  .note-section,
+  .dx-live {
     position: static;
     order: -1;
     max-height: none;      /* Sin límite de altura en mobile; cada hijo controla su propio scroll */

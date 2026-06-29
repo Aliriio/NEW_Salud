@@ -89,7 +89,19 @@
                 <div class="container">
                     <main class="content">
 
-                        <aside class="note-section" aria-label="Nota de enfermería generada">
+                        <!-- Panel lateral en vivo: diagnósticos posibles (ruta por hallazgos) -->
+                        <aside class="dx-live" id="dxLive" hidden aria-label="Diagnósticos posibles">
+                            <div class="dx-live-header">
+                                <h3>Diagnósticos posibles</h3>
+                                <span class="dx-live-count" id="dxLiveCount"></span>
+                            </div>
+                            <div class="dx-live-body">
+                                <p class="dx-live-hint">Se ordenan por coincidencia con los signos y factores que va marcando. Confirme siempre con criterio clínico.</p>
+                                <div class="options" id="reverseResults"></div>
+                            </div>
+                        </aside>
+
+                        <aside class="note-section" id="noteSection" hidden aria-label="Nota de enfermería generada">
                             <div class="note-panel-header">
                                 <h3>Nota de enfermería</h3>
                                 <div class="note-panel-header-actions">
@@ -99,7 +111,6 @@
                                 </div>
                             </div>
                             <div class="note-panel-body">
-                                <div class="trans-list" id="transversales"></div>
                                 <div class="note-content" id="noteContent" hidden role="document" aria-live="polite"></div>
                             </div>
                         </aside>
@@ -163,34 +174,105 @@
                             </div>
 
                             <article class="step step--locked" id="step1" data-step="1">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 1: Condiciones clínicas">
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 1: Identificar el diagnóstico">
                                     <span class="step-badge">1</span>
-                                    <h3>Condiciones clínicas</h3>
+                                    <h3 data-step-title>Condiciones clínicas</h3>
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
                                 <div class="step-content">
-                                    <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter para elegir.</p>
-                                    <input type="search" class="search-box" id="searchAreas" placeholder="Buscar condición clínica…" aria-label="Buscar condición clínica">
-                                    <div class="options" id="areas"></div>
+                                    <!-- Switch de ruta: integrado al inicio del paso 1 -->
+                                    <div class="route-switch-wrap">
+                                        <div class="route-switch" role="radiogroup" aria-label="Cómo identificar el diagnóstico" id="routeSwitch">
+                                            <button type="button" class="route-btn" role="radio" aria-checked="true" data-mode="forward" tabindex="0">Por condición clínica</button>
+                                            <button type="button" class="route-btn" role="radio" aria-checked="false" data-mode="reverse" tabindex="-1">Por signos y factores</button>
+                                        </div>
+                                    </div>
+
+                                    <!-- Ruta principal: área clínica -->
+                                    <div class="route-body" data-route="main">
+                                        <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter para elegir.</p>
+                                        <input type="search" class="search-box" id="searchAreas" placeholder="Buscar condición clínica…" aria-label="Buscar condición clínica">
+                                        <div class="options" id="areas"></div>
+                                    </div>
+
+                                    <!-- Ruta por hallazgos: signos y factores (multi-select) -->
+                                    <div class="route-body" data-route="reverse" hidden>
+                                        <p class="hint">Marque <strong>todos</strong> los signos y factores que observe en el paciente. Cuantos más indique, más precisas serán las sugerencias de diagnóstico del panel lateral.</p>
+                                        <div class="reverse-filter-row">
+                                            <span class="reverse-filter-label">Mostrar</span>
+                                            <div class="reverse-filter-group" role="radiogroup" aria-label="Filtrar hallazgos por tipo" id="findingKindFilters">
+                                                <button type="button" class="reverse-filter-btn" role="radio" aria-checked="true" data-filter="all" tabindex="0">Todos</button>
+                                                <button type="button" class="reverse-filter-btn" role="radio" aria-checked="false" data-filter="rc" tabindex="-1">Factores (RC)</button>
+                                                <button type="button" class="reverse-filter-btn" role="radio" aria-checked="false" data-filter="ep" tabindex="-1">Signos (EP)</button>
+                                            </div>
+                                        </div>
+                                        <input type="search" class="search-box" id="searchFindings" placeholder="Buscar dolor, ansiedad, fatiga…" aria-label="Buscar signo o factor">
+                                        <div class="reverse-selected-wrap" id="selectedFindingsWrap" hidden>
+                                            <span class="reverse-selected-label">Seleccionados</span>
+                                            <div class="reverse-selected-chips" id="selectedFindings"></div>
+                                        </div>
+                                        <div class="options" id="findingsList"></div>
+                                    </div>
                                 </div>
                             </article>
 
                             <article class="step" id="step2" data-step="2">
                                 <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 2: Diagnóstico de enfermería">
                                     <span class="step-badge">2</span>
-                                    <h3>Diagnóstico de enfermería (NANDA)</h3>
+                                    <h3 data-step-title>Diagnóstico de enfermería (NANDA)</h3>
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
                                 <div class="step-content">
-                                    <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter para elegir.</p>
-                                    <input type="search" class="search-box" id="searchDiag" placeholder="Buscar diagnóstico…" aria-label="Buscar diagnóstico">
-                                    <div class="options" id="diagnosticos"></div>
+                                    <!-- Ruta principal: lista NANDA -->
+                                    <div class="route-body" data-route="main">
+                                        <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter para elegir.</p>
+                                        <input type="search" class="search-box" id="searchDiag" placeholder="Buscar diagnóstico…" aria-label="Buscar diagnóstico">
+                                        <div class="options" id="diagnosticos"></div>
+                                    </div>
                                 </div>
                             </article>
 
-                            <article class="step" id="step3" data-step="3">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 3: Resultado esperado NOC">
+                            <article class="step" id="step3" data-step="3" hidden>
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Relacionado con">
                                     <span class="step-badge">3</span>
+                                    <h3>Relacionado con</h3>
+                                    <span class="step-summary" aria-live="polite"></span>
+                                </div>
+                                <div class="step-content">
+                                    <p class="hint">Factores relacionados con el diagnóstico · escriba para filtrar · Enter marca/desmarca · Shift+Enter (o Continuar) para seguir.</p>
+                                    <input type="search" class="search-box" id="searchRc" placeholder="Buscar factor relacionado…" aria-label="Buscar relacionado con">
+                                    <div class="options" id="rcList"></div>
+                                    <div class="nic-confirm-bar">
+                                        <span class="nic-confirm-hint" id="rcConfirmHint">Seleccione al menos un factor relacionado</span>
+                                        <button type="button" class="nic-confirm-btn" id="rcConfirmBtn" disabled>
+                                            Continuar →
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+
+                            <article class="step" id="step4" data-step="4" hidden>
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Evidenciado por">
+                                    <span class="step-badge">4</span>
+                                    <h3>Evidenciado por</h3>
+                                    <span class="step-summary" aria-live="polite"></span>
+                                </div>
+                                <div class="step-content">
+                                    <p class="hint">Signos y síntomas que evidencian el diagnóstico · escriba para filtrar · Enter marca/desmarca · Shift+Enter (o Continuar) para seguir.</p>
+                                    <input type="search" class="search-box" id="searchEp" placeholder="Buscar signo o síntoma…" aria-label="Buscar evidenciado por">
+                                    <div class="options" id="epList"></div>
+                                    <div class="nic-confirm-bar">
+                                        <span class="nic-confirm-hint" id="epConfirmHint">Seleccione al menos un signo o síntoma</span>
+                                        <button type="button" class="nic-confirm-btn" id="epConfirmBtn" disabled>
+                                            Continuar →
+                                        </button>
+                                    </div>
+                                </div>
+                            </article>
+
+                            <article class="step" id="step5" data-step="5">
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Resultado esperado NOC">
+                                    <span class="step-badge">5</span>
                                     <h3>Resultado esperado (NOC)</h3>
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
@@ -200,9 +282,9 @@
                                 </div>
                             </article>
 
-                            <article class="step" id="step4" data-step="4">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 4: Intervenciones NIC">
-                                    <span class="step-badge">4</span>
+                            <article class="step" id="step6" data-step="6">
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Intervenciones NIC">
+                                    <span class="step-badge">6</span>
                                     <h3>Intervenciones NIC</h3>
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>
@@ -219,9 +301,9 @@
                                 </div>
                             </article>
 
-                            <article class="step" id="step5" data-step="5">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 5: Evaluación Escala B6">
-                                    <span class="step-badge">5</span>
+                            <article class="step" id="step7" data-step="7">
+                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Evaluación Escala B6">
+                                    <span class="step-badge">7</span>
                                     <h3>Evaluación — Escala B6</h3>
                                     <span class="step-summary" aria-live="polite"></span>
                                 </div>

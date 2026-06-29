@@ -716,12 +716,17 @@ body.cf-app-body {
   min-height: 0 !important;
 }
 .cf-app-body .container {
-  max-width: 1180px !important;   /* cap para lectura cómoda; evita estiramiento al colapsar la sidebar */
+  --note-width-main: clamp(960px, 72vw, 1060px);
+  --note-width-with-aside: clamp(1100px, 78vw, 1240px);
+  max-width: var(--note-width-main) !important;   /* cap para lectura cómoda en escritorio */
   margin: 0 auto !important;       /* centrado */
   border-radius: 0 !important;
   box-shadow: none !important;
   background: transparent !important;
   overflow: visible !important;
+}
+.cf-app-body .container.container--with-aside {
+  max-width: var(--note-width-with-aside) !important;
 }
 /* Ocultar la cabecera grande original — el shell ya provee marca/título */
 .cf-app-body .container > .header { display: none !important; }
@@ -729,7 +734,15 @@ body.cf-app-body {
 .cf-app-body .content { padding: 0 !important; }
 
 /* Header de página delgado para Entrega (centrado con el note app) */
-.cf-page-head { margin: 0 auto var(--cf-6); max-width: 1180px; }
+.cf-page-head {
+  --note-width-main: clamp(960px, 72vw, 1060px);
+  --note-width-with-aside: clamp(1100px, 78vw, 1240px);
+  margin: 0 auto var(--cf-6);
+  max-width: var(--note-width-main);
+}
+.cf-page-head.page-head--with-aside {
+  max-width: var(--note-width-with-aside);
+}
 .cf-page-head h1 { font-size: 1.4rem; font-weight: 700; color: var(--cf-blue-900); letter-spacing: var(--cf-tracking-tight); margin: 0 0 4px; }
 .cf-page-head p { font-size: 0.95rem; color: var(--cf-text-2); margin: 0; }
 
