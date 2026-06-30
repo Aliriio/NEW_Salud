@@ -1,6 +1,10 @@
 const datosProPai = window.datosProPai;
 
 let currentStep = 1;
+let lastLogicalSectionId = 'patient';
+let sectionTypeaheadBuffer = '';
+let sectionTypeaheadTimer = null;
+const SECTION_TYPEAHEAD_DELAY = 1500;
 let maxReachedStep = 1;  // paso más profundo alcanzado: permite "recuperar" el avance con ↓
 let noteVisible = false;  // La nota empieza oculta
 
@@ -238,6 +242,7 @@ function activateStep(n, opts = {}) {
     const stepEl = document.getElementById(`step${n}`);
     stepEl?.classList.add('active');
     currentStep = n;
+    rememberLogicalSection(n);
     if (n > maxReachedStep) maxReachedStep = n;
     updateProgress();
     updateStepSummaries();
@@ -1146,7 +1151,7 @@ function enableOptionKeyboard(container, opts = {}) {
                     } else {                        // sin buscador: type-ahead
                         typeBuf += normalizeText(e.key);
                         clearTimeout(typeTimer);
-                        typeTimer = setTimeout(() => { typeBuf = ''; }, 600);
+                        typeTimer = setTimeout(() => { typeBuf = ''; }, SECTION_TYPEAHEAD_DELAY);
                         const match = items.find((o) =>
                             normalizeText(o.querySelector('h4')?.textContent || o.textContent).startsWith(typeBuf));
                         if (match) { e.preventDefault(); focusOption(match, container); }
@@ -1218,6 +1223,61 @@ function focusFindingKindFilter() {
     return true;
 }
 
+function resetSectionTypeahead() {
+    sectionTypeaheadBuffer = '';
+    clearTimeout(sectionTypeaheadTimer);
+    sectionTypeaheadTimer = null;
+}
+
+function rememberLogicalSection(id) {
+    if (id == null) return;
+    if (lastLogicalSectionId !== id) resetSectionTypeahead();
+    lastLogicalSectionId = id;
+}
+
+function activeLogicalSectionId() {
+    const id = currentSectionId();
+    if (id != null) {
+        rememberLogicalSection(id);
+        return id;
+    }
+    return lastLogicalSectionId;
+}
+
+function containerForSection(id) {
+    if (typeof id !== 'number') return null;
+    return stepByNum(id)?.container?.() || null;
+}
+
+function searchForActiveSection() {
+    const id = activeLogicalSectionId();
+    if (typeof id !== 'number') return null;
+    return stepByNum(id)?.search?.() || null;
+}
+
+function optionTypeaheadText(opt) {
+    return normalizeText(opt.querySelector('h4')?.textContent || opt.textContent || '').trim();
+}
+
+function runSectionTypeahead(key, sectionId = activeLogicalSectionId()) {
+    if (!key || key.length !== 1 || typeof sectionId !== 'number') return false;
+    const container = containerForSection(sectionId);
+    const items = container ? visibleSelectableOptions(container) : [];
+    if (!items.length) {
+        resetSectionTypeahead();
+        return false;
+    }
+
+    sectionTypeaheadBuffer += normalizeText(key);
+    clearTimeout(sectionTypeaheadTimer);
+    sectionTypeaheadTimer = setTimeout(resetSectionTypeahead, SECTION_TYPEAHEAD_DELAY);
+
+    const match = items.find((opt) => optionTypeaheadText(opt).startsWith(sectionTypeaheadBuffer));
+    if (!match) return false;
+    focusOption(match, container);
+    return true;
+}
+
 function focusRouteSearch(mode = reverse.mode) {
     if (mode === 'reverse' && focusFindingKindFilter()) return true;
     const box = mode === 'reverse' ? els.searchFindings : els.searchAreas;
@@ -1225,15 +1285,6 @@ function focusRouteSearch(mode = reverse.mode) {
     box.focus();
     box.select?.();
     return true;
-}
-
-function searchForFocusedSection(target = document.activeElement) {
-    if (!target) return null;
-    if (target.closest?.('#dxLive')) return els.searchFindings;
-    const stepEl = target.closest?.('.step');
-    if (!stepEl?.dataset.step) return null;
-    const step = stepByNum(Number(stepEl.dataset.step));
-    return step?.search?.() || null;
 }
 
 function sendCharToSectionSearch(ch, box) {
@@ -1250,19 +1301,11 @@ function sendCharToSectionSearch(ch, box) {
 
 function sendDeleteToSectionSearch(key, box) {
     if (!box || (key !== 'Backspace' && key !== 'Delete')) return false;
+    if (!box.value) return false;
     box.focus();
-    const start = box.value.length;
-    const end = box.value.length;
-    if (start !== end) {
-        box.value = box.value.slice(0, start) + box.value.slice(end);
-        box.setSelectionRange?.(start, start);
-    } else if (key === 'Backspace' && start > 0) {
-        box.value = box.value.slice(0, start - 1) + box.value.slice(start);
-        box.setSelectionRange?.(start - 1, start - 1);
-    } else if (key === 'Delete' && start < box.value.length) {
-        box.value = box.value.slice(0, start) + box.value.slice(start + 1);
-        box.setSelectionRange?.(start, start);
-    }
+    const pos = box.value.length;
+    box.value = box.value.slice(0, pos - 1) + box.value.slice(pos);
+    box.setSelectionRange?.(pos - 1, pos - 1);
     box.dispatchEvent(new Event('input', { bubbles: true }));
     return true;
 }
@@ -2315,6 +2358,8 @@ function resetWorkflow() {
     currentStep = 1;
     maxReachedStep = 1;
     noteVisible = false;
+    lastLogicalSectionId = 'patient';
+    resetSectionTypeahead();
 
     // Modo inverso a su estado inicial
     reverse.findingKeys = [];
@@ -2995,6 +3040,11 @@ function init() {
     document.getElementById('copyBtn')?.addEventListener('click', copyNote);
     document.getElementById('resetBtn')?.addEventListener('click', resetWorkflow);
 
+    document.addEventListener('focusin', () => {
+        const id = currentSectionId();
+        if (id != null) rememberLogicalSection(id);
+    });
+
     // Shift+Enter: continuar desde la sección actual de forma consistente.
     document.addEventListener('keydown', (e) => {
         if (e.defaultPrevented || e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
@@ -3014,12 +3064,23 @@ function init() {
         const active = document.activeElement;
         if (isEditableElement(active)) return;
         if (active?.closest?.('.custom-form')) return;
-        const box = searchForFocusedSection(active);
-        if (!box) return;
-        e.preventDefault();
-        e.stopPropagation();
-        if (isDeleteKey) sendDeleteToSectionSearch(e.key, box);
-        else sendCharToSectionSearch(e.key, box);
+        const sectionId = activeLogicalSectionId();
+        const box = searchForActiveSection();
+        if (box) {
+            if (isDeleteKey && !box.value) return;
+            e.preventDefault();
+            e.stopPropagation();
+            if (isDeleteKey) sendDeleteToSectionSearch(e.key, box);
+            else {
+                resetSectionTypeahead();
+                sendCharToSectionSearch(e.key, box);
+            }
+            return;
+        }
+        if (isSearchChar && runSectionTypeahead(e.key, sectionId)) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
     }, true);
 
     // Atajo "/": enfoca el buscador del paso activo (sin interrumpir escritura)
