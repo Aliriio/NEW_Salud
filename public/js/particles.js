@@ -6,11 +6,11 @@
        viento. Todas comparten una dirección dominante y un vaivén de
        grupo, pero cada punto teje su propio meandro (no siguen el mismo
        camino ni se acumulan en filas/líneas).
-       Cada cierto tiempo las partículas son reclutadas para formar EL
-       ICONO de CareFlow (muestreado desde assets/logo_menu.svg), lo
-       sostienen unos segundos y luego la brisa las suelta de vuelta.
-       No usa líneas, trails, blur ni paths visibles. La corriente
-       existe sólo por la distribución y el movimiento de los puntos.
+       Al cargar la página las partículas forman EL ICONO de CareFlow
+       (muestreado desde assets/logo_menu.svg) UNA sola vez: la frase del
+       hero se escribe dentro del logo y, al terminar el typewriter, el
+       logo se desarma de nuevo en partículas que siguen con el viento.
+       No vuelve a formarse. Sin líneas, trails, blur ni paths visibles.
 
    - data-mode="network" (panel azul del login):
        Red de nodos interconectados con líneas. SIN CAMBIOS.
@@ -50,11 +50,10 @@
     densScale:      0.0016, // escala del ruido de densidad (crea zonas vacías irregulares)
     windOpacity:    1.0,    // multiplicador global de opacidad del ambiente
 
-    // — Formación del logo (ciclo) —
-    windIntervalMs:    10000, // ms de viento libre entre formaciones
-    formationDuration: 5000,  // ms de transición viento → logo
-    holdDuration:      7500,  // ms que el logo permanece formado
-    releaseDuration:   6000,  // ms de dispersión logo → viento
+    // — Formación del logo (INTRO única, sincronizada con el typewriter) —
+    formationDuration: 2200,  // ms para armar el logo al cargar (antes de que termine de escribirse la frase)
+    holdDuration:      9000,  // ms máx. de espera (fallback) por si el typewriter nunca termina
+    releaseDuration:   5000,  // ms de dispersión del logo → viento, al terminar el typewriter
     logoScale:         0.94,  // fracción del hueco del hero que llena el logo (1 = pegado a los bordes)
     logoOpacity:       1.0,   // multiplicador de opacidad del logo + refuerzo
     maskFade:          0.42,  // cuánto se atenúa la máscara blanca del hero al formar el logo
@@ -153,13 +152,20 @@
     var edgeTargets = [];  // subconjunto de bordes (para el refuerzo)
     var logoHalf = { nx: 0.5, ny: 0.44 }; // semiextensión normalizada real del icono (para ajustarlo al hero)
 
-    var phase = 'WIND';    // WIND → FORMING → HOLD → RELEASING → WIND
+    var phase = 'WIND';    // WIND → FORMING → HOLD → RELEASING → WIND (el logo es una INTRO única)
     var phaseStart = perfNow();
     var morph = 0;         // 0 = viento libre, 1 = logo formado (nivel de estado)
     var reinfAlpha = 0;    // opacidad global del refuerzo (fade-in/out)
 
     var heroMask = document.querySelector('.cf-hero-mask');
+    var heroEl = document.querySelector('.cf-hero');
+    var introPending = true; // el logo se forma UNA sola vez, al cargar la página
+    var introDone = false;   // tras desarmarse, ya no vuelve a formarse nunca
     var MARGIN = 90;
+
+    // El typewriter marca `.cf-hero.is-typed` al terminar de escribir la frase:
+    // ese es el momento de desarmar el logo y dar paso al resto del hero.
+    function heroTyped() { return !!(heroEl && heroEl.classList.contains('is-typed')); }
 
     function perfNow() { return (typeof performance !== 'undefined' ? performance.now() : Date.now()); }
     function compact() { return Math.min(w, h) < 640 || w < 720; }
@@ -320,9 +326,7 @@
       targets = pts;
       edgeTargets = edges;
       logoHalf = { nx: (maxX - minX) / (2 * rmax), ny: (maxY - minY) / (2 * rmax) };
-      // si ya tocaba formar y estábamos esperando la máscara, arranca
-      var now = perfNow();
-      if (phase === 'WIND' && parts.length && now - phaseStart >= F.windIntervalMs) enterForming(now);
+      // La intro (única) la dispara el loop en cuanto targets está listo (ver stepFlow).
     }
 
     function loadMaskFromUrl(url, onFail) {
@@ -474,14 +478,21 @@
 
       if (phase === 'WIND') {
         morph = 0;
-        if (targets.length && el >= F.windIntervalMs) enterForming(now);
+        // Intro única: arma el logo en cuanto la máscara está lista. Si el
+        // typewriter ya terminó antes (carga muy lenta), cancela la intro.
+        if (introPending) {
+          if (heroTyped()) { introPending = false; introDone = true; }
+          else if (targets.length) { enterForming(now); introPending = false; }
+        }
       } else if (phase === 'FORMING') {
         formProg = clamp01(el / F.formationDuration); phaseProgress = formProg; morph = smoothstep(formProg);
         reinfAlpha = smoothstep(formProg);
         if (el >= F.formationDuration) { phase = 'HOLD'; phaseStart = now; morph = 1; }
       } else if (phase === 'HOLD') {
         morph = 1; phaseProgress = 1; reinfAlpha = 1;
-        if (el >= F.holdDuration) { phase = 'RELEASING'; phaseStart = now; }
+        // Mantiene el logo mientras se escribe la frase dentro; al terminar el
+        // typewriter (o como fallback tras holdDuration) lo desarma en partículas.
+        if (heroTyped() || el >= F.holdDuration) { phase = 'RELEASING'; phaseStart = now; introDone = true; }
       } else if (phase === 'RELEASING') {
         relProg = clamp01(el / F.releaseDuration); phaseProgress = relProg; morph = 1 - smoothstep(relProg);
         reinfAlpha = 1 - smoothstep(relProg);
