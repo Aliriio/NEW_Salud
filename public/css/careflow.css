@@ -124,7 +124,17 @@
 .cf-nav-brand { display: flex; align-items: center; gap: var(--cf-2); }
 .cf-nav-brand .cf-logo-mark { width: 34px; height: 34px; }
 .cf-nav-brand span { font-size: 1.2rem; font-weight: 700; letter-spacing: var(--cf-tracking-tight); color: var(--cf-blue-900); }
-.cf-nav-links { display: flex; align-items: center; gap: var(--cf-6); }
+/* Los enlaces del navbar quedan ocultos al inicio y aparecen —con la misma
+   suavidad que el desarmado del logo— cuando termina el typewriter. */
+.cf-nav-links {
+  display: flex; align-items: center; gap: var(--cf-6);
+  opacity: 0;
+  transform: translateY(-8px);
+  transition: opacity 2.6s var(--cf-ease-out), transform 2.6s var(--cf-ease-out);
+  pointer-events: none;
+  will-change: opacity, transform;
+}
+body.cf-typed .cf-nav-links { opacity: 1; transform: none; pointer-events: auto; }
 .cf-nav-links a {
   font-size: 0.92rem; font-weight: 500; color: var(--cf-text-2);
   transition: color var(--cf-fast) var(--cf-ease);
@@ -194,20 +204,21 @@
   min-height: 2.04em;
 }
 
-/* Elementos del hero que permanecen ocultos durante la escritura del eslogan
-   y aparecen, en cascada suave (fade + subida), al terminar. Sin desenfoque. */
+/* Elementos del hero ocultos durante la escritura del eslogan. Al terminar
+   aparecen con un fundido MUY suave (largo y con muy poco desplazamiento),
+   acorde y casi sincronizado con el desarmado del logo de partículas. */
 .cf-hero-after {
   opacity: 0;
-  transform: translateY(20px);
-  transition: opacity .9s var(--cf-ease-out),
-              transform .9s var(--cf-ease-out);
+  transform: translateY(12px);
+  transition: opacity 2.6s var(--cf-ease-out),
+              transform 2.6s var(--cf-ease-out);
   pointer-events: none;
   will-change: opacity, transform;
 }
 .cf-hero.is-typed .cf-hero-after { opacity: 1; transform: none; pointer-events: auto; }
 .cf-hero.is-typed .cf-hero-brand   { transition-delay: 0s; }
-.cf-hero.is-typed .cf-hero-sub     { transition-delay: .15s; }
-.cf-hero.is-typed .cf-hero-actions { transition-delay: .3s; }
+.cf-hero.is-typed .cf-hero-sub     { transition-delay: .25s; }
+.cf-hero.is-typed .cf-hero-actions { transition-delay: .5s; }
 .cf-type-caret {
   display: inline-block;
   width: 3px;

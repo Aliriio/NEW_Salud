@@ -16,11 +16,13 @@
     });
   }
 
-  // Al terminar de escribir, revela los elementos del hero (logo, nombre,
-  // descripción y botones) con una aparición suave en cascada.
+  // Al terminar de escribir, revela con una aparición muy suave los elementos
+  // del hero (marca, descripción, botones) y también los enlaces del navbar
+  // (que están fuera del hero) mediante una clase a nivel de <body>.
   function revealAfter(el) {
     var hero = (el && el.closest) ? el.closest('.cf-hero') : null;
     if (hero) hero.classList.add('is-typed');
+    document.body.classList.add('cf-typed');
   }
 
   /**

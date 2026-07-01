@@ -6,11 +6,11 @@
        viento. Todas comparten una dirección dominante y un vaivén de
        grupo, pero cada punto teje su propio meandro (no siguen el mismo
        camino ni se acumulan en filas/líneas).
-       Al cargar la página las partículas forman EL ICONO de CareFlow
-       (muestreado desde assets/logo_menu.svg) UNA sola vez: la frase del
-       hero se escribe dentro del logo y, al terminar el typewriter, el
-       logo se desarma de nuevo en partículas que siguen con el viento.
-       No vuelve a formarse. Sin líneas, trails, blur ni paths visibles.
+       Al abrir la página el ICONO de CareFlow (muestreado desde
+       assets/logo_menu.svg) ya aparece FORMADO (sin ensamblarse): la frase
+       del hero se escribe dentro del logo y, al terminar el typewriter, el
+       logo se desarma en partículas que siguen con el viento. No vuelve a
+       formarse. Sin líneas, trails, blur ni paths visibles.
 
    - data-mode="network" (panel azul del login):
        Red de nodos interconectados con líneas. SIN CAMBIOS.
@@ -50,8 +50,8 @@
     densScale:      0.0016, // escala del ruido de densidad (crea zonas vacías irregulares)
     windOpacity:    1.0,    // multiplicador global de opacidad del ambiente
 
-    // — Formación del logo (INTRO única, sincronizada con el typewriter) —
-    formationDuration: 2200,  // ms para armar el logo al cargar (antes de que termine de escribirse la frase)
+    // — Logo (INTRO única: ya formado al abrir la página, sincronizado con el typewriter) —
+    formationDuration: 2200,  // (sin uso: la intro es instantánea; se conserva por compatibilidad)
     holdDuration:      9000,  // ms máx. de espera (fallback) por si el typewriter nunca termina
     releaseDuration:   5000,  // ms de dispersión del logo → viento, al terminar el typewriter
     logoScale:         0.94,  // fracción del hueco del hero que llena el logo (1 = pegado a los bordes)
@@ -161,6 +161,8 @@
     var heroEl = document.querySelector('.cf-hero');
     var introPending = true; // el logo se forma UNA sola vez, al cargar la página
     var introDone = false;   // tras desarmarse, ya no vuelve a formarse nunca
+    var bootAt = perfNow();  // referencia de arranque (fade-in inicial y fallback de máscara)
+    var renderStartAt = 0;   // instante del primer render real (para el fade-in inicial)
     var MARGIN = 90;
 
     // El typewriter marca `.cf-hero.is-typed` al terminar de escribir la frase:
@@ -422,6 +424,17 @@
       phase = 'FORMING'; phaseStart = now;
     }
 
+    // INTRO instantánea: coloca el logo YA formado (sin animación de ensamblado),
+    // para que esté presente desde que se abre la página.
+    function snapToLogo(now) {
+      enterForming(now); // asigna objetivos, delays y refuerzo (ya en su sitio)
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        if (p.hasTarget) { p.x = p.tx; p.y = p.ty; p.vx = 0; p.vy = 0; }
+      }
+      phase = 'HOLD'; phaseStart = now; morph = 1; reinfAlpha = 1; introPending = false;
+    }
+
     // Refuerzo: puntos crujientes sobre los BORDES (contorno del corazón,
     // separación corazón/mano, curva de la mano, barras internas). Fade-in/out.
     function buildReinforcement(ox, oy, px) {
@@ -481,8 +494,9 @@
         // Intro única: arma el logo en cuanto la máscara está lista. Si el
         // typewriter ya terminó antes (carga muy lenta), cancela la intro.
         if (introPending) {
-          if (heroTyped()) { introPending = false; introDone = true; }
-          else if (targets.length) { enterForming(now); introPending = false; }
+          if (heroTyped()) { introPending = false; introDone = true; }            // ya escribió antes de cargar la máscara → sin logo
+          else if (targets.length) { snapToLogo(now); }                           // logo YA formado (instantáneo, desde el segundo 0)
+          else if (now - bootAt >= 1600) { introPending = false; introDone = true; } // la máscara nunca cargó → sólo viento
         }
       } else if (phase === 'FORMING') {
         formProg = clamp01(el / F.formationDuration); phaseProgress = formProg; morph = smoothstep(formProg);
@@ -498,6 +512,17 @@
         reinfAlpha = 1 - smoothstep(relProg);
         if (el >= F.releaseDuration) { endRelease(now); }
       }
+
+      // Arranque: mientras se carga la máscara del logo no se dibuja nada, para
+      // que el logo aparezca YA formado (no ensamblándose). En cuanto está listo,
+      // toda la escena hace un fade-in muy corto para no aparecer de golpe.
+      if (introPending && !targets.length && now - bootAt < 1600) {
+        ctx.clearRect(0, 0, w, h);
+        if (running) raf = requestAnimationFrame(stepFlow);
+        return;
+      }
+      if (renderStartAt === 0) renderStartAt = now;
+      var introFade = smoothstep(clamp01((now - renderStartAt) / 420));
 
       // atenúa la máscara blanca del hero para realzar el logo (sin perder legibilidad)
       if (heroMask) heroMask.style.opacity = String(1 - F.maskFade * morph);
@@ -573,6 +598,7 @@
         var alpha = p.baseAlpha * vis * flick * F.windOpacity * b.opacity;
         if (p.hasTarget) alpha = lerp(alpha, p.logoAlpha * F.logoOpacity, lp);
         else alpha *= (1 - 0.5 * morph); // atenúa el ambiente mientras vive el logo
+        alpha *= introFade;              // fade-in inicial (aparición suave, ya formado)
         if (alpha < 0.012) continue;
         if (alpha > 0.9) alpha = 0.9;
 
@@ -596,7 +622,7 @@
         for (var r = 0; r < reinf.length; r++) {
           var rp = reinf[r];
           var br = 1 + Math.sin(t * 0.9 + rp.seed) * 0.16;
-          var a = reinfAlpha * rp.a * F.logoOpacity;
+          var a = reinfAlpha * rp.a * F.logoOpacity * introFade;
           if (a < 0.02) continue;
           if (a > 0.9) a = 0.9;
           ctx.beginPath();
