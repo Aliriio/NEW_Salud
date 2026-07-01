@@ -55,7 +55,7 @@
     formationDuration: 5000,  // ms de transición viento → logo
     holdDuration:      7500,  // ms que el logo permanece formado
     releaseDuration:   6000,  // ms de dispersión logo → viento
-    logoScale:         0.70,  // tamaño del icono respecto a min(w,h) (con clamps por breakpoint)
+    logoScale:         0.94,  // fracción del hueco del hero que llena el logo (1 = pegado a los bordes)
     logoOpacity:       1.0,   // multiplicador de opacidad del logo + refuerzo
     maskFade:          0.42,  // cuánto se atenúa la máscara blanca del hero al formar el logo
 
@@ -151,6 +151,7 @@
     // silueta del logo (muestreada una vez de forma asíncrona)
     var targets = [];      // {nx, ny, col, edge} normalizados (centrados en 0)
     var edgeTargets = [];  // subconjunto de bordes (para el refuerzo)
+    var logoHalf = { nx: 0.5, ny: 0.44 }; // semiextensión normalizada real del icono (para ajustarlo al hero)
 
     var phase = 'WIND';    // WIND → FORMING → HOLD → RELEASING → WIND
     var phaseStart = perfNow();
@@ -318,6 +319,7 @@
       }
       targets = pts;
       edgeTargets = edges;
+      logoHalf = { nx: (maxX - minX) / (2 * rmax), ny: (maxY - minY) / (2 * rmax) };
       // si ya tocaba formar y estábamos esperando la máscara, arranca
       var now = perfNow();
       if (phase === 'WIND' && parts.length && now - phaseStart >= F.windIntervalMs) enterForming(now);
@@ -360,12 +362,14 @@
       }).catch(pngFallback);
     }
 
-    /* ---------- tamaño del logo (clamps por breakpoint, proporción intacta) ---------- */
+    /* ---------- tamaño del logo: lo más grande que cabe centrado en el hero ---------- */
     function logoPx() {
-      var base = Math.min(w, h) * F.logoScale;
-      if (w <= 600) return clamp(base, 220, 320);
-      if (w <= 1024) return clamp(base, 320, 460);
-      return clamp(base, 420, 620);
+      // px = lado mayor del icono. Se toma el máximo que cabe CENTRADO en el hero,
+      // limitado por el alto o el ancho disponibles según la proporción REAL del icono.
+      // logoScale (0..1) deja un pequeño margen para que no toque los bordes.
+      var maxByH = (h * 0.5) / logoHalf.ny;
+      var maxByW = (w * 0.5) / logoHalf.nx;
+      return Math.min(maxByH, maxByW) * F.logoScale;
     }
     function scaledLogoCount() {
       var c = F.logoParticleCount;
@@ -382,7 +386,7 @@
     function enterForming(now) {
       if (!targets.length) return;
       var px = logoPx();
-      var ox = cx, oy = cy - px * 0.06; // leve elevación: el título cae en el hueco del corazón
+      var ox = cx, oy = cy; // centrado: llena el hero simétricamente
       var edgesT = [], fillsT = [], i;
       for (i = 0; i < targets.length; i++) {
         var o = { x: ox + targets[i].nx * px, y: oy + targets[i].ny * px, col: targets[i].col, edge: targets[i].edge };
