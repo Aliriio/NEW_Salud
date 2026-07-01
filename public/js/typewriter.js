@@ -79,8 +79,10 @@
     }
 
     var fullText = chars.join('');
+    var nowMs = function () { return (typeof performance !== 'undefined' && performance.now) ? performance.now() : Date.now(); };
 
     if (reduced) {
+      window.cfHeroTypeEndAt = nowMs();
       el.innerHTML = buildTypedHtml(chars, breakpoints, leadLen, chars.length, false);
       revealAfter(el);
       return;
@@ -90,23 +92,29 @@
     el.setAttribute('aria-label', fullText);
     el.innerHTML = '<span class="cf-type-caret"></span>';
 
+    // Retardos por carácter PRECALCULADOS (deterministas) → el instante de fin es
+    // exacto y se publica en window.cfHeroTypeEndAt para sincronizar el desarmado
+    // del logo de partículas (ver particles.js). La escritura se ve igual.
+    var START_DELAY = 1000; // ms de cursor titilando antes de escribir
+    var gapDelays = [];
+    var total = START_DELAY;
+    for (var g = 1; g < chars.length; g++) {
+      var d = (/[:,.]/.test(chars[g - 1]) ? 220 : speed) + Math.random() * 40;
+      gapDelays[g] = d; total += d;
+    }
+    window.cfHeroTypeEndAt = nowMs() + total;
+
     var i = 0;
 
     function tick() {
       i++;
       var done = i >= chars.length;
       el.innerHTML = buildTypedHtml(chars, breakpoints, leadLen, i, !done);
-      if (!done) {
-        var jitter = Math.random() * 40;
-        var pause = /[:,.]/.test(chars[i - 1]) ? 220 : speed;
-        setTimeout(tick, pause + jitter);
-      } else {
-        revealAfter(el);
-      }
+      if (!done) setTimeout(tick, gapDelays[i]);
+      else revealAfter(el);
     }
 
-    // El cursor aparece y titila ~1 s antes de comenzar a escribir
-    setTimeout(tick, 1000);
+    setTimeout(tick, START_DELAY);
   }
 
   function boot() {
