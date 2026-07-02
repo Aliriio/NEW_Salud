@@ -52,7 +52,6 @@
     compactCellSize:     95,
     minSeparation:       26,
     separationStrength:  0.026,
-    crowdStrength:       0.014,
 
     // — Muestreo del logo —
     logoEdgeKeep:   0.64,
@@ -292,9 +291,10 @@
         if (score < bestScore) { bestScore = score; best = idx; }
       }
       var col = best % spatial.cols, row = (best / spatial.cols) | 0;
+      // jitter de CELDA COMPLETA (0..1) → sin huecos en los bordes de celda (evita grilla)
       return {
-        x: clamp((col + 0.12 + Math.random() * 0.76) * spatial.cell, 0, w),
-        y: clamp((row + 0.12 + Math.random() * 0.76) * spatial.cell, 0, h),
+        x: clamp((col + Math.random()) * spatial.cell, 0, w),
+        y: clamp((row + Math.random()) * spatial.cell, 0, h),
       };
     }
 
@@ -329,17 +329,10 @@
     function applyDistributionForces(p, lp) {
       if (lp > 0.45 || p.gridIndex < 0 || !spatial.buckets.length) return;
       var idx = p.gridIndex;
-      var count = spatial.counts[idx] || 0;
-      var over = count - spatial.avg * 1.35;
-      if (over > 2) {
-        var col = idx % spatial.cols, row = (idx / spatial.cols) | 0;
-        var ccx = (col + 0.5) * spatial.cell, ccy = (row + 0.5) * spatial.cell;
-        var ox = p.x - ccx, oy = p.y - ccy, od = Math.hypot(ox, oy) || 1;
-        var push = Math.min(3, over) * F.crowdStrength;
-        p.vx += (ox / od) * push;
-        p.vy += (oy / od) * push;
-      }
-
+      // Sólo separación PAR-A-PAR (isótropa) → distribución pareja sin imprimir el grid.
+      // (Se eliminó la fuerza "crowd" radial-desde-el-centro-de-celda: alineaba las
+      //  partículas con la rejilla y dejaba una leve "grilla de cuadros", sobre todo
+      //  tras el desarme, cuando el centro queda muy denso.)
       var c0 = idx % spatial.cols, r0 = (idx / spatial.cols) | 0;
       for (var rr = Math.max(0, r0 - 1); rr <= Math.min(spatial.rows - 1, r0 + 1); rr++) {
         for (var cc = Math.max(0, c0 - 1); cc <= Math.min(spatial.cols - 1, c0 + 1); cc++) {
@@ -708,9 +701,12 @@
         var relAt = (typeof window !== 'undefined' && window.cfHeroTypeEndAt)
           ? (window.cfHeroTypeEndAt + REVEAL_MS - F.releaseDuration) : Infinity;
         if (now >= relAt || heroTyped() || el >= F.holdDuration) {
-          // LOGO de particles_good_logo.js: el desarmado empieza aquí sin prepareRelease().
-          // El efecto sale de particleMorph(): morph baja de 1→0 durante releaseDuration.
+          // El desarmado empieza aquí. El efecto sale de particleMorph(): morph baja de 1→0.
           phase = 'RELEASING'; phaseStart = now; introDone = true;
+          // IMPORTANTE: el desarme arranca en progreso 0. Sin esto, este frame usaría
+          // phaseProgress=1 (heredado de HOLD) con fase RELEASING → particleMorph daría
+          // lp=0 para todo el logo durante 1 frame (parpadeo). Con 0, lp≈1 y no parpadea.
+          phaseProgress = 0;
         }
       } else if (phase === 'RELEASING') {
         relProg = clamp01(el / F.releaseDuration); phaseProgress = relProg; morph = 1 - smoothstep(relProg);
