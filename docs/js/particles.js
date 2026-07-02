@@ -2,16 +2,15 @@
    CareFlow — Partículas en canvas (dos modos)
 
    - data-mode="flow" (por defecto, hero de la landing):
-       Sistema de PUNTOS (luciérnagas) suspendidos en bandas anchas de
-       viento. Todas comparten una dirección dominante y un vaivén de
-       grupo, pero cada punto teje su propio meandro (no siguen el mismo
-       camino ni se acumulan en filas/líneas).
-       Al abrir la página el ICONO de CareFlow (muestreado desde
-       assets/logo_menu.svg, SIN sus 3 líneas internas) se materializa con una
-       formación breve y suave (~0.5s). La frase del hero se escribe dentro del
-       logo y éste se desarma lentamente (5s) de forma que TERMINA justo cuando
-       aparecen los demás elementos; luego las partículas siguen con el viento y
-       el logo no vuelve a formarse. Sin líneas, trails, blur ni paths visibles.
+       Sistema de PUNTOS atmosféricos. Mantiene el fondo flotante de
+       particles.js sin dirección global dominante, con vida/fade propio y
+       distribución equilibrada. El LOGO usa la lógica limpia de
+       particles_good_logo.js: icono muestreado desde assets/logo_menu.svg,
+       sin sus 3 líneas internas, con formación breve y suave (~0.5s). La frase
+       del hero se escribe dentro del logo y éste se desarma lentamente (5s) de
+       forma que TERMINA justo cuando aparecen los demás elementos; luego las
+       partículas flotan en el ambiente y el logo no vuelve a formarse. Sin
+       líneas, trails, blur ni paths visibles.
 
    - data-mode="network" (panel azul del login):
        Red de nodos interconectados con líneas. SIN CAMBIOS.
@@ -36,32 +35,38 @@
      ================================================================ */
   var FLOW_DEFAULTS = {
     // — Ambiente (cantidades; se escalan por viewport y DPR) —
-    particleCount:              2000,   // total de partículas de viento (objetivo desktop)
-    logoParticleCount:          1100,   // máx. partículas reclutadas para el icono
-    reinforcementParticleCount: 460,    // refuerzo temporal sobre los bordes del icono
+    particleCount:              2200,   // total de partículas de fondo (objetivo desktop)
+    logoParticleCount:          1380,   // más cuerpo para el logo sin saturarlo
+    reinforcementParticleCount: 460,    // borde nuevamente más marcado, como en la versión anterior
+    fillReinforcementParticleCount: 260, // refuerzo interno sutil para dar cuerpo al relleno
 
-    // — Viento / corriente compartida —
-    windSpeed:      0.34,   // velocidad base de deriva (dirección COMPARTIDA; px/frame)
-    windDirDeg:     11,     // dirección dominante (grados; ~horizontal con leve diagonal)
-    wanderAmp:      0.18,   // meandro INDIVIDUAL por partícula → mismo rumbo, distinto camino (anti-fila)
-    swayAmp:        0.07,   // vaivén COMPARTIDO de la banda (coordinación de grupo; px/frame)
-    swaySpeed:      0.16,   // velocidad del vaivén compartido (rad/s; lento y relajante)
-    windEase:       0.05,   // suavizado hacia el viento (damping; bajo = más fluido)
-    bandStiffness:  0.02,   // contención: empuje de vuelta sólo al salirse del ancho de banda
+    // — Fondo flotante / atmosférico —
+    windOpacity:         1.0,   // multiplicador global de opacidad del ambiente
+    floatMinSpeed:       0.05,
+    floatMaxSpeed:       0.32,
+    floatEase:           0.035,
+    floatDrift:          0.75,
+    floatNoise:          0.28,
+    floatSpeedJitter:    0.045,
+    ambientCellSize:     125,
+    compactCellSize:     95,
+    minSeparation:       26,
+    separationStrength:  0.026,
+    crowdStrength:       0.014,
 
-    // — Bandas / ribbons —
-    ribbonWidth:    300,    // ancho de referencia de las bandas (px; volumétrico, no raya)
-    ribbonCount:    3,      // nº de bandas en desktop (2 en pantallas compactas)
-    densScale:      0.0016, // escala del ruido de densidad (crea zonas vacías irregulares)
-    windOpacity:    1.0,    // multiplicador global de opacidad del ambiente
+    // — Muestreo del logo —
+    logoEdgeKeep:   0.64,
+    logoFillKeep:   0.78,
+    logoEdgeQuota:  0.38,
+    logoFillQuota:  0.70,
 
     // — Logo (INTRO única: materialización breve al abrir; desarmado sincronizado con el typewriter) —
     formationDuration: 550,   // ms de la materialización breve del logo al cargar
     holdDuration:      9000,  // ms máx. de espera (fallback) por si el typewriter nunca termina
     releaseDuration:   5000,  // ms de dispersión del logo → viento (lento y sutil; se conserva)
-    logoScale:         0.94,  // fracción del hueco del hero que llena el logo (1 = pegado a los bordes)
-    logoOpacity:       1.0,   // multiplicador de opacidad del logo + refuerzo
-    maskFade:          0.42,  // cuánto se atenúa la máscara blanca del hero al formar el logo
+    logoScale:         0.94,  // LOGO de particles_good_logo.js: fracción del hueco del hero que llena el logo
+    logoOpacity:       1.0,   // LOGO de particles_good_logo.js: multiplicador de opacidad del logo + refuerzo
+    maskFade:          0.42,  // LOGO de particles_good_logo.js: cuánto se atenúa la máscara blanca del hero al formar el logo
 
     // — Transición (steering) —
     seekStrength:   0.022,  // atracción hacia el punto-objetivo del logo
@@ -69,18 +74,19 @@
     swirlStrength:  0.16,   // giro lateral suave mientras se acomoda (no fila recta)
     damping:        0.14,   // asentamiento al llegar (el logo "respira" sin deformarse)
     holdJitter:     0.6,    // micro-respiración del logo en hold (px)
-    maxSpeed:       1.5,    // velocidad máx en viento (sube durante la formación)
+    maxSpeed:       0.95,   // velocidad máx del fondo (sube durante la formación)
 
     // — Cursor (muy sutil: mueve el aire, no repele) —
     mouseStrength:  0.5,    // fuerza de interacción del cursor
     mouseRadius:    220,    // radio de influencia del cursor (px)
 
     // — Render de cada punto —
-    particleMinSize: 1.0,   // tamaño mín. del núcleo (px)
-    particleMaxSize: 2.8,   // tamaño máx. del núcleo (px)
-    glow:            0.18,  // opacidad relativa del halo (0 = sin glow; baja para perf)
-    glowRadius:      2.4,   // radio del halo respecto al núcleo
-    glowMinSize:     1.5,   // sólo las partículas > este tamaño llevan halo (rendimiento)
+    particleMinSize: 0.8,   // tamaño mín. del núcleo (px)
+    particleMaxSize: 2.2,   // tamaño habitual máx. del núcleo (px)
+    accentMaxSize:   3.05,  // acentos raros y controlados
+    glow:            0.12,  // opacidad relativa del halo (0 = sin glow; baja para perf)
+    glowRadius:      2.0,   // radio del halo respecto al núcleo
+    glowMinSize:     1.55,  // sólo las partículas > este tamaño llevan halo (rendimiento)
   };
 
   /* ---------- helpers ---------- */
@@ -89,6 +95,7 @@
   function clamp(x, a, b) { return x < a ? a : (x > b ? b : x); }
   function smoothstep(x) { x = clamp01(x); return x * x * (3 - 2 * x); }
   function lerp(a, b, t) { return a + (b - a) * t; }
+  function angleDelta(from, to) { return Math.atan2(Math.sin(to - from), Math.cos(to - from)); }
   function mixColor(a, b, t) {
     return [Math.round(lerp(a[0], b[0], t)), Math.round(lerp(a[1], b[1], t)), Math.round(lerp(a[2], b[2], t))];
   }
@@ -149,12 +156,14 @@
 
     var w = 0, h = 0, cx = 0, cy = 0;
     var parts = [], reinf = [], bands = [];
+    var spatial = { cell: 120, cols: 1, rows: 1, buckets: [], counts: [], avg: 1 };
     var raf = null, running = true, lastFrame = perfNow();
     var mouse = { x: null, y: null, active: false, vx: 0, vy: 0, last: 0 };
 
     // silueta del logo (muestreada una vez de forma asíncrona)
     var targets = [];      // {nx, ny, col, edge} normalizados (centrados en 0)
     var edgeTargets = [];  // subconjunto de bordes (para el refuerzo)
+    var fillTargets = [];  // subconjunto de relleno (para dar más cuerpo sin endurecer el borde)
     var logoHalf = { nx: 0.5, ny: 0.44 }; // semiextensión normalizada real del icono (para ajustarlo al hero)
 
     var phase = 'WIND';    // WIND → FORMING → HOLD → RELEASING → WIND (el logo es una INTRO única)
@@ -176,93 +185,177 @@
     function perfNow() { return (typeof performance !== 'undefined' ? performance.now() : Date.now()); }
     function compact() { return Math.min(w, h) < 640 || w < 720; }
 
-    /* ---------- bandas / ribbons ---------- */
+    /* ---------- fondo atmosférico + grid espacial ---------- */
     function buildBands() {
       if (!w || !h) return;
-      var dir = F.windDirDeg * Math.PI / 180;
-      var baseVX = Math.cos(dir) * F.windSpeed;
-      var baseVY = Math.sin(dir) * F.windSpeed;
-      var refW = clamp(F.ribbonWidth, 120, 280);
-      // Bandas (cy en fracción de altura): principal detrás del título,
-      // una superior sutil (por debajo del navbar) y una inferior ligera.
-      var defs = compact()
-        ? [ { cyf: 0.40, wf: 1.00, op: 1.00, share: 0.62 },
-            { cyf: 0.72, wf: 0.78, op: 0.72, share: 0.38 } ]
-        : [ { cyf: 0.42, wf: 1.00, op: 1.00, share: 0.50 },
-            { cyf: 0.20, wf: 0.70, op: 0.72, share: 0.22 },
-            { cyf: 0.74, wf: 0.84, op: 0.82, share: 0.28 } ];
-      bands = defs.map(function (d, i) {
-        return {
-          cy: h * d.cyf,
-          width: clamp(refW * d.wf, 120, 320),
-          amp: h * (0.05 + i * 0.008),
-          amp2: h * (0.02 + i * 0.005),
-          freq: TWO_PI / (w * (1.25 + i * 0.22)),
-          freq2: TWO_PI / (w * (0.55 + i * 0.13)),
-          phase: i * 1.7 + Math.random() * 0.6,
-          phase2: i * 2.3 + Math.random() * 0.6,
-          drift: 0.05 + i * 0.018,
-          densSeed: 100 + i * 53.7,
-          baseVX: baseVX, baseVY: baseVY,
-          opacity: d.op, share: d.share,
-        };
-      });
+      bands = [{ opacity: 1, share: 1 }];
+      configureSpatialGrid();
     }
 
-    function centerY(band, x, t) {
-      return band.cy
-        + Math.sin(x * band.freq + band.phase + t * band.drift) * band.amp
-        + Math.sin(x * band.freq2 + band.phase2 - t * band.drift * 0.6) * band.amp2;
+    function configureSpatialGrid() {
+      var cell = compact() ? F.compactCellSize : F.ambientCellSize;
+      spatial.cell = clamp(cell, 72, 150);
+      spatial.cols = Math.max(1, Math.ceil(w / spatial.cell));
+      spatial.rows = Math.max(1, Math.ceil(h / spatial.cell));
+      var total = spatial.cols * spatial.rows;
+      spatial.buckets = new Array(total);
+      spatial.counts = new Array(total);
+      for (var i = 0; i < total; i++) { spatial.buckets[i] = []; spatial.counts[i] = 0; }
+      spatial.avg = 1;
     }
 
-    function pickBand() {
-      var total = 0, i; for (i = 0; i < bands.length; i++) total += bands[i].share;
-      var r = Math.random() * total;
-      for (i = 0; i < bands.length; i++) { r -= bands[i].share; if (r <= 0) return i; }
-      return 0;
+    function cellIndexAt(x, y) {
+      if (!spatial.cols || !spatial.rows) return -1;
+      var c = Math.floor(clamp(x, 0, Math.max(0, w - 1)) / spatial.cell);
+      var r = Math.floor(clamp(y, 0, Math.max(0, h - 1)) / spatial.cell);
+      return r * spatial.cols + c;
     }
 
     function effectiveCount() {
       var area = w * h, ref = 1500 * 900;
       var c = Math.round(F.particleCount * Math.min(area / ref, 1.15) * densityFactor);
-      if (compact()) c = Math.round(c * 0.5);
+      if (compact()) c = Math.round(c * 0.65);
       return clamp(c, 240, Math.round(F.particleCount * 1.25));
     }
 
-    function spawnWind(bandIdx, seedX) {
-      var b = bands[bandIdx] || bands[0];
-      var t = perfNow() * 0.001;
-      var x = (seedX != null) ? seedX : (Math.random() * (w + 2 * MARGIN) - MARGIN);
-      // reparto ~uniforme a lo ancho (el edgeSoft funde los bordes) → nube, no raya
-      var off = (Math.random() - 0.5) * b.width * 1.1;
-      var y = centerY(b, x, t) + off;
+    function resetLife(p, newborn) {
+      p.life = 12000 + Math.random() * 12000;
+      p.fadeIn = 1500 + Math.random() * 1500;
+      p.fadeOut = 2500 + Math.random() * 2000;
+      p.age = newborn ? 0 : Math.random() * p.life * 0.72;
+    }
+
+    function setFloatMotion(p, keepVelocity) {
+      p.floatDir = Math.random() * TWO_PI;
+      p.floatBaseDir = p.floatDir;
+      p.floatSpeed = lerp(F.floatMinSpeed, F.floatMaxSpeed, Math.pow(Math.random(), 1.7));
+      p.floatPhase = Math.random() * TWO_PI;
+      p.floatRate = 0.08 + Math.random() * 0.13;
+      p.speedPhase = Math.random() * TWO_PI;
+      p.speedRate = 0.10 + Math.random() * 0.16;
+      if (!keepVelocity) {
+        p.vx = Math.cos(p.floatDir) * p.floatSpeed;
+        p.vy = Math.sin(p.floatDir) * p.floatSpeed;
+      }
+    }
+
+    function pickParticleSize() {
+      if (Math.random() > 0.975) return lerp(F.particleMaxSize, F.accentMaxSize, Math.random());
+      return lerp(F.particleMinSize, F.particleMaxSize, Math.pow(Math.random(), 1.55));
+    }
+
+    function spawnWind(x, y, newborn) {
       return {
-        role: 'wind', band: bandIdx, x: x, y: y, vx: b.baseVX, vy: b.baseVY,
+        role: 'wind', band: 0, x: x, y: y, vx: 0, vy: 0,
         seed: Math.random() * 1000, jitterPhase: Math.random() * TWO_PI,
-        // meandro propio: fases + frecuencias únicas → cada punto traza su camino
-        wpx: Math.random() * TWO_PI, wpy: Math.random() * TWO_PI,
-        wfx: 0.16 + Math.random() * 0.34, wfy: 0.13 + Math.random() * 0.30,
-        size: lerp(F.particleMinSize, F.particleMaxSize, Math.pow(Math.random(), 1.5)), // sesgo a pequeñas
+        size: pickParticleSize(),
         col: pickFlowColor(),
-        baseAlpha: 0.42 + Math.random() * 0.46,
+        baseAlpha: 0.24 + Math.random() * 0.34,
         tx: 0, ty: 0, hasTarget: false, edgeTarget: false, logoCol: null, logoAlpha: 0,
-        delay: 0, releaseDelay: 0,
+        delay: 0, releaseDelay: 0, age: 0, life: 1, fadeIn: 1, fadeOut: 1,
+        floatDir: 0, floatBaseDir: 0, floatSpeed: 0, floatPhase: 0, floatRate: 0, speedPhase: 0, speedRate: 0,
+        gridIndex: -1,
       };
     }
 
     function buildFlow() {
       parts = [];
       var n = effectiveCount();
-      for (var i = 0; i < n; i++) parts.push(spawnWind(pickBand(), null));
+      configureSpatialGrid();
+      var cols = Math.max(1, Math.ceil(Math.sqrt(n * Math.max(w, 1) / Math.max(h, 1))));
+      var rows = Math.max(1, Math.ceil(n / cols));
+      var cellW = (w + 2 * MARGIN) / cols;
+      var cellH = (h + 2 * MARGIN) / rows;
+      for (var i = 0; i < n; i++) {
+        var gx = i % cols, gy = Math.floor(i / cols);
+        var x = -MARGIN + (gx + Math.random()) * cellW;
+        var y = -MARGIN + (gy + Math.random()) * cellH;
+        var p = spawnWind(x, y, false);
+        setFloatMotion(p, false);
+        resetLife(p, false);
+        parts.push(p);
+      }
     }
 
-    function respawnEdge(p) { // reabsorber al borde opuesto de su banda
-      var b = bands[p.band] || bands[0];
-      var t = perfNow() * 0.001;
-      p.x = (p.vx >= 0) ? (-MARGIN - Math.random() * 40) : (w + MARGIN + Math.random() * 40);
-      var off = (Math.random() - 0.5) * b.width * 1.1;
-      p.y = centerY(b, p.x, t) + off;
-      p.vx = b.baseVX; p.vy = b.baseVY;
+    function lifecycleAlpha(p) {
+      var born = smoothstep(p.age / Math.max(1, p.fadeIn));
+      var dying = smoothstep((p.life - p.age) / Math.max(1, p.fadeOut));
+      return clamp01(Math.min(born, dying));
+    }
+
+    function pickUnderfilledPoint() {
+      if (!spatial.counts.length) return { x: Math.random() * w, y: Math.random() * h };
+      var best = 0, bestScore = Infinity;
+      for (var i = 0; i < 10; i++) {
+        var idx = (Math.random() * spatial.counts.length) | 0;
+        var score = spatial.counts[idx] + Math.random() * 0.35;
+        if (score < bestScore) { bestScore = score; best = idx; }
+      }
+      var col = best % spatial.cols, row = (best / spatial.cols) | 0;
+      return {
+        x: clamp((col + 0.12 + Math.random() * 0.76) * spatial.cell, 0, w),
+        y: clamp((row + 0.12 + Math.random() * 0.76) * spatial.cell, 0, h),
+      };
+    }
+
+    function respawnAmbient(p, newborn) {
+      var pos = pickUnderfilledPoint();
+      p.x = pos.x; p.y = pos.y;
+      p.hasTarget = false; p.role = 'wind'; p.logoCol = null; p.edgeTarget = false;
+      p.size = pickParticleSize();
+      p.baseAlpha = 0.24 + Math.random() * 0.34;
+      setFloatMotion(p, false);
+      resetLife(p, newborn);
+    }
+
+    function rebuildSpatialGrid(phaseProgress) {
+      configureSpatialGrid();
+      var active = 0;
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        p.gridIndex = -1;
+        if (p.x < 0 || p.x > w || p.y < 0 || p.y > h) continue;
+        if (particleMorph(p, phaseProgress) > 0.45) continue;
+        var idx = cellIndexAt(p.x, p.y);
+        if (idx < 0) continue;
+        spatial.buckets[idx].push(p);
+        spatial.counts[idx]++;
+        p.gridIndex = idx;
+        active++;
+      }
+      spatial.avg = active / Math.max(1, spatial.counts.length);
+    }
+
+    function applyDistributionForces(p, lp) {
+      if (lp > 0.45 || p.gridIndex < 0 || !spatial.buckets.length) return;
+      var idx = p.gridIndex;
+      var count = spatial.counts[idx] || 0;
+      var over = count - spatial.avg * 1.35;
+      if (over > 2) {
+        var col = idx % spatial.cols, row = (idx / spatial.cols) | 0;
+        var ccx = (col + 0.5) * spatial.cell, ccy = (row + 0.5) * spatial.cell;
+        var ox = p.x - ccx, oy = p.y - ccy, od = Math.hypot(ox, oy) || 1;
+        var push = Math.min(3, over) * F.crowdStrength;
+        p.vx += (ox / od) * push;
+        p.vy += (oy / od) * push;
+      }
+
+      var c0 = idx % spatial.cols, r0 = (idx / spatial.cols) | 0;
+      for (var rr = Math.max(0, r0 - 1); rr <= Math.min(spatial.rows - 1, r0 + 1); rr++) {
+        for (var cc = Math.max(0, c0 - 1); cc <= Math.min(spatial.cols - 1, c0 + 1); cc++) {
+          var bucket = spatial.buckets[rr * spatial.cols + cc];
+          for (var j = 0; j < bucket.length; j++) {
+            var q = bucket[j];
+            if (q === p) continue;
+            var dx = p.x - q.x, dy = p.y - q.y, d = Math.hypot(dx, dy);
+            if (d > 0.1 && d < F.minSeparation) {
+              var f = (1 - d / F.minSeparation) * F.separationStrength;
+              p.vx += (dx / d) * f;
+              p.vy += (dy / d) * f;
+            }
+          }
+        }
+      }
     }
 
     /* ---------- muestreo del icono desde el SVG (aspect ratio intacto) ---------- */
@@ -331,37 +424,80 @@
         }
       }
 
+      // Recuperar grosor del SVG sin perder las separaciones internas abiertas
+      // (sobre todo el hueco entre la mano/brazo y la parte superior del corazón).
+      // Partimos del núcleo erosionado y lo expandimos sólo dentro de la máscara real.
+      var solid = new Uint8Array(em);
+      for (var pass = 0; pass < 2; pass++) {
+        var next = new Uint8Array(solid);
+        for (py = minY; py <= maxY; py++) {
+          for (px = minX; px <= maxX; px++) {
+            var sid = py * RW + px;
+            if (!mask[sid] || solid[sid]) continue;
+            var near = solid[sid - 1] || solid[sid + 1] || solid[sid - RW] || solid[sid + RW]
+              || solid[sid - RW - 1] || solid[sid - RW + 1] || solid[sid + RW - 1] || solid[sid + RW + 1];
+            if (near) next[sid] = 1;
+          }
+        }
+        solid = next;
+      }
+
       var midX = (minX + maxX) / 2, midY = (minY + maxY) / 2;
       var rmax = Math.max(maxX - minX, maxY - minY); // misma escala en x e y → sin deformar
-      var step = 2;
-      function has(x, y) { return x >= 0 && x < RW && y >= 0 && y < RH && em[y * RW + x]; }
+      function hasEdge(x, y) { return x >= 0 && x < RW && y >= 0 && y < RH && em[y * RW + x]; }
+      function hasFill(x, y) { return x >= 0 && x < RW && y >= 0 && y < RH && solid[y * RW + x]; }
 
-      // dedupe por celdas para evitar acumulaciones feas
-      var sep = 3.2, occ = {};
-      var pts = [], edges = [];
-      for (py = minY; py <= maxY; py += step) {
-        for (px = minX; px <= maxX; px += step) {
-          if (!has(px, py)) continue;
-          // borde si algún vecino (incl. diagonales) es espacio negativo
-          var edge = !has(px - step, py) || !has(px + step, py) || !has(px, py - step) || !has(px, py + step)
-            || !has(px - step, py - step) || !has(px + step, py + step) || !has(px - step, py + step) || !has(px + step, py - step);
-          var keep = edge ? 0.92 : 0.25; // más densidad en bordes que en relleno
-          if (Math.random() > keep) continue;
-          var gx = Math.round(px / sep), gy = Math.round(py / sep);
-          var key = gx + ',' + gy; if (occ[key]) continue; occ[key] = 1;
+      // Muestreamos el BORDE y el RELLENO por separado.
+      // - El borde sale del núcleo erosionado (em): más detalle, mejor lectura de curvas y huecos internos.
+      // - El relleno sale del cuerpo restaurado (solid): da masa sin cerrar huecos importantes.
+      var pts = [], edges = [], fills = [];
+      var occEdge = {}, occFill = {};
+      var edgeStep = 1, fillStep = 2;
+      var edgeSep = 2.45, fillSep = 3.25;
+
+      for (py = minY; py <= maxY; py += edgeStep) {
+        for (px = minX; px <= maxX; px += edgeStep) {
+          if (!hasEdge(px, py)) continue;
+          var edge = !hasEdge(px - 1, py) || !hasEdge(px + 1, py) || !hasEdge(px, py - 1) || !hasEdge(px, py + 1)
+            || !hasEdge(px - 1, py - 1) || !hasEdge(px + 1, py + 1) || !hasEdge(px - 1, py + 1) || !hasEdge(px + 1, py - 1);
+          if (!edge) continue;
+          if (Math.random() > F.logoEdgeKeep) continue;
+          var egx = Math.round(px / edgeSep), egy = Math.round(py / edgeSep);
+          var ekey = egx + ',' + egy; if (occEdge[ekey]) continue; occEdge[ekey] = 1;
           k = (py * RW + px) * 4;
-          var pt = {
-            nx: (px - midX) / rmax + (Math.random() - 0.5) * 0.0018, // jitter mínimo (no matriz rígida)
-            ny: (py - midY) / rmax + (Math.random() - 0.5) * 0.0018,
+          var ept = {
+            nx: (px - midX) / rmax + (Math.random() - 0.5) * 0.0015, // borde más preciso
+            ny: (py - midY) / rmax + (Math.random() - 0.5) * 0.0015,
             col: [data[k], data[k + 1], data[k + 2]],
-            edge: edge,
+            edge: true,
           };
-          pts.push(pt);
-          if (edge) edges.push(pt);
+          pts.push(ept);
+          edges.push(ept);
         }
       }
+
+      for (py = minY; py <= maxY; py += fillStep) {
+        for (px = minX; px <= maxX; px += fillStep) {
+          if (!hasFill(px, py) || hasEdge(px, py)) continue;
+          if (Math.random() > F.logoFillKeep) continue;
+          var fgx = Math.round(px / fillSep), fgy = Math.round(py / fillSep);
+          var fkey = fgx + ',' + fgy; if (occFill[fkey]) continue; occFill[fkey] = 1;
+          k = (py * RW + px) * 4;
+          var sourcePixel = em[py * RW + px];
+          var fpt = {
+            nx: (px - midX) / rmax + (Math.random() - 0.5) * 0.0027,
+            ny: (py - midY) / rmax + (Math.random() - 0.5) * 0.0027,
+            col: sourcePixel ? [data[k], data[k + 1], data[k + 2]] : LOGO_CORE,
+            edge: false,
+          };
+          pts.push(fpt);
+          fills.push(fpt);
+        }
+      }
+
       targets = pts;
       edgeTargets = edges;
+      fillTargets = fills;
       logoHalf = { nx: (maxX - minX) / (2 * rmax), ny: (maxY - minY) / (2 * rmax) };
       // La intro (única) la dispara el loop en cuanto targets está listo (ver stepFlow).
     }
@@ -422,6 +558,11 @@
       if (compact()) c = Math.round(c * 0.55);
       return c;
     }
+    function scaledFillReinfCount() {
+      var c = F.fillReinforcementParticleCount;
+      if (compact()) c = Math.round(c * 0.55);
+      return c;
+    }
 
     /* ---------- iniciar formación ---------- */
     function enterForming(now) {
@@ -435,7 +576,13 @@
       }
       shuffle(edgesT); shuffle(fillsT);
       var lc = Math.min(parts.length, scaledLogoCount(), targets.length);
-      var tgt = edgesT.concat(fillsT).slice(0, lc); // bordes primero → contorno sólido, relleno disperso
+      var edgeGoal = Math.min(edgesT.length, Math.round(lc * F.logoEdgeQuota));
+      var fillGoal = Math.min(fillsT.length, Math.round(lc * F.logoFillQuota));
+      if (edgeGoal + fillGoal > lc) fillGoal = lc - edgeGoal;
+      if (edgeGoal + fillGoal < lc) fillGoal = Math.min(fillsT.length, fillGoal + (lc - edgeGoal - fillGoal));
+      var tgt = edgesT.slice(0, edgeGoal).concat(fillsT.slice(0, fillGoal));
+      shuffle(tgt); // mezcla borde/relleno: forma orgánica, menos sensación de contorno dibujado
+      lc = Math.min(lc, tgt.length);
 
       var idx = []; for (i = 0; i < parts.length; i++) { parts[i].hasTarget = false; parts[i].role = 'wind'; idx.push(i); }
       shuffle(idx);
@@ -451,7 +598,7 @@
         p.tx = tg.x; p.ty = tg.y;
         p.edgeTarget = !!tg.edge;
         p.logoCol = tg.edge ? LOGO_EDGE : LOGO_CORE;
-        p.logoAlpha = tg.edge ? 0.82 : 0.6;
+        p.logoAlpha = tg.edge ? (0.82 + Math.random() * 0.05) : (0.78 + Math.random() * 0.08);
         p.delay = Math.random() * 0.30;          // llegadas escalonadas
         p.releaseDelay = Math.random() * 0.30;
       }
@@ -479,36 +626,48 @@
     // separación corazón/mano, curva de la mano). Fade-in/out.
     function buildReinforcement(ox, oy, px) {
       reinf = [];
-      if (!edgeTargets.length) return;
+      if (!edgeTargets.length && !fillTargets.length) return;
+
       var pool = edgeTargets.slice();
       shuffle(pool);
       var rc = Math.min(scaledReinfCount(), pool.length);
       for (var i = 0; i < rc; i++) {
         var e = pool[i];
         reinf.push({
-          x: ox + e.nx * px + (Math.random() - 0.5) * 1.4,
-          y: oy + e.ny * px + (Math.random() - 0.5) * 1.4,
-          size: 0.7 + Math.random() * 0.7,
+          x: ox + e.nx * px + (Math.random() - 0.5) * 1.15,
+          y: oy + e.ny * px + (Math.random() - 0.5) * 1.15,
+          size: 0.68 + Math.random() * 0.60,
           seed: Math.random() * TWO_PI,
-          a: 0.55 + Math.random() * 0.35,
+          a: 0.48 + Math.random() * 0.28,
           col: REINF_COLOR,
+        });
+      }
+
+      var fillPool = fillTargets.slice();
+      shuffle(fillPool);
+      var fc = Math.min(scaledFillReinfCount(), fillPool.length);
+      for (i = 0; i < fc; i++) {
+        var f = fillPool[i];
+        reinf.push({
+          x: ox + f.nx * px + (Math.random() - 0.5) * 3.0,
+          y: oy + f.ny * px + (Math.random() - 0.5) * 3.0,
+          size: 0.72 + Math.random() * 0.82,
+          seed: Math.random() * TWO_PI,
+          a: 0.12 + Math.random() * 0.12,
+          col: LOGO_CORE,
         });
       }
     }
 
     function endRelease(now) {
       phase = 'WIND'; phaseStart = now; morph = 0; reinfAlpha = 0; reinf = [];
-      var t = now * 0.001;
       for (var i = 0; i < parts.length; i++) {
         var p = parts[i];
         p.hasTarget = false; p.role = 'wind'; p.logoCol = null;
-        // reasignar a la banda más cercana para reintegrarse a la corriente
-        var best = 0, bd = 1e9;
-        for (var b = 0; b < bands.length; b++) {
-          var dd = Math.abs(p.y - centerY(bands[b], p.x, t));
-          if (dd < bd) { bd = dd; best = b; }
-        }
-        p.band = best;
+        p.edgeTarget = false;
+        setFloatMotion(p, true);
+        resetLife(p, false);
+        p.age = Math.random() * p.life * 0.35;
       }
     }
 
@@ -548,7 +707,11 @@
         // elementos → empieza ANTES de que acabe el typewriter, usando su fin previsto.
         var relAt = (typeof window !== 'undefined' && window.cfHeroTypeEndAt)
           ? (window.cfHeroTypeEndAt + REVEAL_MS - F.releaseDuration) : Infinity;
-        if (now >= relAt || heroTyped() || el >= F.holdDuration) { phase = 'RELEASING'; phaseStart = now; introDone = true; }
+        if (now >= relAt || heroTyped() || el >= F.holdDuration) {
+          // LOGO de particles_good_logo.js: el desarmado empieza aquí sin prepareRelease().
+          // El efecto sale de particleMorph(): morph baja de 1→0 durante releaseDuration.
+          phase = 'RELEASING'; phaseStart = now; introDone = true;
+        }
       } else if (phase === 'RELEASING') {
         relProg = clamp01(el / F.releaseDuration); phaseProgress = relProg; morph = 1 - smoothstep(relProg);
         reinfAlpha = 1 - smoothstep(relProg);
@@ -564,36 +727,42 @@
 
       ctx.clearRect(0, 0, w, h); // sin acumulación → sin estelas/humo
       mouse.vx *= 0.9; mouse.vy *= 0.9;
+      rebuildSpatialGrid(phaseProgress);
 
       for (var i = 0; i < parts.length; i++) {
         var p = parts[i];
-        var b = bands[p.band] || bands[0];
         var lp = particleMorph(p, phaseProgress);
 
-        // 1) Corriente: TODAS van en la misma dirección (base + vaivén compartido), pero
-        //    cada partícula teje su PROPIO camino (meandro por seed) → nunca forman "fila".
-        //    No hay campo dependiente de la posición ⇒ sin streamlines ni acumulación en líneas.
-        var yc = centerY(b, p.x, t);
-        var dyc = p.y - yc, halfW = b.width * 0.55, contain = 0;
-        if (dyc > halfW) contain = halfW - dyc; else if (dyc < -halfW) contain = -halfW - dyc;
-        var sway = Math.sin(t * F.swaySpeed + b.phase) * F.swayAmp; // vaivén compartido (coordinación de grupo)
-        var ind = 1 - lp;                                           // el meandro se desvanece al formar el logo
-        var wvx = (Math.sin(t * p.wfx + p.wpx) + 0.5 * Math.sin(t * p.wfx * 2.3 + p.wpy)) * F.wanderAmp;
-        var wvy = (Math.cos(t * p.wfy + p.wpy) + 0.5 * Math.sin(t * p.wfy * 1.9 + p.wpx)) * F.wanderAmp;
-        var tvx = b.baseVX + wvx * ind;
-        var tvy = b.baseVY + sway + wvy * ind + contain * F.bandStiffness * (1 - lp);
-        p.vx += (tvx - p.vx) * F.windEase;
-        p.vy += (tvy - p.vy) * F.windEase;
+        // 1) Fondo flotante: cada partícula conserva rumbo propio, sin corriente global.
+        var free = 1 - lp;
+        if (free > 0.02) {
+          if (!p.hasTarget) {
+            p.age += realDt;
+            if (p.age > p.life) { respawnAmbient(p, true); continue; }
+          }
+          var drift = Math.sin(t * p.floatRate + p.floatPhase) * F.floatDrift;
+          var noise = (valueNoise2(p.seed * 0.013 + t * 0.035, p.floatPhase) - 0.5) * F.floatNoise;
+          var targetDir = p.floatBaseDir + drift + noise;
+          p.floatDir += angleDelta(p.floatDir, targetDir) * F.floatEase * dtScale;
+          var speed = clamp(p.floatSpeed + Math.sin(t * p.speedRate + p.speedPhase) * F.floatSpeedJitter, F.floatMinSpeed, F.floatMaxSpeed);
+          var tvx = Math.cos(p.floatDir) * speed;
+          var tvy = Math.sin(p.floatDir) * speed;
+          p.vx += (tvx - p.vx) * F.floatEase * free * dtScale;
+          p.vy += (tvy - p.vy) * F.floatEase * free * dtScale;
+          applyDistributionForces(p, lp);
+        }
 
         // 2) cursor: mueve el aire de forma tangencial (sutil), no repele
+        var mouseBoost = 0;
         if (F.mouseStrength > 0 && mouse.active && mouse.x != null && lp < 0.5) {
           var mx = p.x - mouse.x, my = p.y - mouse.y, md = Math.hypot(mx, my);
           if (md < F.mouseRadius && md > 0.1) {
             var wk = smoothstep(1 - md / F.mouseRadius) * F.mouseStrength * (1 - morph * 0.7);
             var ml = Math.hypot(mouse.vx, mouse.vy);
             var dx = ml > 0.05 ? mouse.vx / ml : 0, dy = ml > 0.05 ? mouse.vy / ml : 0;
-            p.vx += (dx * 0.5 + (-my / md) * 0.4) * wk;
-            p.vy += (dy * 0.5 + (mx / md) * 0.4) * wk;
+            p.vx += (dx * 0.35 + (-my / md) * 0.28) * wk;
+            p.vy += (dy * 0.35 + (mx / md) * 0.28) * wk;
+            mouseBoost = smoothstep(1 - md / F.mouseRadius) * (1 - lp);
           }
         }
 
@@ -618,32 +787,34 @@
         if (sp > maxSp) { p.vx = p.vx / sp * maxSp; p.vy = p.vy / sp * maxSp; }
         p.x += p.vx * dtScale; p.y += p.vy * dtScale;
 
-        // reciclado sólo cuando es viento (nunca rompe el logo)
+        // reciclado sólo cuando es fondo libre (nunca rompe el logo)
         if (lp < 0.06) {
-          if (p.x > w + MARGIN || p.x < -MARGIN || p.y < -MARGIN || p.y > h + MARGIN) { respawnEdge(p); }
+          if (p.x > w + MARGIN || p.x < -MARGIN || p.y < -MARGIN || p.y > h + MARGIN) { respawnAmbient(p, true); continue; }
         }
 
         // ---- alpha + dibujo (punto limpio, glow pequeño y opcional) ----
-        var ycNow = centerY(b, p.x, t);
-        var edgeSoft = smoothstep(1 - Math.abs(p.y - ycNow) / (b.width * 0.95)); // bordes suaves de la banda
-        var dens = smoothstep((valueNoise2(p.x * F.densScale + b.densSeed, b.densSeed * 0.3) - 0.30) / 0.5); // zonas vacías
-        var flick = 0.84 + Math.sin(t * 1.3 + p.jitterPhase) * 0.16;
-        var ambient = (0.6 + 0.4 * edgeSoft) * (0.2 + 0.8 * dens); // banda tipo losa (no cordón central)
+        var cellDensity = p.gridIndex >= 0 ? (spatial.counts[p.gridIndex] / Math.max(1, spatial.avg)) : 1;
+        var densityTone = clamp(1 - Math.max(0, cellDensity - 1.45) * 0.08, 0.78, 1.04);
+        var flick = 0.90 + Math.sin(t * 0.9 + p.jitterPhase) * 0.10;
+        var ambient = lifecycleAlpha(p) * densityTone;
         var vis = p.hasTarget ? lerp(ambient, 1, lp) : ambient;
-        var alpha = p.baseAlpha * vis * flick * F.windOpacity * b.opacity;
+        var alpha = p.baseAlpha * vis * flick * F.windOpacity;
         if (p.hasTarget) alpha = lerp(alpha, p.logoAlpha * F.logoOpacity, lp);
-        else alpha *= (1 - 0.5 * morph); // atenúa el ambiente mientras vive el logo
+        else alpha *= (1 - 0.62 * morph); // atenúa el ambiente mientras vive el logo
+        alpha *= (1 + mouseBoost * 0.32);
         alpha *= introFade;              // fade-in inicial (aparición suave, ya formado)
         if (alpha < 0.012) continue;
         if (alpha > 0.9) alpha = 0.9;
 
         var col = p.logoCol ? mixColor(p.col, p.logoCol, lp) : p.col;
-        var size = p.size * (1 + lp * 0.28);
+        var logoSizeBoost = p.edgeTarget ? 0.42 : 0.72;
+        var size = p.size * (1 + lp * logoSizeBoost) * (1 + mouseBoost * 0.12);
+        var glowBoost = 1 + mouseBoost * 0.55;
 
         if (F.glow > 0 && lp < 0.25 && size > F.glowMinSize) { // sin glow al formar → logo crujiente
           ctx.beginPath();
           ctx.arc(p.x, p.y, size * F.glowRadius, 0, TWO_PI);
-          ctx.fillStyle = 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + (alpha * F.glow) + ')';
+          ctx.fillStyle = 'rgba(' + col[0] + ',' + col[1] + ',' + col[2] + ',' + (alpha * F.glow * glowBoost) + ')';
           ctx.fill();
         }
         ctx.beginPath();
@@ -672,14 +843,9 @@
 
     function drawStatic() { // prefers-reduced-motion: un solo frame, sin animación ni logo
       ctx.clearRect(0, 0, w, h);
-      var t = 0;
       for (var i = 0; i < parts.length; i++) {
-        var p = parts[i], b = bands[p.band] || bands[0];
-        var ycNow = centerY(b, p.x, t);
-        var edgeSoft = smoothstep(1 - Math.abs(p.y - ycNow) / (b.width * 0.95));
-        var dens = smoothstep((valueNoise2(p.x * F.densScale + b.densSeed, b.densSeed * 0.3) - 0.30) / 0.5);
-        var ambient = (0.6 + 0.4 * edgeSoft) * (0.2 + 0.8 * dens);
-        var alpha = clamp(p.baseAlpha * ambient * F.windOpacity * b.opacity, 0, 0.8);
+        var p = parts[i];
+        var alpha = clamp(p.baseAlpha * 0.82 * F.windOpacity, 0, 0.62);
         if (alpha < 0.02) continue;
         ctx.beginPath();
         ctx.arc(p.x, p.y, p.size, 0, TWO_PI);
