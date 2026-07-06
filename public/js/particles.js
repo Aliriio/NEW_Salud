@@ -42,12 +42,14 @@
 
     // — Fondo flotante / atmosférico —
     windOpacity:         1.0,   // multiplicador global de opacidad del ambiente
-    floatMinSpeed:       0.05,
-    floatMaxSpeed:       0.32,
+    floatMinSpeed:       0.20,  // deriva mín. (px/frame)
+    floatMaxSpeed:       0.60,  // deriva máx. → las partículas recorren el hero y salen por los bordes
     floatEase:           0.035,
-    floatDrift:          0.75,
-    floatNoise:          0.28,
-    floatSpeedJitter:    0.045,
+    floatDrift:          0.5,   // ondulación del rumbo (menor = trayectorias más rectas → más cruce)
+    floatNoise:          0.2,
+    floatSpeedJitter:    0.05,
+    edgeFadeDist:        120,   // px: atenúa las partículas cerca de los bordes (desvanecimiento gradual)
+    releaseDisperse:     0.5,   // al desarmar, se abren radialmente y se reparten por todo el hero
     ambientCellSize:     125,
     compactCellSize:     95,
     minSeparation:       26,
@@ -218,7 +220,7 @@
     }
 
     function resetLife(p, newborn) {
-      p.life = 12000 + Math.random() * 12000;
+      p.life = 40000 + Math.random() * 40000; // vida larga → salen por bordes antes de morir por edad
       p.fadeIn = 1500 + Math.random() * 1500;
       p.fadeOut = 2500 + Math.random() * 2000;
       p.age = newborn ? 0 : Math.random() * p.life * 0.72;
@@ -282,30 +284,27 @@
       return clamp01(Math.min(born, dying));
     }
 
-    function pickUnderfilledPoint() {
-      if (!spatial.counts.length) return { x: Math.random() * w, y: Math.random() * h };
-      var best = 0, bestScore = Infinity;
-      for (var i = 0; i < 10; i++) {
-        var idx = (Math.random() * spatial.counts.length) | 0;
-        var score = spatial.counts[idx] + Math.random() * 0.35;
-        if (score < bestScore) { bestScore = score; best = idx; }
-      }
-      var col = best % spatial.cols, row = (best / spatial.cols) | 0;
-      // jitter de CELDA COMPLETA (0..1) → sin huecos en los bordes de celda (evita grilla)
-      return {
-        x: clamp((col + Math.random()) * spatial.cell, 0, w),
-        y: clamp((row + Math.random()) * spatial.cell, 0, h),
-      };
-    }
-
-    function respawnAmbient(p, newborn) {
-      var pos = pickUnderfilledPoint();
-      p.x = pos.x; p.y = pos.y;
+    // Reaparición ENTRANDO por un borde: la partícula surge justo fuera de la vista
+    // y flota hacia adentro con variación → flujo natural de entrada/salida por bordes.
+    function respawnAtEdge(p) {
+      var m = MARGIN * 0.6, side = (Math.random() * 4) | 0, inward;
+      if (side === 0)      { p.x = Math.random() * w;        p.y = -m;             inward = TWO_PI * 0.25; } // arriba → baja
+      else if (side === 1) { p.x = w + m;                    p.y = Math.random() * h; inward = TWO_PI * 0.50; } // derecha → izquierda
+      else if (side === 2) { p.x = Math.random() * w;        p.y = h + m;          inward = TWO_PI * 0.75; } // abajo → sube
+      else                 { p.x = -m;                       p.y = Math.random() * h; inward = 0; }            // izquierda → derecha
+      p.floatDir = inward + (Math.random() - 0.5) * TWO_PI * 0.34; // hacia adentro ±61°
+      p.floatBaseDir = p.floatDir;
+      p.floatSpeed = lerp(F.floatMinSpeed, F.floatMaxSpeed, Math.pow(Math.random(), 1.5));
+      p.floatPhase = Math.random() * TWO_PI;
+      p.floatRate = 0.08 + Math.random() * 0.13;
+      p.speedPhase = Math.random() * TWO_PI;
+      p.speedRate = 0.10 + Math.random() * 0.16;
+      p.vx = Math.cos(p.floatDir) * p.floatSpeed;
+      p.vy = Math.sin(p.floatDir) * p.floatSpeed;
       p.hasTarget = false; p.role = 'wind'; p.logoCol = null; p.edgeTarget = false;
       p.size = pickParticleSize();
       p.baseAlpha = 0.24 + Math.random() * 0.34;
-      setFloatMotion(p, false);
-      resetLife(p, newborn);
+      resetLife(p, true); // nace nuevo (fade-in suave al entrar)
     }
 
     function rebuildSpatialGrid(phaseProgress) {
@@ -492,6 +491,7 @@
       edgeTargets = edges;
       fillTargets = fills;
       logoHalf = { nx: (maxX - minX) / (2 * rmax), ny: (maxY - minY) / (2 * rmax) };
+      updateLogoCssVars(); // logoHalf afinado → recomputa el tamaño para el título
       // La intro (única) la dispara el loop en cuanto targets está listo (ver stepFlow).
     }
 
@@ -540,6 +540,11 @@
       var maxByH = (h * 0.5) / logoHalf.ny;
       var maxByW = (w * 0.5) / logoHalf.nx;
       return Math.min(maxByH, maxByW) * F.logoScale;
+    }
+    // Expone el tamaño real del logo a CSS → el título (h1) se dimensiona con la MISMA
+    // métrica responsiva que el logo, para caber siempre dentro del hueco del corazón.
+    function updateLogoCssVars() {
+      if (heroEl && w && h) heroEl.style.setProperty('--cf-logo-px', Math.round(logoPx()) + 'px');
     }
     function scaledLogoCount() {
       var c = F.logoParticleCount;
@@ -652,13 +657,28 @@
       }
     }
 
+    // Al iniciar el desarme: cada partícula del logo toma un rumbo RADIAL desde el
+    // centro (con variación) y velocidad alta → se abren y se reparten por TODO el
+    // hero, en vez de quedarse apelotonadas donde estaba el logo.
+    function disperseLogoParticles() {
+      for (var i = 0; i < parts.length; i++) {
+        var p = parts[i];
+        if (!p.hasTarget) continue;
+        var ang = Math.atan2(p.y - cy, p.x - cx);
+        p.floatBaseDir = ang + (Math.random() - 0.5) * 1.4; // hacia afuera ±40°
+        p.floatDir = p.floatBaseDir;
+        p.floatSpeed = lerp(F.floatMaxSpeed * 0.7, F.floatMaxSpeed, Math.random());
+      }
+    }
+
     function endRelease(now) {
       phase = 'WIND'; phaseStart = now; morph = 0; reinfAlpha = 0; reinf = [];
       for (var i = 0; i < parts.length; i++) {
         var p = parts[i];
         p.hasTarget = false; p.role = 'wind'; p.logoCol = null;
         p.edgeTarget = false;
-        setFloatMotion(p, true);
+        // NO se reasigna la dirección: conserva el rumbo radial del desarme para
+        // seguir repartiéndose por el hero y salir por los bordes.
         resetLife(p, false);
         p.age = Math.random() * p.life * 0.35;
       }
@@ -707,6 +727,7 @@
           // phaseProgress=1 (heredado de HOLD) con fase RELEASING → particleMorph daría
           // lp=0 para todo el logo durante 1 frame (parpadeo). Con 0, lp≈1 y no parpadea.
           phaseProgress = 0;
+          disperseLogoParticles(); // reparte el logo por todo el hero al desarmarse
         }
       } else if (phase === 'RELEASING') {
         relProg = clamp01(el / F.releaseDuration); phaseProgress = relProg; morph = 1 - smoothstep(relProg);
@@ -734,7 +755,7 @@
         if (free > 0.02) {
           if (!p.hasTarget) {
             p.age += realDt;
-            if (p.age > p.life) { respawnAmbient(p, true); continue; }
+            if (p.age > p.life) { respawnAtEdge(p); continue; } // renovación también por bordes
           }
           var drift = Math.sin(t * p.floatRate + p.floatPhase) * F.floatDrift;
           var noise = (valueNoise2(p.seed * 0.013 + t * 0.035, p.floatPhase) - 0.5) * F.floatNoise;
@@ -783,9 +804,10 @@
         if (sp > maxSp) { p.vx = p.vx / sp * maxSp; p.vy = p.vy / sp * maxSp; }
         p.x += p.vx * dtScale; p.y += p.vy * dtScale;
 
-        // reciclado sólo cuando es fondo libre (nunca rompe el logo)
+        // reciclado sólo cuando es fondo libre (nunca rompe el logo):
+        // sale por un borde → reaparece ENTRANDO por otro borde (flujo continuo)
         if (lp < 0.06) {
-          if (p.x > w + MARGIN || p.x < -MARGIN || p.y < -MARGIN || p.y > h + MARGIN) { respawnAmbient(p, true); continue; }
+          if (p.x > w + MARGIN || p.x < -MARGIN || p.y < -MARGIN || p.y > h + MARGIN) { respawnAtEdge(p); continue; }
         }
 
         // ---- alpha + dibujo (punto limpio, glow pequeño y opcional) ----
@@ -799,6 +821,9 @@
         else alpha *= (1 - 0.62 * morph); // atenúa el ambiente mientras vive el logo
         alpha *= (1 + mouseBoost * 0.32);
         alpha *= introFade;              // fade-in inicial (aparición suave, ya formado)
+        // atenúa cerca de los bordes del hero → entran/salen suave (no aplica al logo formado)
+        var edgeFade = smoothstep(Math.min(p.x, w - p.x, p.y, h - p.y) / F.edgeFadeDist);
+        alpha *= lerp(edgeFade, 1, lp);
         if (alpha < 0.012) continue;
         if (alpha > 0.9) alpha = 0.9;
 
@@ -859,6 +884,7 @@
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       buildBands();
       buildFlow();
+      updateLogoCssVars();
       if (reduced) drawStatic();
     }
 
