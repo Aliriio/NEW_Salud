@@ -198,7 +198,7 @@ body.cf-typed .cf-nav-links { opacity: 1; transform: none; pointer-events: auto;
   /* Tamaño vinculado al tamaño REAL del logo (--cf-logo-px lo setea particles.js) →
      el título escala con la MISMA métrica que el logo y cabe dentro del hueco del
      corazón en cualquier pantalla (19–27"). Fallback clamp por si aún no hay JS. */
-  font-size: clamp(34px, calc(var(--cf-logo-px, 900px) * 0.054), 92px);
+  font-size: clamp(42px, calc(var(--cf-logo-px, 900px) * 0.068), 110px);
   line-height: 1.02;
   font-weight: 500;                 /* menos pesado → letras menos anchas (estilo Antigravity) */
   letter-spacing: -0.04em;          /* trazo más compacto */
@@ -210,7 +210,7 @@ body.cf-typed .cf-nav-links { opacity: 1; transform: none; pointer-events: auto;
 /* Durante la intro (logo aún formado) el título baja un poco para caer en la
    parte MÁS ANCHA del hueco del corazón; al terminar la escritura vuelve a su
    sitio de forma suave. Es sólo visual (transform) → no altera el layout final. */
-.cf-hero:not(.is-typed) h1 { transform: translateY(calc(var(--cf-logo-px, 854px) * 0.0164)); }
+.cf-hero:not(.is-typed) h1 { transform: translateY(calc(var(--cf-logo-px, 854px) * 0.0258)); }
 
 /* Elementos del hero ocultos durante la escritura del eslogan. Al terminar
    aparecen con un fundido MUY suave (largo y con muy poco desplazamiento),
@@ -806,7 +806,7 @@ body.cf-app-body {
   .cf-hero-actions .cf-btn { width: 100%; }
   /* En móvil el logo es pequeño; el título usa un tamaño legible propio (algo menor
      para caber dentro del corazón compacto sin tocar las partículas). */
-  .cf-hero h1 { font-size: clamp(32px, 9vw, 54px); }
+  .cf-hero h1 { font-size: clamp(32px, 9vw, 52px); }
 }
 
 /* ====================== REDUCED MOTION ====================== */
