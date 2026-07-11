@@ -1,6 +1,17 @@
 const datosProPai = window.datosProPai;
 
+/* Tipo de nota que genera esta página (un futuro recibo.html solo cambia esto) */
+const NOTE_TYPE = 'entrega';
+
+/* Áreas clínicas con etiqueta amigable: key = clave exacta de datosProPai,
+   label = nombre oficial mostrado en UI y en la nota (nota-listas.js). */
+const NOTA_AREAS = (window.notaListas?.areas)
+    || Object.keys(window.datosProPai || {}).map((k) => ({ key: k, label: k }));
+const areaLabel = (key) => NOTA_AREAS.find((a) => a.key === key)?.label || key || '';
+
 let currentStep = 1;
+let activeFlowStage = 'patient';
+let previewReturnFocus = null;
 let lastLogicalSectionId = 'patient';
 let sectionTypeaheadBuffer = '';
 let sectionTypeaheadTimer = null;
@@ -57,6 +68,12 @@ const els = {
     noteContent:    document.getElementById('noteContent'),
     noteStatus:     document.getElementById('noteStatus'),
     noteToggleBtn:  document.getElementById('noteToggleBtn'),
+    noteDrawerClose: document.getElementById('noteDrawerClose'),
+    noteDrawerScrim: document.getElementById('noteDrawerScrim'),
+    drawerCopyBtn:  document.getElementById('drawerCopyBtn'),
+    previewStatus:  document.getElementById('previewStatus'),
+    previewLaunchStatus: document.getElementById('previewLaunchStatus'),
+    previewDraftState: document.getElementById('previewDraftState'),
     copyBtn:        document.getElementById('copyBtn'),
     nicConfirmBtn:  document.getElementById('nicConfirmBtn'),
     nicConfirmHint: document.getElementById('nicConfirmHint'),
@@ -121,6 +138,137 @@ const activeSteps = () => STEPS.filter((s) => s.present());
 const activePos = (n) => activeSteps().findIndex((s) => s.num === n) + 1;  // 1-based
 const totalActive = () => activeSteps().length;
 const nextActiveNum = (n) => { const a = activeSteps(); const i = a.findIndex((s) => s.num === n); return i >= 0 && i < a.length - 1 ? a[i + 1].num : null; };
+
+/* ─── Flujo global de Nota de entrega ───
+   El PAE conserva su controlador interno; este nivel solo decide qué etapa mayor
+   está visible y resume el trabajo ya realizado. */
+const FLOW_STAGE_ORDER = ['patient', 'faseB', 'faseC', 'faseD', 'fasePAE', 'faseF'];
+
+function flowStageState(id) {
+    const nc = window.NotaCampos;
+    const clinical = nc?.getMissing() || { faseA: [], faseB: [], faseC: [], faseD: [], evaluacion: [], cierre: [] };
+    let missing = [];
+    let summary = '';
+
+    if (id === 'patient') {
+        if (!els.sexo || els.sexo.value === '___') missing.push('Sexo del paciente');
+        if (!validateDOB().valid) missing.push('Fecha de nacimiento válida');
+        missing.push(...clinical.faseA);
+        if (!selected.area && !inReverse()) missing.push('Área clínica');
+        const s = nc?.state;
+        summary = [s?.numHabitacion ? `Hab. ${s.numHabitacion}` : '', s?.servicio || '', selected.areaNombre || ''].filter(Boolean).join(' · ');
+    } else if (id === 'faseB' || id === 'faseC' || id === 'faseD') {
+        missing = [...(clinical[id] || [])];
+        summary = nc?.phaseStatus()?.[id]?.summary || '';
+    } else if (id === 'fasePAE') {
+        activeSteps().forEach((s) => {
+            if (!stepHasSelection(s.num)) missing.push(stepLabel(s));
+        });
+        summary = selected.diagnosticoNombre || selected.areaNombre || '';
+    } else if (id === 'faseF') {
+        missing = [...clinical.evaluacion];
+        if (!els.metaLograda?.value) missing.push('Estado de la meta (NOC) al cierre');
+        missing.push(...clinical.cierre);
+        summary = nc?.state?.tendencia || '';
+    }
+
+    return { complete: missing.length === 0, missing, summary };
+}
+
+function updateFlowNavigator() {
+    FLOW_STAGE_ORDER.forEach((id) => {
+        const btn = document.querySelector(`[data-flow-target="${id}"]`);
+        if (!btn) return;
+        const state = flowStageState(id);
+        const locked = id === 'fasePAE' && (!isPatientDataComplete() || (!selected.area && !inReverse()));
+        btn.disabled = locked;
+        btn.classList.toggle('flow-nav-item--complete', state.complete);
+        btn.classList.toggle('flow-nav-item--active', id === activeFlowStage);
+        if (id === activeFlowStage) btn.setAttribute('aria-current', 'step');
+        else btn.removeAttribute('aria-current');
+        const summary = btn.querySelector(`[data-flow-summary="${id}"]`);
+        if (summary) {
+            const text = locked ? 'Bloqueado' : state.complete ? (state.summary || 'Completo') : id === activeFlowStage ? 'En curso' : (state.summary || 'Pendiente');
+            summary.textContent = text.length > 38 ? `${text.slice(0, 38)}…` : text;
+        }
+    });
+}
+
+function focusFlowStageEntry(id) {
+    requestAnimationFrame(() => {
+        if (id === 'patient') {
+            const target = document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
+            target?.focus();
+        } else if (id === 'fasePAE') {
+            focusStepEntry(currentStep);
+        } else {
+            window.NotaCampos?.focusPhase(id, 1);
+        }
+    });
+}
+
+function activateFlowStage(id, opts = {}) {
+    if (!FLOW_STAGE_ORDER.includes(id)) return false;
+    if (id === 'fasePAE' && (!isPatientDataComplete() || (!selected.area && !inReverse()))) {
+        const message = document.querySelector('[data-flow-message="patient"]');
+        if (message) message.textContent = 'Complete los datos del paciente y el área clínica para habilitar el PAE.';
+        return false;
+    }
+    document.querySelectorAll('[data-flow-stage]').forEach((stage) => {
+        stage.hidden = stage.dataset.flowStage !== id;
+    });
+    activeFlowStage = id;
+    updateFlowNavigator();
+    const stage = document.querySelector(`[data-flow-stage="${id}"]`);
+    stage?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
+    if (opts.focus !== false) focusFlowStageEntry(id);
+    return true;
+}
+
+function focusPatientPending() {
+    const s = window.NotaCampos?.state;
+    const target = (!els.sexo || els.sexo.value === '___') ? document.getElementById('sexoSeg')?.querySelector('[role="radio"]')
+        : !validateDOB().valid ? els.dobDia
+        : !s?.posicion ? document.getElementById('posicion')
+        : !s?.numCama ? document.getElementById('numCama')
+        : !s?.numHabitacion ? document.getElementById('numHabitacion')
+        : !s?.servicio ? document.getElementById('servicio')
+        : !selected.area ? document.getElementById('areaClinica') : null;
+    target?.focus();
+    scrollSoft(target);
+    return !!target;
+}
+
+function continueFlowStage(id) {
+    const state = flowStageState(id);
+    const message = document.querySelector(`[data-flow-message="${id}"]`);
+    if (!state.complete) {
+        if (message) message.textContent = `Pendiente: ${state.missing[0]}`;
+        if (id === 'patient') focusPatientPending();
+        else if (id === 'faseF' && state.missing[0]?.startsWith('Estado de la meta')) {
+            if (els.metaBlock?.hidden) activateFlowStage('fasePAE', { focus: true });
+            else focusMeta();
+        }
+        else window.NotaCampos?.focusFirstPending(id);
+        return false;
+    }
+    if (message) message.textContent = '';
+    const index = FLOW_STAGE_ORDER.indexOf(id);
+    const next = FLOW_STAGE_ORDER[index + 1];
+    if (next) activateFlowStage(next, { focus: true });
+    else if (id === 'faseF') toggleNote(true);
+    return true;
+}
+
+function setupGlobalFlow() {
+    document.querySelectorAll('[data-flow-target]').forEach((btn) => {
+        btn.addEventListener('click', () => activateFlowStage(btn.dataset.flowTarget, { focus: true }));
+    });
+    document.querySelectorAll('[data-flow-continue]').forEach((btn) => {
+        btn.addEventListener('click', () => continueFlowStage(btn.dataset.flowContinue));
+    });
+    activateFlowStage('patient', { focus: false });
+}
 
 function isEditableElement(el) {
     const tag = el?.tagName;
@@ -196,8 +344,8 @@ function updateProgress() {
             els.progressLabel.textContent = 'Identifique el diagnóstico por signos y factores';
         } else {
             els.progressLabel.textContent = selected.b6Puntuacion
-                ? 'Flujo completado ✓'
-                : `Paso ${pos} de ${total} — ${(() => { const s = stepByNum(currentStep); return s ? stepLabel(s) : ''; })()}`;
+                ? 'PAE completado ✓'
+                : `PAE — Paso ${pos} de ${total} — ${(() => { const s = stepByNum(currentStep); return s ? stepLabel(s) : ''; })()}`;
         }
     }
 }
@@ -357,6 +505,9 @@ function onDobChange() {
         else [els.dobDia, els.dobMes, els.dobAnio].forEach(f => f?.classList.add('dob-field-error'));
 
         if (fb) { fb.textContent = result.errorMsg; fb.className = 'dob-feedback error'; }
+    } else if (result.valid) {
+        // Edad visible junto a la fecha: el usuario confirma el dato sin buscarlo en la nota
+        if (fb) { fb.textContent = `Edad: ${result.ageText}`; fb.className = 'dob-feedback ok'; }
     } else {
         if (fb) { fb.textContent = ''; fb.className = 'dob-feedback'; }
     }
@@ -429,14 +580,14 @@ function setupSexoControl() {
 }
 
 /* Meta: respalda el valor en #metaLograda (hidden), '' = sin elegir.
-   Enter/↓ avanzan a observaciones; ↑ vuelve a la evaluación B6 (sección anterior). */
+   Enter/↓ avanzan al criterio clínico; ↑ vuelve a la tendencia evolutiva. */
 function setupMetaControl() {
-    const toObs = () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); };
+    const toCriterio = () => { const c = document.getElementById('criterioClinico'); c?.focus(); scrollSoft(c); };
     setupSegmentedGroup(document.getElementById('metaSeg'), els.metaLograda, {
         onChange: updateNote,
-        onConfirm: toObs,
-        onDown: toObs,
-        onUp: () => focusAdjacentSection('meta', -1),
+        onConfirm: toCriterio,
+        onDown: toCriterio,
+        onUp: () => { const t = document.getElementById('tendenciaEvolutiva'); t?.focus(); scrollSoft(t); },
     });
 }
 
@@ -460,7 +611,7 @@ function setupDobNavigation() {
     const dia  = els.dobDia;
     const mes  = els.dobMes;
     const anio = els.dobAnio;
-    const serv = els.servicio;
+    const serv = document.getElementById('posicion') || els.servicio;   // siguiente campo de Fase A
     if (!dia || !mes || !anio) return;
 
     // Filtrar a solo dígitos
@@ -526,7 +677,7 @@ function setupDobNavigation() {
         });
     });
 
-    // Navegación de vuelta: ArrowLeft desde Servicio/Unidad → campo Año
+    // Navegación de vuelta: ArrowLeft desde el campo siguiente → campo Año
     serv?.addEventListener('keydown', e => {
         if (e.key === 'ArrowLeft' && serv.selectionStart === 0) {
             e.preventDefault();
@@ -538,25 +689,11 @@ function setupDobNavigation() {
 
 /* ─── Ajusta el techo del panel de nota al alto real del workflow ─── */
 function syncNotePanelHeight() {
-    const workflow     = document.querySelector('.workflow');
     const noteSection  = document.querySelector('.note-section');
-    const noteHeader   = document.querySelector('.note-panel-header');
     const noteContent  = document.getElementById('noteContent');
-    if (!workflow || !noteSection) return;
-
-    const workflowH  = workflow.offsetHeight;
-    const viewportH  = window.innerHeight;
-    // Techo externo: mínimo entre alto del workflow y viewport menos padding del body (sp-8 * 2 = 64px)
-    const outerMax   = Math.min(workflowH, viewportH - 64);
-
-    noteSection.style.maxHeight = outerMax + 'px';
-
-    // Techo interno para el elemento con scroll:
-    // outerMax − alto del header del panel − padding del body (sp-4 + sp-5 + sp-3 gap = 48px)
-    const headerH    = noteHeader ? noteHeader.offsetHeight : 50;
-    const innerMax   = outerMax - headerH - 48;
-
-    if (innerMax > 60 && noteContent) noteContent.style.maxHeight = innerMax + 'px';
+    if (!noteSection || !noteContent) return;
+    noteSection.style.maxHeight = `${window.innerHeight}px`;
+    noteContent.style.maxHeight = 'none';
 }
 
 /* ─── Decide qué panel lateral se muestra y el ancho del formulario ───
@@ -564,12 +701,11 @@ function syncNotePanelHeight() {
    Nota completa → panel de nota. En otro caso, formulario a todo el ancho. */
 function updateLayout() {
     const showDx = inReverse() && !selected.diagnostico;
-    const showNote = isNoteComplete().complete;
     if (els.dxLive) els.dxLive.hidden = !showDx;
-    if (els.noteSection) els.noteSection.hidden = !showNote;
-    document.querySelector('.content')?.classList.toggle('has-aside', showDx || showNote);
-    document.querySelector('.container')?.classList.toggle('container--with-aside', showDx || showNote);
-    document.querySelector('.cf-page-head')?.classList.toggle('page-head--with-aside', showDx || showNote);
+    if (els.noteSection) els.noteSection.hidden = !noteVisible;
+    document.querySelector('.content')?.classList.toggle('has-aside', showDx);
+    document.querySelector('.container')?.classList.toggle('container--with-aside', showDx);
+    document.querySelector('.cf-page-head')?.classList.toggle('page-head--with-aside', showDx);
     syncDxLiveOffset();
 }
 
@@ -658,40 +794,47 @@ function updateEpConfirmBtn() {
 }
 
 /* ─── Toggle de visibilidad de la nota clínica ─── */
-function toggleNote() {
-    noteVisible = !noteVisible;
+function toggleNote(force) {
+    const next = typeof force === 'boolean' ? force : !noteVisible;
+    if (next === noteVisible && els.noteSection?.hidden === !next) return;
+    noteVisible = next;
 
     if (noteVisible) {
+        previewReturnFocus = document.activeElement;
+        if (els.noteSection) els.noteSection.hidden = false;
+        if (els.noteDrawerScrim) els.noteDrawerScrim.hidden = false;
         els.noteContent.hidden = false;
-        if (els.noteToggleBtn) {
-            els.noteToggleBtn.textContent = 'Ocultar nota';
-            els.noteToggleBtn.setAttribute('aria-expanded', 'true');
-            els.noteToggleBtn.classList.add('active');
-        }
+        els.noteToggleBtn?.setAttribute('aria-expanded', 'true');
+        document.body.classList.add('note-drawer-open');
+        syncNotePanelHeight();
+        requestAnimationFrame(() => els.noteDrawerClose?.focus());
     } else {
-        els.noteContent.hidden = true;
-        if (els.noteToggleBtn) {
-            els.noteToggleBtn.textContent = 'Ver nota';
-            els.noteToggleBtn.setAttribute('aria-expanded', 'false');
-            els.noteToggleBtn.classList.remove('active');
-        }
+        if (els.noteSection) els.noteSection.hidden = true;
+        if (els.noteDrawerScrim) els.noteDrawerScrim.hidden = true;
+        els.noteToggleBtn?.setAttribute('aria-expanded', 'false');
+        document.body.classList.remove('note-drawer-open');
+        const target = previewReturnFocus?.isConnected ? previewReturnFocus : els.noteToggleBtn;
+        previewReturnFocus = null;
+        target?.focus();
     }
 }
 
-/* ─── Verifica si los datos del paciente están completos y válidos ─── */
+/* ─── Verifica si los datos mínimos del paciente están completos y válidos ───
+   (sexo + fecha válida + servicio: gobiernan el desbloqueo del PAE y del área) */
 function isPatientDataComplete() {
     if (!els.sexo || els.sexo.value === '___') return false;
     if (!validateDOB().valid) return false;
-    if (!els.servicio || els.servicio.value.trim() === '') return false;
+    if (!window.NotaCampos?.state.servicio) return false;
     return true;
 }
 
-/* ─── Bloquea/desbloquea el paso 1 según datos del paciente ─── */
+/* ─── Bloquea/desbloquea el paso 1 (y el combobox de área) según datos del paciente ─── */
 function updateStep1Lock() {
     const step1El = document.getElementById('step1');
     if (!step1El) return;
     const locked = !isPatientDataComplete();
     step1El.classList.toggle('step--locked', locked);
+    window.NotaCampos?.setAreaEnabled(!locked);
 
     if (locked) {
         // Replegar paso 1 si está activo
@@ -711,22 +854,54 @@ function updateStep1Lock() {
     }
 }
 
-/* ─── Verifica si la nota está completa (derivado de los pasos activos) ─── */
+/* ─── Verifica si la nota está completa ───
+   Los faltantes se acumulan en el ORDEN NARRATIVO de la nota, de modo que
+   "Pendiente: X" siempre señale el primer hueco en orden de lectura. */
 function isNoteComplete() {
     const missing = [];
+    const m = window.NotaCampos?.getMissing()
+        || { faseA: [], faseB: [], faseC: [], faseD: [], evaluacion: [], cierre: [] };
 
-    if (!els.sexo || els.sexo.value === '___')            missing.push('Sexo del paciente');
-    if (!validateDOB().valid)                             missing.push('Fecha de nacimiento válida');
-    if (!els.servicio || els.servicio.value.trim() === '') missing.push('Servicio / Unidad');
+    // Fase A — paciente y ubicación
+    if (!els.sexo || els.sexo.value === '___') missing.push('Sexo del paciente');
+    if (!validateDOB().valid)                  missing.push('Fecha de nacimiento válida');
+    missing.push(...m.faseA);
+    if (!selected.area && !inReverse())        missing.push('Área clínica');
 
-    // Cada paso activo del flujo debe tener selección válida (EP se omite en riesgos)
+    // Fases B, C y D — estado clínico, dispositivos, hallazgos
+    missing.push(...m.faseB, ...m.faseC, ...m.faseD);
+
+    // Fase E — PAE: cada paso activo debe tener selección (el paso 1 forward ya
+    // se reporta arriba como "Área clínica")
     activeSteps().forEach((s) => {
-        if (!stepHasSelection(s.num)) missing.push(`${stepLabel(s)} (Paso ${activePos(s.num)})`);
+        if (s.num === 1 && !inReverse()) return;
+        if (!stepHasSelection(s.num)) missing.push(`${stepLabel(s)} (PAE, paso ${activePos(s.num)})`);
     });
 
-    if (!els.metaLograda?.value) missing.push('Estado de la meta al cierre del turno');
+    // Fase F — evaluación y entrega
+    missing.push(...m.evaluacion);
+    if (!els.metaLograda?.value) missing.push('Estado de la meta (NOC) al cierre');
+    missing.push(...m.cierre);
 
     return { complete: missing.length === 0, missing };
+}
+
+/* ─── Badges de completitud "n/m" por fase (✓ al completar) ─── */
+function updatePhaseBadges() {
+    const nc = window.NotaCampos;
+    if (!nc) return;
+    const st = nc.phaseStatus();
+    // Fase F incluye el estado de la meta, que vive en app.js
+    st.faseF.total += 1;
+    if (els.metaLograda?.value) st.faseF.done += 1;
+    ['faseB', 'faseC', 'faseD', 'faseF'].forEach((id) => {
+        const badge = document.querySelector(`[data-phase-badge="${id}"]`);
+        if (!badge) return;
+        const { done, total } = st[id];
+        const complete = done >= total;
+        badge.textContent = complete ? '✓ Completo' : 'Pendiente';
+        badge.classList.toggle('phase-badge--done', complete);
+    });
 }
 
 /* ─── Rayitas doradas alrededor del botón "Ver nota" al aparecer ─── */
@@ -763,34 +938,26 @@ function updateCopyBtnState() {
         els.noteStatus.textContent = `Pendiente: ${missing[0]}`;
     }
 
-    // Mostrar/ocultar el botón "Ver nota" según completitud
-    if (els.noteToggleBtn) {
-        const wasHidden = els.noteToggleBtn.hidden;
-        els.noteToggleBtn.hidden = !complete;
-        if (complete && wasHidden) {
-            // Aparece por primera vez: animar y mostrar la nota automáticamente
-            els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
-            void els.noteToggleBtn.offsetWidth;
-            els.noteToggleBtn.classList.add('note-toggle-btn--ready');
-            const cleanAnim = (e) => {
-                if (e.target !== els.noteToggleBtn) return;
-                els.noteToggleBtn.classList.remove('note-toggle-btn--ready');
-                els.noteToggleBtn.removeEventListener('animationend', cleanAnim);
-            };
-            els.noteToggleBtn.addEventListener('animationend', cleanAnim);
-            setTimeout(() => triggerBtnBurst(els.noteToggleBtn), 190);
-            // Auto-mostrar la nota sin pasar por toggleNote para no invertir estado erróneo
-            noteVisible = false;
-            toggleNote();
-        }
-        if (!complete && noteVisible) {
-            // Si la nota estaba visible y la completitud se pierde, ocultarla
-            noteVisible = true; // toggleNote() lo invierte
-            toggleNote();
-        }
+    if (els.drawerCopyBtn) {
+        els.drawerCopyBtn.disabled = !complete;
+        els.drawerCopyBtn.setAttribute('aria-disabled', complete ? 'false' : 'true');
+    }
+    if (els.previewLaunchStatus) {
+        els.previewLaunchStatus.textContent = complete ? 'Nota lista para copiar' : `Borrador · ${missing.length} pendiente${missing.length === 1 ? '' : 's'}`;
+    }
+    if (els.previewStatus) {
+        els.previewStatus.className = `note-drawer-status ${complete ? 'complete' : 'incomplete'}`;
+        els.previewStatus.textContent = complete
+            ? 'La nota está completa y lista para revisión final.'
+            : `${missing.length} campo${missing.length === 1 ? '' : 's'} pendiente${missing.length === 1 ? '' : 's'}. Primero: ${missing[0]}.`;
+    }
+    if (els.previewDraftState) {
+        els.previewDraftState.textContent = complete ? 'Lista para revisar' : 'Borrador';
     }
 
+    updatePhaseBadges();
     updateStep1Lock();
+    updateFlowNavigator();
     updateLayout();
 }
 
@@ -1251,8 +1418,11 @@ function containerForSection(id) {
 
 function searchForActiveSection() {
     const id = activeLogicalSectionId();
-    if (typeof id !== 'number') return null;
-    return stepByNum(id)?.search?.() || null;
+    if (typeof id === 'number') return stepByNum(id)?.search?.() || null;
+    if (typeof id === 'string' && id.startsWith('fase')) {
+        return window.NotaCampos?.searchForPhase(id) || null;
+    }
+    return null;
 }
 
 function optionTypeaheadText(opt) {
@@ -1366,14 +1536,18 @@ function sectionList() {
         },
         focus: (dir) => goToStepSection(s.num, dir),
     }));
+    const phase = (id) => ({ id, has: () => true, focus: (dir) => window.NotaCampos?.focusPhase(id, dir) });
     return [
         { id: 'patient', has: () => true, focus: (dir) => {
-            const t = dir < 0 ? els.servicio : document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
+            const t = dir < 0 ? document.getElementById('areaClinica') : document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
             t?.focus(); t?.select?.(); scrollSoft(t);
         } },
+        phase('faseB'),
+        phase('faseC'),
+        phase('faseD'),
         ...steps,
-        { id: 'meta', has: () => !els.metaBlock?.hidden, focus: () => { scrollSoft(els.metaBlock); focusMeta(); } },
-        { id: 'obs',  has: () => !els.metaBlock?.hidden, focus: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); } },
+        phase('faseF'),
+        { id: 'obs',  has: () => true, focus: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); } },
         { id: 'note', has: () => !!els.noteToggleBtn && !els.noteToggleBtn.hidden, focus: () => { els.noteToggleBtn?.focus(); scrollSoft(els.noteToggleBtn); } },
         { id: 'copy', has: () => !els.copyBtn?.disabled, focus: () => { els.copyBtn?.focus(); scrollSoft(els.copyBtn); } },
     ];
@@ -1385,11 +1559,12 @@ function sectionList() {
 function currentSectionId() {
     const a = document.activeElement;
     if (!a) return null;
-    if (a.closest('#sexoSeg') || a === els.dobDia || a === els.dobMes || a === els.dobAnio || a === els.servicio) return 'patient';
+    if (a.closest?.('.patient-block')) return 'patient';
     if (a.closest?.('#dxLive')) return 1;
     const stepEl = a.closest?.('.step');
     if (stepEl && stepEl.dataset.step) return Number(stepEl.dataset.step);
-    if (a.closest?.('#metaSeg')) return 'meta';
+    const phaseEl = a.closest?.('.phase');
+    if (phaseEl && phaseEl.dataset.section) return phaseEl.dataset.section;
     if (a === els.otrosComentarios) return 'obs';
     if (a === els.noteToggleBtn) return 'note';
     if (a === els.copyBtn) return 'copy';
@@ -1403,6 +1578,8 @@ function focusAdjacentSection(fromId, delta) {
     if (idx < 0) return false;
     const target = list[idx + delta];
     if (!target) return false;
+    if (typeof target.id === 'number') activateFlowStage('fasePAE', { focus: false });
+    else if (FLOW_STAGE_ORDER.includes(target.id)) activateFlowStage(target.id, { focus: false });
     target.focus(delta);
     return true;
 }
@@ -1428,8 +1605,12 @@ function advanceCurrentSectionByShortcut() {
 
     if (id === 'patient') {
         if (!isPatientDataComplete()) return false;
-        activateStep(1, { focus: true });
-        return true;
+        return focusAdjacentSection('patient', +1);   // → Fase B (estado clínico)
+    }
+    if (typeof id === 'string' && id.startsWith('fase')) {
+        // Fase incompleta → primer control pendiente; completa → sección siguiente
+        if (window.NotaCampos?.focusFirstPending(id)) return true;
+        return focusAdjacentSection(id, +1);
     }
     if (typeof id === 'number') {
         const confirmBtn = confirmButtonForStep(id);
@@ -1445,11 +1626,6 @@ function advanceCurrentSectionByShortcut() {
         }
         if (stepHasSelection(id)) return focusAdjacentSection(id, +1);
         return false;
-    }
-    if (id === 'meta') {
-        els.otrosComentarios?.focus();
-        scrollSoft(els.otrosComentarios);
-        return true;
     }
     if (id === 'obs') {
         if (els.noteToggleBtn && !els.noteToggleBtn.hidden) {
@@ -1520,42 +1696,58 @@ function filterOptions(container, query) {
    siguen incluyéndose en la nota generada. No-op para los llamados existentes. ─── */
 function renderTransversales() {}
 
+/* ─── Aplica la selección de área clínica (fuente única) ───
+   Punto de entrada compartido por el combobox de Fase A y las tarjetas del paso 1
+   del PAE. `key` es la clave exacta de datosProPai; null limpia la identificación. */
+function applyAreaSelection(key, opts = {}) {
+    if (key == null) {
+        // El usuario vació el área: se limpia la identificación (conserva datos del paciente)
+        if (selected.area) { clearIdentification(); activateStep(1); }
+        return true;
+    }
+    if (!isPatientDataComplete()) return false;
+    if (!datosProPai[key]) return false;
+
+    selected.area = key;
+    selected.areaNombre = areaLabel(key);
+    selected.diagnostico = null; selected.diagnosticoNombre = null;
+    selected.datosDiag = null; selected.rc = []; selected.ep = [];
+    selected.nics = []; selected.customNics = [];
+    selected.noc = null; selected.nocNombre = null; selected.nocCustom = false;
+    selected.b6Escala = null; selected.b6EscalaId = null; selected.b6CustomNiveles = [];
+    selected.b6Puntuacion = null; selected.b6Descripcion = null;
+
+    els.areas.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o.dataset.area === key));
+    window.NotaCampos?.setArea(key);
+
+    [2, 3, 4, 5, 6, 7].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
+    maxReachedStep = 1;   // el avance posterior ya no es válido: se eligió otra área
+    showMetaBlock(false);
+
+    els.searchDiag.value = '';
+    loadDiagnosticos(key);
+    activateStep(2, { focus: opts.advancePae !== false && opts.focus !== false });
+    if (opts.advancePae !== false) activateFlowStage('fasePAE', { focus: opts.focus !== false });
+    renderTransversales(null);
+    updateNote();
+    return true;
+}
+
 /* ─── Carga áreas / condiciones clínicas ─── */
 function loadAreas() {
     els.areas.innerHTML = '';
-    Object.keys(datosProPai).forEach((area) => {
-        const count = Object.keys(datosProPai[area]).length;
-        const opt = createOption(area, `${count} diagnóstico(s) de enfermería`, { area });
+    NOTA_AREAS.forEach(({ key, label }) => {
+        if (!datosProPai[key]) return;
+        const count = Object.keys(datosProPai[key]).length;
+        const opt = createOption(label, `${count} diagnóstico(s) de enfermería`, { area: key });
         els.areas.appendChild(opt);
     });
     setupOptionList(els.areas, { searchInput: els.searchAreas, stepNum: 1 });
 
     els.areas.onclick = (e) => {
-        if (!isPatientDataComplete()) return;
         const option = e.target.closest('.option');
         if (!option) return;
-
-        els.areas.querySelectorAll('.option').forEach((o) => o.classList.remove('selected'));
-        option.classList.add('selected');
-
-        selected.area = option.dataset.area;
-        selected.areaNombre = selected.area;
-        selected.diagnostico = null; selected.diagnosticoNombre = null;
-        selected.datosDiag = null; selected.rc = []; selected.ep = [];
-        selected.nics = []; selected.customNics = [];
-        selected.noc = null; selected.nocNombre = null; selected.nocCustom = false;
-        selected.b6Escala = null; selected.b6EscalaId = null; selected.b6CustomNiveles = [];
-        selected.b6Puntuacion = null; selected.b6Descripcion = null;
-
-        [2, 3, 4, 5, 6, 7].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
-        maxReachedStep = 1;   // el avance posterior ya no es válido: se eligió otra área
-        showMetaBlock(false);
-
-        els.searchDiag.value = '';
-        loadDiagnosticos(selected.area);
-        activateStep(2, { focus: true });
-        renderTransversales(null);
-        updateNote();
+        applyAreaSelection(option.dataset.area, { focus: true, advancePae: true });
     };
 }
 
@@ -2008,7 +2200,8 @@ function renderB6Levels(escala) {
         collapseStep5();
         showMetaBlock(true);
         updateNote();
-        focusMeta();
+        // Continuar en la etapa global de Evaluación y entrega.
+        activateFlowStage('faseF', { focus: true });
     };
 }
 
@@ -2230,13 +2423,19 @@ function getMetaLograda() {
     return els.metaLograda?.value || '___';
 }
 
-/* ─── Genera y actualiza la nota de enfermería ─── */
+/* ─── Genera y actualiza la nota de enfermería ───
+   Sigue párrafo a párrafo la plantilla oficial de NOTA DE ENTREGA DE TURNO
+   (NOTA_FINAL_ENTREGA.docx). Los campos vacíos se muestran como "___". */
 function updateNote() {
-    const hasData = selected.areaNombre || selected.diagnosticoNombre;
+    const nc = window.NotaCampos;
+    const s = nc?.state;
+    const hasData = (els.sexo && els.sexo.value !== '___')
+        || selected.areaNombre || selected.diagnosticoNombre
+        || (s && (s.posicion || s.estadoNeurologico));
 
     if (!hasData) {
         els.noteContent.innerHTML =
-            '<p class="empty-state">Seleccione el área clínica, diagnóstico e intervenciones para generar la nota de enfermería según el Plan de Atención Integral (PAI).</p>';
+            '<p class="empty-state">Complete los datos del paciente, el estado clínico y el plan de atención para generar la nota de entrega de turno.</p>';
         updateCopyBtnState();
         return;
     }
@@ -2245,55 +2444,93 @@ function updateNote() {
     const fecha = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
     const hora = now.toLocaleTimeString('es-CO', { hour12: false });
 
-    const sexo       = els.sexo?.value || '___';
     const dobResult  = validateDOB();
-    const edadTexto  = dobResult.valid ? dobResult.ageText : '___';
-    const servicio   = els.servicio?.value?.trim() || '_______________';
-    const metaEstado = getMetaLograda();
+    const edadTexto  = dobResult.valid ? dobResult.ageText : '';
+    const metaEstado = els.metaLograda?.value || '';
+    const gap = '___';
+    // Campo con valor → negrita; vacío → hueco visible "___"
+    const v = (x) => `<strong>${x ? escapeHtml(x) : gap}</strong>`;
+    const sexoVal = els.sexo?.value !== '___' ? els.sexo?.value : '';
+    // "en posición Posición de Fowler…" → "en posición Fowler…"
+    const posDisp = (s?.posicion || '').replace(/^Posición de /i, '');
 
+    let note = `<strong>NOTA DE ENTREGA DE TURNO</strong><br>`;
+    note += `<strong>Fecha:</strong> ${fecha} &nbsp; <strong>Hora:</strong> ${hora}<br>`;
+    note += `Fundación Clínica Santa Fe de Bogotá<br><br>`;
+
+    // Párrafo 1 — identificación, ubicación y estado clínico
+    note += `Se entrega paciente ${v(sexoVal)}, de ${v(edadTexto)} de edad, `;
+    note += `en posición ${v(posDisp)} en cama ${v(s?.numCama)} de la habitación ${v(s?.numHabitacion)}, `;
+    note += `ubicado en el servicio de ${v(s?.servicio)}, correspondiente al área clínica de ${v(selected.areaNombre)}. `;
+    note += `Al momento de la entrega, el paciente se encuentra ${v(s?.estadoNeurologico)}, ${v(s?.estadoHemodinamico)} `;
+    note += `y ${v(s?.estadoRespiratorio)}.`;
+    if (s?.sinEscalas) note += ` No se aplicaron escalas de valoración durante el turno.`;
+    else note += ` Se registraron las siguientes escalas de valoración: ${v(nc?.formatEscalas())}.`;
+
+    // Párrafo 2 — diagnóstico médico, aislamiento, dispositivos y estado dental
+    const aisl = s?.aislamiento && s.aislamiento !== 'No aplica' ? `, en ${escapeHtml(s.aislamiento)},` : ',';
+    note += `<br><br>Paciente con ${v(s?.diagnosticoMedico)}${aisl} `;
+    if (s?.sinDispositivos) note += `sin dispositivos invasivos o de soporte reportados. `;
+    else note += `portador de ${v(nc?.formatDispositivos())}. `;
+    note += `Presenta estado dental ${v(s?.estadoDental)}. `;
+    note += `Se reporta a enfermero/a entrante el estado actual de cada dispositivo.`;
+
+    // Párrafo 3 — medidas de seguridad institucionales (texto fijo)
+    note += `<br><br>Se confirman medidas de seguridad institucionales al momento de la entrega, `;
+    note += `incluyendo manilla de identificación, barandas elevadas y demás medidas según protocolo.`;
+
+    // Párrafo 4 — hallazgos de valoración física y educación (opcional)
+    if (s?.sinAlteraciones) {
+        note += `<br><br>Durante el turno no se identificaron alteraciones relevantes adicionales.`;
+    } else {
+        note += `<br><br>Durante el turno se identificaron alteraciones relevantes en ${v(nc?.formatRegiones())} `;
+        note += `y sin otros hallazgos de importancia adicionales.`;
+    }
+    const eduFrase = nc?.formatEducacion();
+    if (eduFrase) note += ` ${escapeHtml(eduFrase)}`;
+    note += ` Se reportan estos hallazgos como parte del resumen clínico de entrega.`;
+
+    // Párrafo 5 — PAE: diagnóstico NANDA priorizado, RC/EP y NOC
+    note += `<br><br>Durante el turno se trabajó el diagnóstico prioritario ${v(selected.diagnosticoNombre)}`;
+    if (selected.rc.length) note += `, relacionado con <strong>${joinClause(selected.rc)}</strong>`;
+    if (selected.ep.length) note += `, evidenciado por <strong>${joinClause(selected.ep)}</strong>`;
+    note += `. `;
+    const nocDisp = selected.nocNombre
+        ? (selected.nocCustom ? escapeHtml(selected.nocNombre) : selected.nocNombre)
+        : gap;
+    note += `El resultado esperado (NOC) establecido fue: <strong>${nocDisp}</strong>, `;
+    note += `con seguimiento durante el turno a continuación descrito.`;
+
+    // Intervenciones NIC y transversales
     const nicsHtml = selected.nics.length
         ? `<ul>${selected.nics.map((n) => `<li>${selected.customNics.includes(n) ? escapeHtml(n) : n}</li>`).join('')}</ul>`
-        : '<em>Pendiente de selección</em>';
+        : `<em>Pendiente de selección</em><br>`;
+    note += `<br><br><strong>INTERVENCIONES NIC REALIZADAS DURANTE EL TURNO</strong><br>${nicsHtml}`;
 
     const trans = selected.datosDiag?.trans || [];
-    const transHtml = trans.length
-        ? `<ul>${trans.map((t) => `<li>${t}</li>`).join('')}</ul>`
-        : '';
-
-    let note = `<strong>Fecha:</strong> ${fecha} &nbsp; <strong>Hora:</strong> ${hora}<br><br>`;
-    note += `<strong>Fundación Clínica Santa Fe de Bogotá</strong><br><br>`;
-    note += `Recibo paciente <strong>${sexo}</strong>, de <strong>${edadTexto}</strong> de edad, `;
-    note += `quien se encuentra en el servicio de <strong>${servicio}</strong>, `;
-    note += `correspondiente al área clínica de <strong>${selected.areaNombre || '___________'}</strong>. `;
-    note += `Al momento de la valoración de enfermería según PAI, se prioriza el diagnóstico `;
-    note += `<strong>${selected.diagnosticoNombre || '______________'}</strong>`;
-    // Enunciado diagnóstico completo: relacionado con (RC) y evidenciado por (EP)
-    if (selected.rc.length) {
-        note += `, relacionado con <strong>${joinClause(selected.rc)}</strong>`;
-    }
-    if (selected.ep.length) {
-        note += `, evidenciado por <strong>${joinClause(selected.ep)}</strong>`;
-    }
-    note += `. `;
-
-    const nocDisp = selected.nocCustom ? escapeHtml(selected.nocNombre) : selected.nocNombre;
-    if (selected.nocNombre) {
-        note += `Se establece como resultado esperado (NOC): <strong>${nocDisp}</strong>. `;
+    if (trans.length) {
+        note += `<strong>INTERVENCIONES TRANSVERSALES REALIZADAS</strong><br><ul>${trans.map((t) => `<li>${t}</li>`).join('')}</ul>`;
     }
 
-    note += `<br><br><strong>Intervenciones NIC implementadas:</strong><br>${nicsHtml}`;
-
-    if (transHtml) {
-        note += `<br><strong>Intervenciones transversales:</strong><br>${transHtml}`;
-    }
-
+    // Evaluación del turno — indicador B6 + respuesta + tendencia
+    note += `<strong>EVALUACIÓN DEL TURNO</strong><br>`;
     if (selected.b6Puntuacion && selected.nocNombre) {
-        note += `<br><strong>Evaluación del turno — Indicador B6</strong> para «${nocDisp}»: `;
-        note += `puntuación <strong>${selected.b6Puntuacion}</strong> — ${selected.b6Descripcion}. `;
+        const b6Desc = (selected.b6Descripcion || '').replace(/^\d+\s*[.,\-=:]\s*/, '');
+        note += `Indicador B6 para «${nocDisp}»: puntuación <strong>${selected.b6Puntuacion}</strong> — ${b6Desc}.<br>`;
+    } else {
+        note += `Indicador B6: <strong>${gap}</strong>.<br>`;
     }
+    note += `Se evidencia ${v(s?.respuesta)}, con ${v(s?.tendencia)} respecto al inicio del mismo. `;
+    note += `Estos hallazgos son reportados al enfermero/a que recibe el turno.`;
 
-    note += `<br><br>Dadas estas intervenciones y al finalizar el turno, se evaluó la meta del cuidado, `;
-    note += `la cual se encuentra <strong>${metaEstado}</strong>.`;
+    // Entrega del turno — meta, criterio, estado de salida y pendientes
+    note += `<br><br><strong>ENTREGA DEL TURNO</strong><br>`;
+    note += `Dadas estas intervenciones y al finalizar el turno, se evaluó la meta del cuidado, `;
+    note += `la cual se encuentra ${v(metaEstado)}, evidenciado por ${v(s?.criterioClinico)}. `;
+    note += `Se hace entrega del paciente en posición ${v(posDisp)}, con ${v(nc?.formatVigentes())}, `;
+    note += `medidas de seguridad confirmadas${aisl === ',' ? '' : aisl.replace(/,$/, '')}. `;
+    note += `Se comunican verbalmente y por escrito los siguientes pendientes para continuidad del cuidado `;
+    note += `en el próximo turno: ${v(s?.pendientes)}`;
 
     // Observaciones adicionales (campo opcional)
     const comentarios = els.otrosComentarios?.value.trim();
@@ -2327,14 +2564,21 @@ function copyNote() {
     if (!complete) { updateCopyBtnState(); return; }
 
     const text = noteToPlainText(els.noteContent);
+    const showCopied = () => {
+        [els.copyBtn, els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
+            btn.textContent = '✓ ¡Copiado!';
+            btn.classList.add('copied');
+        });
+        setTimeout(() => {
+            [els.copyBtn, els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
+                btn.textContent = 'Copiar nota';
+                btn.classList.remove('copied');
+            });
+        }, 2000);
+    };
 
     navigator.clipboard.writeText(text).then(() => {
-        els.copyBtn.textContent = '✓ ¡Copiado!';
-        els.copyBtn.classList.add('copied');
-        setTimeout(() => {
-            els.copyBtn.textContent = 'Copiar nota';
-            els.copyBtn.classList.remove('copied');
-        }, 2000);
+        showCopied();
     }).catch(() => {
         const ta = document.createElement('textarea');
         ta.value = text;
@@ -2342,12 +2586,7 @@ function copyNote() {
         ta.select();
         document.execCommand('copy');
         document.body.removeChild(ta);
-        els.copyBtn.textContent = '✓ ¡Copiado!';
-        els.copyBtn.classList.add('copied');
-        setTimeout(() => {
-            els.copyBtn.textContent = 'Copiar nota';
-            els.copyBtn.classList.remove('copied');
-        }, 2000);
+        showCopied();
     });
 }
 
@@ -2380,6 +2619,10 @@ function resetWorkflow() {
         b6Puntuacion: null, b6Descripcion: null,
     });
 
+    // Campos clínicos de las fases B–F + comboboxes de Fase A
+    window.NotaCampos?.reset();
+    window.NotaCampos?.setArea(null);
+
     document.querySelectorAll('.option').forEach((o) => o.classList.remove('selected', 'multi-selected'));
 
     STEPS.forEach((s) => {
@@ -2405,6 +2648,11 @@ function resetWorkflow() {
         b.setAttribute('aria-checked', 'false');
         b.tabIndex = i === 0 ? 0 : -1;
     });
+    if (els.sexo) els.sexo.value = '___';
+    document.querySelectorAll('#sexoSeg [role="radio"]').forEach((b, i) => {
+        b.setAttribute('aria-checked', 'false');
+        b.tabIndex = i === 0 ? 0 : -1;
+    });
     if (els.otrosComentarios) els.otrosComentarios.value = '';
     if (els.dobDia)  els.dobDia.value  = '';
     if (els.dobMes)  els.dobMes.value  = '';
@@ -2425,24 +2673,24 @@ function resetWorkflow() {
     const b6Sel = document.getElementById('b6ScaleSelect');
     if (b6Sel) b6Sel.value = B6_ESCALAS[0].id;
 
-    // Restablecer toggle de nota
-    els.noteContent.hidden = true;
-    if (els.noteToggleBtn) {
-        els.noteToggleBtn.textContent = 'Ver nota';
-        els.noteToggleBtn.setAttribute('aria-expanded', 'false');
-        els.noteToggleBtn.classList.remove('active', 'note-toggle-btn--ready');
-        els.noteToggleBtn.hidden = true;
-    }
+    // Restablecer vista previa y volver a la primera etapa.
+    toggleNote(false);
+    els.noteContent.hidden = false;
+    els.noteToggleBtn?.setAttribute('aria-expanded', 'false');
 
     showMetaBlock(false);
     updateRcConfirmBtn();
     updateEpConfirmBtn();
     updateNicConfirmBtn();
     activateStep(1);
+    activateFlowStage('patient', { focus: false });
     updateNote();
     updateCopyBtnState();
     updateLayout();
     syncNotePanelHeight();
+    // Listo para el siguiente paciente: foco en Sexo (inicio del flujo)
+    focusSexo();
+    window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 }
 
 /* ════════════ MODO INVERSO: buscar diagnóstico por signos/factores ════════════ */
@@ -2684,7 +2932,7 @@ function createReverseDiagnosisOption(result, selectedCount) {
 
     const meta = document.createElement('p');
     meta.className = 'reverse-result-meta';
-    meta.textContent = `${result.area} · ${result.count} de ${selectedCount} hallazgo(s)`;
+    meta.textContent = `${areaLabel(result.area)} · ${result.count} de ${selectedCount} hallazgo(s)`;
     opt.appendChild(meta);
 
     const matches = getReverseMatchesForDiagnosis(result.area, result.diag);
@@ -2750,8 +2998,17 @@ function nextStepAfterReversePick(datos) {
 function pickReverseDiagnosis(area, diag) {
     const datos = datosProPai[area]?.[diag];
     if (!datos) return;
-    selected.area = area; selected.areaNombre = area;
+    selected.area = area; selected.areaNombre = areaLabel(area);
     selected.diagnostico = diag; selected.diagnosticoNombre = diag; selected.datosDiag = datos;
+
+    // Sincronizar el combobox de área de Fase A (fuente única) con señal visual
+    window.NotaCampos?.setArea(area);
+    const areaWrap = document.querySelector('[data-cbx="areaClinica"]');
+    if (areaWrap) {
+        areaWrap.classList.remove('cbx--flash');
+        void areaWrap.offsetWidth;
+        areaWrap.classList.add('cbx--flash');
+    }
 
     const matches = getReverseMatchesForDiagnosis(area, diag);
     selected.rc = [...new Set(matches.map((m) => m.rcText).filter(Boolean))];
@@ -2814,6 +3071,7 @@ function clearIdentification() {
     selected.b6Puntuacion = null; selected.b6Descripcion = null;
     reverse.findingKeys = [];
     reverse.kindFilter = 'all';
+    window.NotaCampos?.setArea(null);
     els.areas?.querySelectorAll('.option').forEach((o) => o.classList.remove('selected'));
     if (els.searchAreas) els.searchAreas.value = '';
     els.searchDiag.value = '';
@@ -2964,6 +3222,20 @@ function setupRouteSwitch() {
 
 /* ─── Inicializa la app ─── */
 function init() {
+    // Verificación de integridad: cada área del catálogo debe existir en datosProPai
+    NOTA_AREAS.forEach((a) => {
+        if (!datosProPai[a.key]) console.warn(`[CareFlow] Área clínica sin datos PAE: "${a.key}"`);
+    });
+
+    // Campos clínicos (fases A–F): comboboxes, estados, escalas, dispositivos,
+    // regiones, educación y cierre. El área elegida en Fase A entra al PAE por
+    // applyAreaSelection (fuente única).
+    window.NotaCampos?.init({
+        onChange: updateNote,
+        onAreaSelect: (key) => applyAreaSelection(key, { focus: false, advancePae: false }),
+    });
+    setupGlobalFlow();
+
     loadAreas();
     renderTransversales(null);
     activateStep(1);
@@ -2984,18 +3256,8 @@ function init() {
     wireSearch(els.searchEp,    els.epList, 4);
     wireSearch(els.searchNic,   els.intervenciones, 6);
 
-    // Campos del paciente
-    els.servicio?.addEventListener('input',  () => updateNote());
-    els.servicio?.addEventListener('change', () => updateNote());
-    // Servicio: Enter o ↓ avanzan a Condiciones clínicas si los datos están completos
-    els.servicio?.addEventListener('keydown', (e) => {
-        if (e.shiftKey || e.ctrlKey || e.metaKey) return;   // Shift+↓ lo maneja el atajo global
-        if ((e.key === 'Enter' || e.key === 'ArrowDown') && isPatientDataComplete()) {
-            e.preventDefault();
-            if (currentStep <= 1) activateStep(1, { focus: true });
-            else focusStepEntry(1);
-        }
-    });
+    // Campos del paciente: servicio y área son comboboxes gestionados por NotaCampos
+    // (servicio encadena a área; área entra al PAE vía applyAreaSelection).
     // Sexo: control segmentado (teclado + clic), Enter avanza a Día
     setupSexoControl();
     // Fecha de nacimiento (navegación, auto-avance y validación)
@@ -3035,9 +3297,12 @@ function init() {
 
     // Toggle nota
     els.noteToggleBtn?.addEventListener('click', toggleNote);
+    els.noteDrawerClose?.addEventListener('click', () => toggleNote(false));
+    els.noteDrawerScrim?.addEventListener('click', () => toggleNote(false));
 
     // Botones de acción
     document.getElementById('copyBtn')?.addEventListener('click', copyNote);
+    els.drawerCopyBtn?.addEventListener('click', copyNote);
     document.getElementById('resetBtn')?.addEventListener('click', resetWorkflow);
 
     document.addEventListener('focusin', () => {
@@ -3049,10 +3314,33 @@ function init() {
     document.addEventListener('keydown', (e) => {
         if (e.defaultPrevented || e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
         if (document.activeElement?.closest?.('.custom-form')) return;
+        if (activeFlowStage !== 'fasePAE') {
+            if (continueFlowStage(activeFlowStage)) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+            return;
+        }
         if (advanceCurrentSectionByShortcut()) {
             e.preventDefault();
             e.stopPropagation();
         }
+    });
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && noteVisible) {
+            e.preventDefault();
+            toggleNote(false);
+            return;
+        }
+        if (e.key !== 'Tab' || !noteVisible || !els.noteSection) return;
+        const focusable = [...els.noteSection.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
+            .filter((el) => el.offsetParent !== null);
+        if (!focusable.length) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
     });
 
     // Escritura directa: desde cualquier control de una sección, texto/borrado entra al buscador de esa sección.

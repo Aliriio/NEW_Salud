@@ -25,6 +25,12 @@ dist/
 *~
 .DS_Store
 
+# Herramientas locales de asistentes
+.claude/
+.agents/
+.agent/
+.codex/
+
 # Logs
 *.log
 npm-debug.log*

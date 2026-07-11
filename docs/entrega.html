@@ -10,9 +10,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/tokens.css">
     <!-- Estilos del note app (lógica intacta; solo tokens de color actualizados) -->
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=3">
     <!-- Shell + capa de integración (carga después para envolver el note app) -->
-    <link rel="stylesheet" href="css/careflow.css">
+    <link rel="stylesheet" href="css/careflow.css?v=2">
     <script src="js/auth.js"></script>
     <script>if (window.CareFlowAuth) window.CareFlowAuth.guard();</script>
 </head>
@@ -80,9 +80,18 @@
 
             <div class="cf-content">
 
-                <div class="cf-page-head">
-                    <h1>Entrega</h1>
-                    <p>Completa los campos guiados; CareFlow genera la nota de entrega de turno lista para revisar.</p>
+                <div class="cf-page-head cf-page-head--delivery">
+                    <div>
+                        <h1>Entrega</h1>
+                        <p>Completa los campos guiados; CareFlow genera la nota de entrega de turno lista para revisar.</p>
+                    </div>
+                    <button type="button" class="preview-launch" id="noteToggleBtn" aria-expanded="false" aria-controls="noteSection">
+                        <span class="preview-launch-icon" aria-hidden="true">&#128196;</span>
+                        <span class="preview-launch-copy">
+                            <strong>Vista previa</strong>
+                            <small id="previewLaunchStatus">Borrador · campos pendientes</small>
+                        </span>
+                    </button>
                 </div>
 
                 <!-- ===== NOTE APP (IDs intactos) ===== -->
@@ -101,23 +110,50 @@
                             </div>
                         </aside>
 
-                        <aside class="note-section" id="noteSection" hidden aria-label="Nota de enfermería generada">
+                        <div class="note-drawer-scrim" id="noteDrawerScrim" hidden></div>
+                        <aside class="note-section note-drawer" id="noteSection" hidden role="dialog" aria-modal="true" aria-labelledby="noteDrawerTitle">
                             <div class="note-panel-header">
-                                <h3>Nota de enfermería</h3>
+                                <div>
+                                    <span class="note-draft-kicker" id="previewDraftState">Borrador</span>
+                                    <h3 id="noteDrawerTitle">Nota de entrega</h3>
+                                </div>
                                 <div class="note-panel-header-actions">
-                                    <button type="button" class="note-toggle-btn" id="noteToggleBtn" aria-expanded="false" hidden>
-                                        Ver nota
-                                    </button>
+                                    <button type="button" class="note-drawer-close" id="noteDrawerClose" aria-label="Cerrar vista previa">&#10005;</button>
                                 </div>
                             </div>
                             <div class="note-panel-body">
-                                <div class="note-content" id="noteContent" hidden role="document" aria-live="polite"></div>
+                                <p class="note-drawer-status" id="previewStatus" aria-live="polite"></p>
+                                <div class="note-content" id="noteContent" role="document" aria-live="polite"></div>
+                            </div>
+                            <div class="note-drawer-footer">
+                                <button type="button" class="copy-btn" id="drawerCopyBtn" disabled aria-disabled="true">Copiar nota</button>
                             </div>
                         </aside>
 
                         <section class="workflow" aria-label="Flujo de trabajo">
 
-                            <section class="patient-block" id="patientBlock" aria-label="Datos del paciente">
+                            <nav class="flow-nav" aria-label="Etapas de la nota" id="flowNav">
+                                <button type="button" class="flow-nav-item" data-flow-target="patient" aria-current="step">
+                                    <span class="flow-nav-index">1</span><span class="flow-nav-copy"><strong>Paciente</strong><small data-flow-summary="patient">En curso</small></span>
+                                </button>
+                                <button type="button" class="flow-nav-item" data-flow-target="faseB">
+                                    <span class="flow-nav-index">2</span><span class="flow-nav-copy"><strong>Estado clínico</strong><small data-flow-summary="faseB">Pendiente</small></span>
+                                </button>
+                                <button type="button" class="flow-nav-item" data-flow-target="faseC">
+                                    <span class="flow-nav-index">3</span><span class="flow-nav-copy"><strong>Diagnóstico</strong><small data-flow-summary="faseC">Pendiente</small></span>
+                                </button>
+                                <button type="button" class="flow-nav-item" data-flow-target="faseD">
+                                    <span class="flow-nav-index">4</span><span class="flow-nav-copy"><strong>Hallazgos</strong><small data-flow-summary="faseD">Pendiente</small></span>
+                                </button>
+                                <button type="button" class="flow-nav-item" data-flow-target="fasePAE">
+                                    <span class="flow-nav-index">5</span><span class="flow-nav-copy"><strong>PAE</strong><small data-flow-summary="fasePAE">Bloqueado</small></span>
+                                </button>
+                                <button type="button" class="flow-nav-item" data-flow-target="faseF">
+                                    <span class="flow-nav-index">6</span><span class="flow-nav-copy"><strong>Entrega</strong><small data-flow-summary="faseF">Pendiente</small></span>
+                                </button>
+                            </nav>
+
+                            <section class="patient-block flow-stage" id="patientBlock" data-flow-stage="patient" aria-label="Datos del paciente">
                                 <div class="patient-block-header">
                                     <h3>Datos del paciente</h3>
                                     <div class="patient-header-right">
@@ -158,13 +194,158 @@
                                             </div>
                                             <div class="dob-feedback" id="dobFeedback" aria-live="polite"></div>
                                         </div>
+                                        <div class="field-group">
+                                            <label for="posicion">Posición <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <div class="cbx" data-cbx="posicion">
+                                                <input type="text" id="posicion" class="cbx-input" placeholder="Buscar posición…"
+                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                       aria-label="Posición del paciente">
+                                                <div class="cbx-list" role="listbox" hidden></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="patient-field-row patient-field-row--loc">
+                                        <div class="field-group field-group--num">
+                                            <label for="numCama">N.º de cama <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <input type="text" inputmode="numeric" id="numCama" placeholder="Ej: 12" autocomplete="off" aria-label="Número de cama">
+                                        </div>
+                                        <div class="field-group field-group--num">
+                                            <label for="numHabitacion">N.º de habitación <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <input type="text" inputmode="numeric" id="numHabitacion" placeholder="Ej: 304" autocomplete="off" aria-label="Número de habitación">
+                                        </div>
                                         <div class="field-group field-group--wide">
                                             <label for="servicio">Servicio / Unidad <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <input type="text" id="servicio" placeholder="Ej: Hospitalización pediátrica" aria-label="Servicio o unidad">
+                                            <div class="cbx" data-cbx="servicio">
+                                                <input type="text" id="servicio" class="cbx-input" placeholder="Buscar servicio…"
+                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                       aria-label="Servicio o unidad">
+                                                <div class="cbx-list" role="listbox" hidden></div>
+                                            </div>
+                                        </div>
+                                        <div class="field-group field-group--wide">
+                                            <label for="areaClinica">Área clínica <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <div class="cbx" data-cbx="areaClinica">
+                                                <input type="text" id="areaClinica" class="cbx-input" placeholder="Buscar área clínica…"
+                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                       aria-label="Área clínica">
+                                                <div class="cbx-list" role="listbox" hidden></div>
+                                            </div>
+                                            <div class="field-hint" id="areaClinicaHint" hidden>Complete sexo, fecha de nacimiento y servicio para habilitar</div>
                                         </div>
                                     </div>
                                 </div>
+                                <div class="flow-stage-footer">
+                                    <span class="flow-stage-message" data-flow-message="patient" aria-live="polite"></span>
+                                    <button type="button" class="flow-continue" data-flow-continue="patient">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                </div>
                             </section>
+
+                            <!-- ===== FASE B: Estado clínico ===== -->
+                            <section class="phase flow-stage" id="faseB" data-section="faseB" data-flow-stage="faseB" aria-labelledby="faseBTitle" hidden>
+                                <div class="phase-header">
+                                    <h3 id="faseBTitle">Estado clínico</h3>
+                                    <span class="phase-badge" data-phase-badge="faseB" aria-live="polite"></span>
+                                </div>
+                                <div class="phase-body">
+                                    <div class="estado-group" data-estado="estadoNeurologico" data-label="Estado neurológico"></div>
+                                    <div class="estado-group" data-estado="estadoHemodinamico" data-label="Estado hemodinámico"></div>
+                                    <div class="estado-group" data-estado="estadoRespiratorio" data-label="Estado respiratorio"></div>
+                                    <div class="subblock" id="escalasBlock">
+                                        <div class="subblock-head">
+                                            <label>Escalas de valoración <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <span class="subblock-hint">Seleccione cada escala aplicada y registre su puntaje</span>
+                                        </div>
+                                        <div class="multi-add-wrap" id="escalasPicker"></div>
+                                        <button type="button" class="none-choice" id="sinEscalasBtn" aria-pressed="false">No se aplicaron escalas de valoración</button>
+                                        <div class="multi-add-list" id="escalasList"></div>
+                                    </div>
+                                </div>
+                                <div class="flow-stage-footer">
+                                    <span class="flow-stage-message" data-flow-message="faseB" aria-live="polite"></span>
+                                    <button type="button" class="flow-continue" data-flow-continue="faseB">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                </div>
+                            </section>
+
+                            <!-- ===== FASE C: Diagnóstico y dispositivos ===== -->
+                            <section class="phase flow-stage" id="faseC" data-section="faseC" data-flow-stage="faseC" aria-labelledby="faseCTitle" hidden>
+                                <div class="phase-header">
+                                    <h3 id="faseCTitle">Diagnóstico médico y dispositivos</h3>
+                                    <span class="phase-badge" data-phase-badge="faseC" aria-live="polite"></span>
+                                </div>
+                                <div class="phase-body">
+                                    <div class="phase-field-row">
+                                        <div class="field-group field-group--wide">
+                                            <label for="diagnosticoMedico">Diagnóstico médico <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <input type="text" id="diagnosticoMedico" placeholder="Diagnóstico principal (puede incluir CIE-10)" autocomplete="off" aria-label="Diagnóstico médico">
+                                        </div>
+                                        <div class="field-group">
+                                            <label for="aislamiento">Aislamiento</label>
+                                            <select id="aislamiento" class="field-select" aria-label="Tipo de aislamiento"></select>
+                                        </div>
+                                        <div class="field-group">
+                                            <label for="estadoDental">Estado dental <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <div class="cbx" data-cbx="estadoDental">
+                                                <input type="text" id="estadoDental" class="cbx-input" placeholder="Buscar estado dental…"
+                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                       aria-label="Estado dental">
+                                                <div class="cbx-list" role="listbox" hidden></div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="subblock" id="dispositivosBlock">
+                                        <div class="subblock-head">
+                                            <label>Dispositivos presentes <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <span class="subblock-hint">Cada dispositivo requiere fecha de inserción y estado</span>
+                                        </div>
+                                        <div class="multi-add-wrap" id="dispositivosPicker"></div>
+                                        <button type="button" class="none-choice" id="sinDispositivosBtn" aria-pressed="false">Sin dispositivos invasivos o de soporte</button>
+                                        <div class="multi-add-list" id="dispositivosList"></div>
+                                    </div>
+                                </div>
+                                <div class="flow-stage-footer">
+                                    <span class="flow-stage-message" data-flow-message="faseC" aria-live="polite"></span>
+                                    <button type="button" class="flow-continue" data-flow-continue="faseC">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                </div>
+                            </section>
+
+                            <!-- ===== FASE D: Hallazgos y educación ===== -->
+                            <section class="phase flow-stage" id="faseD" data-section="faseD" data-flow-stage="faseD" aria-labelledby="faseDTitle" hidden>
+                                <div class="phase-header">
+                                    <h3 id="faseDTitle">Hallazgos y educación</h3>
+                                    <span class="phase-badge" data-phase-badge="faseD" aria-live="polite"></span>
+                                </div>
+                                <div class="phase-body">
+                                    <div class="subblock" id="regionesBlock">
+                                        <div class="subblock-head">
+                                            <label>Sistema o región anatómica afectada <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <span class="subblock-hint">Marque todas las zonas con alteraciones identificadas</span>
+                                        </div>
+                                        <div class="region-chips" id="regionesChips" hidden></div>
+                                        <div class="multi-add-wrap" id="regionesPicker"></div>
+                                        <button type="button" class="none-choice" id="sinAlteracionesBtn" aria-pressed="false">Sin alteraciones relevantes identificadas</button>
+                                    </div>
+                                    <div class="subblock" id="educacionBlock">
+                                        <div class="subblock-head">
+                                            <label>Educación al paciente / familia</label>
+                                            <span class="obs-optional-badge">Opcional</span>
+                                            <span class="subblock-hint">Si no se registra, la frase se omite de la nota</span>
+                                        </div>
+                                        <div class="edu-quick" id="eduQuick"></div>
+                                        <div class="multi-add-wrap" id="educacionPicker"></div>
+                                        <div class="multi-add-list" id="educacionList"></div>
+                                    </div>
+                                </div>
+                                <div class="flow-stage-footer">
+                                    <span class="flow-stage-message" data-flow-message="faseD" aria-live="polite"></span>
+                                    <button type="button" class="flow-continue" data-flow-continue="faseD">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                </div>
+                            </section>
+
+                            <section class="flow-stage flow-stage--pae" id="fasePAE" data-flow-stage="fasePAE" aria-labelledby="fasePAETitle" hidden>
+                            <div class="phase-header phase-header--pae">
+                                <h3 id="fasePAETitle">Plan de atención (PAE)</h3>
+                                <span class="phase-hint">NANDA · NOC · NIC · Evaluación B6</span>
+                            </div>
 
                             <div class="progress-track">
                                 <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progreso del formulario">
@@ -318,17 +499,60 @@
                                     <div class="options" id="evaluaciones"></div>
                                 </div>
                             </article>
+                            </section>
 
-                            <div class="meta-block" id="metaBlock" hidden>
-                                <label id="metaLabel">Estado de la meta al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
-                                <div class="meta-chip-group" role="radiogroup" aria-labelledby="metaLabel" id="metaSeg">
-                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="en progreso" tabindex="0">En progreso</button>
-                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="lograda" tabindex="-1">Lograda</button>
-                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="no lograda" tabindex="-1">No lograda</button>
-                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="parcialmente lograda" tabindex="-1">Parcialmente lograda</button>
+                            <!-- ===== FASE F: Evaluación y entrega ===== -->
+                            <section class="phase flow-stage" id="faseF" data-section="faseF" data-flow-stage="faseF" aria-labelledby="faseFTitle" hidden>
+                                <div class="phase-header">
+                                    <h3 id="faseFTitle">Evaluación y entrega del turno</h3>
+                                    <span class="phase-badge" data-phase-badge="faseF" aria-live="polite"></span>
                                 </div>
-                                <input type="hidden" id="metaLograda" value="">
-                            </div>
+                                <div class="phase-body">
+                                    <div class="field-group">
+                                        <label for="respuestaIntervenciones">Respuesta del paciente a las intervenciones <span class="required-star" aria-label="obligatorio">*</span></label>
+                                        <textarea id="respuestaIntervenciones" class="obs-textarea" rows="2"
+                                                  placeholder="Ej: disminución del dolor tras analgesia, tolerancia a la vía oral…"
+                                                  aria-label="Respuesta del paciente a las intervenciones"></textarea>
+                                    </div>
+                                    <div class="phase-field-row">
+                                        <div class="field-group field-group--wide">
+                                            <label for="tendenciaEvolutiva">Tendencia evolutiva <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <select id="tendenciaEvolutiva" class="field-select" aria-label="Tendencia evolutiva del paciente"></select>
+                                        </div>
+                                    </div>
+
+                                    <div class="meta-block" id="metaBlock" hidden>
+                                        <label id="metaLabel">Estado de la meta (NOC) al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                                        <div class="meta-chip-group" role="radiogroup" aria-labelledby="metaLabel" id="metaSeg">
+                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Alcanzada" tabindex="0">Alcanzada</button>
+                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Parcialmente alcanzada" tabindex="-1">Parcialmente alcanzada</button>
+                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No alcanzada" tabindex="-1">No alcanzada</button>
+                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="En progreso – continúa en siguiente turno" tabindex="-1" title="En progreso – continúa en siguiente turno">En progreso</button>
+                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No evaluable – cambio de condición clínica durante el turno" tabindex="-1" title="No evaluable – cambio de condición clínica durante el turno">No evaluable</button>
+                                        </div>
+                                        <input type="hidden" id="metaLograda" value="">
+                                    </div>
+
+                                    <div class="field-group">
+                                        <label for="criterioClinico">Criterio clínico u objetivo alcanzado <span class="required-star" aria-label="obligatorio">*</span></label>
+                                        <textarea id="criterioClinico" class="obs-textarea" rows="2"
+                                                  placeholder="Evidencia objetiva del estado de la meta…"
+                                                  aria-label="Criterio clínico u objetivo alcanzado"></textarea>
+                                    </div>
+
+                                    <div class="vigentes-line" id="vigentesWrap">
+                                        <span class="vigentes-label">Dispositivos y terapias vigentes al cierre</span>
+                                        <span class="vigentes-auto-badge" title="Se construye automáticamente desde el estado respiratorio y los dispositivos no retirados">Automático</span>
+                                        <div class="vigentes-text" id="vigentesLine" aria-live="polite">—</div>
+                                    </div>
+
+                                    <div class="field-group">
+                                        <label for="pendientes">Pendientes para el siguiente turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                                        <textarea id="pendientes" class="obs-textarea" rows="2"
+                                                  placeholder="Tareas o seguimientos que debe continuar el turno entrante…"
+                                                  aria-label="Pendientes para el siguiente turno"></textarea>
+                                    </div>
+                                </div>
 
                             <div class="obs-block">
                                 <div class="obs-block-header">
@@ -362,6 +586,7 @@
                                     Copiar nota
                                 </button>
                             </div>
+                            </section>
 
                         </section>
                     </main>
@@ -374,9 +599,14 @@
         <div class="cf-scrim" aria-hidden="true"></div>
     </div>
 
-    <!-- Datos y lógica del note app (sin cambios) -->
+    <!-- Datos y lógica del note app -->
     <script src="js/app-data.js"></script>
-    <script src="js/app.js" defer></script>
+    <script src="js/nota-listas.js?v=1"></script>
+    <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
+         (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
+         orden de documento, así que NotaCampos existe cuando app.js corre. -->
+    <script src="js/nota-campos.js?v=2" defer></script>
+    <script src="js/app.js?v=3" defer></script>
     <!-- Shell del producto -->
     <script src="js/shell.js"></script>
 </body>
