@@ -247,29 +247,6 @@ body {
 }
 
 /* Botón de reinicio tipo icono */
-.reset-icon-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
-  border: 1.5px solid var(--border);
-  background: transparent;
-  color: var(--text-muted);
-  font-size: 1rem;
-  line-height: 1;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  transition: all var(--fast) var(--ease);
-}
-
-.reset-icon-btn:hover {
-  border-color: #c0392b;
-  color: #c0392b;
-  background: #fff5f5;
-}
-
 .patient-block-body {
   padding: var(--sp-4) var(--sp-5);
 }
@@ -2126,11 +2103,74 @@ body {
   gap: var(--sp-4);
 }
 
-/* Fila 2 de datos del paciente: cama · habitación · servicio · área */
+/* Fila 2 de datos del paciente: cama · habitación · servicio */
 .patient-field-row--loc {
-  grid-template-columns: 0.55fr 0.55fr 1.2fr 1.2fr;
+  grid-template-columns: 0.55fr 0.55fr 2.4fr;
   margin-top: var(--sp-4);
 }
+
+/* Acción de borrado contextual, recupera el control circular original. */
+.reset-icon-btn {
+  appearance: none;
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition: color var(--fast) var(--ease), border-color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.reset-icon-btn:hover { border-color: #c9827c; color: #b53a32; background: #fff8f7; }
+.reset-icon-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+/* Fecha clínica nativa localizada: mismo control para nacimiento y dispositivos. */
+.clinical-date-input { min-width: 190px; }
+.clinical-date-input.clinical-date-invalid {
+  border-color: #c0392b;
+  box-shadow: 0 0 0 3px rgba(192, 57, 43, .12);
+}
+
+/* Campo de fecha híbrido: texto DD/MM/AAAA + calendario nativo (invisible) + icono */
+.clinical-date-field { position: relative; display: block; width: 100%; }
+.clinical-date-field .clinical-date-input { width: 100%; padding-right: 38px; }
+/* El date nativo llena el campo pero es invisible: solo ancla y abre el calendario */
+.clinical-date-native {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.clinical-date-cal {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: var(--r-xs);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: color var(--fast) var(--ease), background var(--fast) var(--ease);
+}
+.clinical-date-cal:hover { color: var(--blue-dark); background: var(--surface-2); }
 
 .field-hint {
   font-size: 0.72rem;
@@ -2195,12 +2235,6 @@ body {
   color: var(--text-muted);
   cursor: not-allowed;
 }
-
-@keyframes cbxFlash {
-  0%   { box-shadow: 0 0 0 3px rgba(36, 153, 253, .45); }
-  100% { box-shadow: 0 0 0 3px rgba(36, 153, 253, 0); }
-}
-.cbx--flash .cbx-input { animation: cbxFlash 900ms var(--ease) 1; }
 
 /* === GRUPOS DE ESTADO (neuro / hemo / resp) === */
 .estado-group {
@@ -2364,10 +2398,12 @@ body {
 /* Subcampos de dispositivos y escalas */
 .device-fields {
   display: grid;
-  grid-template-columns: auto auto 1fr;
+  grid-template-columns: minmax(190px, auto) minmax(190px, auto) 1fr;
   gap: var(--sp-3);
   margin-top: var(--sp-2);
 }
+
+.device-fields .clinical-date-input { min-width: 150px; }
 
 .escala-fields {
   display: grid;
@@ -2442,39 +2478,6 @@ body {
 .edu-quick-btn:hover { background: var(--surface-2); border-color: var(--blue-mid); }
 .edu-quick-btn:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
-/* === VIGENTES AL CIERRE (línea autocompuesta, solo lectura) === */
-.vigentes-line {
-  border: 1.5px solid var(--border-faint);
-  border-radius: var(--r-sm);
-  background: var(--surface-1);
-  padding: var(--sp-3) var(--sp-4);
-}
-
-.vigentes-label {
-  font-size: 0.73rem;
-  font-weight: 700;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: .05em;
-}
-
-.vigentes-auto-badge {
-  margin-left: var(--sp-2);
-  font-size: 0.68rem;
-  font-weight: 700;
-  color: var(--blue-dark);
-  background: var(--blue-pale);
-  border-radius: var(--r-full);
-  padding: 1px 8px;
-  vertical-align: 1px;
-}
-
-.vigentes-text {
-  margin-top: 4px;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-}
-
 /* === RESPONSIVE (fases) === */
 @media (max-width: 860px) {
   .patient-field-row--loc,
@@ -2521,6 +2524,7 @@ body {
 }
 .preview-launch:hover { border-color: var(--blue-mid); box-shadow: var(--shadow-sm); transform: translateY(-1px); }
 .preview-launch:focus-visible { outline: 3px solid rgba(36, 153, 253, .24); outline-offset: 2px; }
+.preview-launch[hidden] { display: none !important; }
 .preview-launch-icon {
   display: grid;
   place-items: center;
@@ -2534,6 +2538,57 @@ body {
 .preview-launch-copy { display: grid; line-height: 1.2; }
 .preview-launch-copy strong { font-size: .82rem; }
 .preview-launch-copy small { margin-top: 3px; color: var(--text-muted); font-size: .68rem; }
+
+/* Diálogo de borrado: diferencia claramente sección, nota completa y cancelar. */
+.reset-dialog {
+  width: min(580px, calc(100vw - 32px));
+  margin: auto;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  background: var(--white);
+  color: var(--text-primary);
+  box-shadow: 0 24px 70px rgba(13, 35, 68, .24);
+}
+.reset-dialog::backdrop { background: rgba(8, 28, 58, .38); backdrop-filter: blur(2px); }
+.reset-dialog-icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 14px;
+  border-radius: 50%;
+  background: #fff2f0;
+  color: #b53a32;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+.reset-dialog h2 { margin: 0; color: var(--text-primary); font-size: 1.08rem; }
+.reset-dialog p { margin: 9px 0 20px; color: var(--text-secondary); font-size: .86rem; line-height: 1.55; }
+/* Una sola fila en escritorio; el botón de sección (texto variable) cede espacio.
+   Solo se apilan cuando el ancho ya no alcanza (pantallas pequeñas). */
+.reset-dialog-actions { display: flex; align-items: stretch; justify-content: flex-end; gap: 8px; flex-wrap: nowrap; }
+.reset-dialog-actions button { flex-shrink: 0; white-space: normal; }
+.reset-dialog-section { flex-shrink: 1; min-width: 0; }
+@media (max-width: 560px) {
+  .reset-dialog-actions { flex-direction: column; }
+  .reset-dialog-actions button { width: 100%; }
+}
+.reset-dialog-actions button {
+  min-height: 40px;
+  padding: 8px 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  font: inherit;
+  font-size: .78rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.reset-dialog-cancel { background: var(--white); color: var(--text-secondary); }
+.reset-dialog-section { border-color: #dba9a5 !important; background: #fff8f7; color: #a63831; }
+.reset-dialog-all { border-color: #b53a32 !important; background: #b53a32; color: var(--white); }
+.reset-dialog-actions button:hover { filter: brightness(.97); }
+.reset-dialog-actions button:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
 /* Navegación global: siempre visible, pero visualmente secundaria al formulario. */
 .flow-nav {
@@ -2596,7 +2651,12 @@ body {
   scroll-margin-top: calc(var(--cf-topbar-h, 68px) + 84px);
   min-width: 0;
 }
-.workflow { min-width: 0; width: 100%; }
+.workflow {
+  min-width: 0;
+  width: 100%;
+  container-type: inline-size;
+  container-name: delivery-workflow;
+}
 
 .phase,
 .patient-block { overflow: visible; }
@@ -2677,8 +2737,7 @@ body {
 .estado-group--done .cbx-input { background-color: var(--white); }
 
 /* Popovers globales: no pueden ser recortados por tarjetas o columnas. */
-.cbx-list--portal,
-.multi-add-picker--portal {
+.cbx-list--portal {
   z-index: 140;
   overscroll-behavior: contain;
 }
@@ -2688,6 +2747,13 @@ body {
 
 /* Selector múltiple directo: el input es la acción, sin botón “Agregar”. */
 .multi-add-wrap { position: relative; max-width: 720px; }
+.selection-choice-row {
+  display: grid;
+  grid-template-columns: minmax(280px, 720px) minmax(210px, max-content);
+  gap: 10px;
+  align-items: start;
+}
+.selection-choice-row .multi-add-wrap { max-width: none; }
 .multi-add-input {
   appearance: none;
   width: 100%;
@@ -2702,25 +2768,23 @@ body {
   outline: none;
 }
 .multi-add-input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(26,111,224,.14); }
-.multi-add-picker--portal {
-  position: fixed;
-  overflow: auto;
-  margin: 0;
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-md);
-  background: var(--white);
-  box-shadow: var(--shadow-lg);
+.multi-cbx-list { position: fixed; right: auto; top: auto; }
+.multi-cbx-list .region-group-title { padding-inline: 10px; }
+.multi-cbx-list .cbx-opt { gap: 8px; }
+.multi-cbx-check {
+  flex: 0 0 18px;
+  width: 18px;
+  color: var(--blue-dark);
+  font-weight: 800;
+  text-align: center;
 }
-.multi-add-picker--portal .multi-add-options { max-height: none; overflow: visible; }
-.multi-add-picker--portal .options { padding-right: 0; }
 
 .none-choice {
   appearance: none;
   align-self: flex-start;
-  min-height: 34px;
-  margin-top: 8px;
-  padding: 6px 11px;
+  min-height: 40px;
+  margin-top: 0;
+  padding: 7px 12px;
   border: 1px solid var(--border);
   border-radius: var(--r-full);
   background: var(--white);
@@ -2729,6 +2793,10 @@ body {
   font-size: .74rem;
   font-weight: 650;
   cursor: pointer;
+}
+.selection-choice-row .none-choice {
+  border-radius: var(--r-sm);
+  text-align: left;
 }
 .none-choice:hover { border-color: var(--blue-mid); background: var(--surface-1); }
 .none-choice--active,
@@ -2748,6 +2816,12 @@ body {
 .region-chips { margin-bottom: 2px; }
 .region-chip { padding: 4px 10px; font-size: .74rem; }
 .edu-quick { gap: 7px; }
+
+@media (max-width: 560px) {
+  .selection-choice-row { grid-template-columns: 1fr; }
+  .selection-choice-row .none-choice { grid-row: 1; }
+  .selection-choice-row .multi-add-wrap { grid-row: 2; }
+}
 .edu-quick-btn { min-height: 34px; padding: 6px 10px; font-size: .72rem; }
 .edu-quick-btn--active,
 .edu-quick-btn[aria-pressed="true"] { border-color: var(--blue-mid); background: var(--blue-pale); color: var(--blue-dark); }
@@ -2758,10 +2832,75 @@ body {
 /* Cierre compacto; observaciones conserva su componente y comportamiento. */
 #faseF .phase-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .75fr); align-items: start; }
 #faseF .phase-body > .phase-field-row { grid-template-columns: 1fr; }
-#faseF .phase-body > .meta-block,
-#faseF .phase-body > .vigentes-line { grid-column: 1 / -1; }
+#faseF .phase-body > .meta-block { grid-column: 1 / -1; }
 #faseF > .obs-block { margin: 0 var(--sp-5) var(--sp-4); }
 #faseF > .workflow-actions { margin: 0 var(--sp-5) var(--sp-5); }
+
+/* Geometría de lectura: compacta el recorrido horizontal sin reducir controles. */
+.patient-block-body,
+.phase-body {
+  padding: clamp(16px, 2cqi, 20px);
+}
+.phase-body { gap: clamp(12px, 1.5cqi, 16px); }
+.patient-field-row,
+.phase-field-row,
+.device-fields { gap: clamp(12px, 1.5cqi, 16px); }
+.patient-field-row {
+  grid-template-columns: minmax(180px, .9fr) minmax(190px, auto) minmax(280px, 1.45fr);
+}
+.patient-field-row--loc {
+  grid-template-columns: minmax(110px, .55fr) minmax(130px, .65fr) minmax(280px, 1.8fr);
+  width: min(100%, 940px);
+}
+#faseC .phase-field-row {
+  grid-template-columns: minmax(320px, 1.8fr) minmax(180px, .8fr) minmax(240px, 1.05fr);
+}
+.device-fields {
+  grid-template-columns: minmax(170px, .8fr) minmax(170px, .8fr) minmax(260px, 1.35fr);
+}
+.selection-choice-row { width: min(100%, 940px); }
+#educacionList .multi-add-item {
+  grid-template-columns: minmax(180px, .7fr) minmax(320px, 1.3fr);
+}
+#faseF .phase-body {
+  grid-template-columns: minmax(0, 1.85fr) minmax(280px, 1fr);
+}
+
+/* Responde al ancho útil del formulario, incluso con sidebar o escalado del SO. */
+@container delivery-workflow (max-width: 920px) {
+  .flow-nav-copy small { display: none; }
+  .flow-nav-item { justify-content: center; }
+  #faseB .phase-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #faseB .phase-body > #escalasBlock { grid-column: 1 / -1; }
+  #faseC .phase-field-row { grid-template-columns: 1fr 1fr; }
+  #faseC .phase-field-row > :first-child { grid-column: 1 / -1; }
+  .device-fields { grid-template-columns: 1fr 1fr; }
+  .device-fields > :nth-child(3) { grid-column: 1 / -1; }
+}
+
+@container delivery-workflow (max-width: 760px) {
+  .flow-nav {
+    grid-template-columns: none;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(132px, 1fr);
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+  }
+  .flow-nav-item { justify-content: flex-start; }
+  .patient-field-row,
+  .patient-field-row--loc { grid-template-columns: 1fr 1fr; width: 100%; }
+  .patient-field-row:not(.patient-field-row--loc) > :nth-child(3),
+  .patient-field-row--loc > :nth-child(3) { grid-column: 1 / -1; }
+  #faseB .phase-body,
+  #faseC .phase-field-row,
+  #faseF .phase-body,
+  .device-fields,
+  #educacionList .multi-add-item { grid-template-columns: 1fr; }
+  #faseB .phase-body > #escalasBlock,
+  #faseC .phase-field-row > :first-child,
+  #faseF .phase-body > *,
+  .device-fields > :nth-child(3) { grid-column: 1; }
+}
 
 /* Vista previa: panel modal superpuesto, sin recalcular el ancho del formulario. */
 .note-drawer-scrim {
@@ -2824,7 +2963,7 @@ body.note-drawer-open { overflow: hidden; }
   .cf-app-body .cf-page-head--delivery { align-items: flex-start; }
   .preview-launch { min-width: 0; }
   .preview-launch-copy small { display: none; }
-  .flow-nav { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(132px, 1fr); overflow-x: auto; top: calc(var(--cf-topbar-h, 68px) + 6px); }
+  .flow-nav { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: minmax(132px, 1fr); overflow-x: auto; }
   .flow-nav-item { justify-content: flex-start; }
   .flow-nav-copy small { display: none; }
   #faseB .phase-body,
@@ -2835,7 +2974,6 @@ body.note-drawer-open { overflow: hidden; }
   #faseF .phase-body > * { grid-column: 1; }
   .device-fields,
   #educacionList .multi-add-item { grid-template-columns: 1fr; }
-  .multi-add-picker--portal { width: calc(100vw - 32px) !important; max-width: calc(100vw - 32px) !important; left: 16px !important; }
   .note-drawer.note-section { width: min(100vw, 520px); }
 }
 

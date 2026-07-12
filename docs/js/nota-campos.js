@@ -9,7 +9,7 @@
     const NL = () => window.notaListas || { listas: {}, escalas: [], areas: [], regionesGrupos: [] };
 
     const state = {
-        // Fase A (sexo/DOB viven en app.js; área clínica vive en selected.area)
+        // Fase A (sexo/DOB viven en app.js; la condición clínica se elige dentro del PAE)
         posicion: '',
         numCama: '',
         numHabitacion: '',
@@ -38,8 +38,8 @@
     };
 
     let onChangeCb = () => {};
-    let onAreaSelectCb = () => true;
     const cbx = {};            // comboboxes por id
+    let comboboxDelegationReady = false;
     let uidSeq = 0;
     const uid = () => `nc-${++uidSeq}`;
 
@@ -50,12 +50,19 @@
     const noEdu = (dest) => String(dest).startsWith('No fue posible');
 
     function emit() {
-        renderVigentes();
         onChangeCb();
     }
 
+    function revealImmediately(element) {
+        const root = document.documentElement;
+        const previous = root.style.scrollBehavior;
+        root.style.scrollBehavior = 'auto';
+        element.scrollIntoView({ block: 'nearest', behavior: 'auto' });
+        root.style.scrollBehavior = previous;
+    }
+
     /* ═══════════ Combobox (input buscable + lista desplegable) ═══════════ */
-    function createCombobox({ id, options, onSelect, onInvalid }) {
+    function createCombobox({ id, options, onSelect, onInvalid, onConfirm }) {
         const wrap = document.querySelector(`[data-cbx="${id}"]`);
         const input = document.getElementById(id);
         const list = wrap?.querySelector('.cbx-list');
@@ -93,21 +100,31 @@
         function positionList() {
             if (!openNow) return;
             const r = input.getBoundingClientRect();
+            if (!input.isConnected || r.bottom < 0 || r.top > window.innerHeight) { close(); return; }
             const gap = 6;
+            const viewportGap = 12;
             const below = window.innerHeight - r.bottom - gap;
             const above = r.top - gap;
-            const maxH = Math.max(160, Math.min(320, Math.max(below, above) - 12));
             const openAbove = below < 220 && above > below;
+            const available = Math.max(openAbove ? above : below, 96);
+            const width = Math.min(Math.max(r.width, 220), window.innerWidth - viewportGap * 2);
+            const left = Math.min(Math.max(r.left, viewportGap), window.innerWidth - width - viewportGap);
             list.style.position = 'fixed';
-            list.style.left = `${Math.round(r.left)}px`;
-            list.style.width = `${Math.round(r.width)}px`;
-            list.style.maxHeight = `${Math.round(maxH)}px`;
+            list.style.left = `${Math.round(left)}px`;
+            list.style.width = `${Math.round(width)}px`;
+            list.style.maxHeight = `${Math.round(Math.min(320, available))}px`;
             list.style.top = openAbove ? 'auto' : `${Math.round(r.bottom + gap)}px`;
             list.style.bottom = openAbove ? `${Math.round(window.innerHeight - r.top + gap)}px` : 'auto';
         }
 
         function open() {
             if (input.disabled) return;
+            const anchor = input.getBoundingClientRect();
+            if (anchor.bottom < 0 || anchor.top > window.innerHeight) {
+                revealImmediately(input);
+                requestAnimationFrame(open);
+                return;
+            }
             render(input.value === committed ? '' : input.value);
             if (list.parentElement !== document.body) document.body.appendChild(list);
             list.classList.add('cbx-list--portal');
@@ -135,7 +152,11 @@
             return visibleOpts().findIndex((o) => o.classList.contains('cbx-opt--active'));
         }
 
-        function commit(optEl) {
+        function confirmNext() {
+            if (onConfirm) setTimeout(onConfirm, 0);
+        }
+
+        function commit(optEl, advance = true) {
             const i = Number(optEl.dataset.i);
             const opt = options()[i];
             const label = typeof opt === 'string' ? opt : opt.label;
@@ -145,12 +166,15 @@
             input.value = label;
             wrap.classList.remove('cbx--invalid');
             close();
+            if (advance) confirmNext();
         }
 
         input.addEventListener('focus', open);
         input.addEventListener('click', open);
         input.addEventListener('input', () => { open(); render(input.value); setActive(-1); });
-        input.addEventListener('keydown', (e) => {
+        function handleKeydown(e) {
+            if (e._notaCbxHandled) return;
+            e._notaCbxHandled = true;
             if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
             const opts = visibleOpts();
             if (e.key === 'ArrowDown') {
@@ -158,17 +182,22 @@
                 if (list.hidden) { open(); return; }
                 setActive(Math.min(activeIdx() + 1, opts.length - 1));
             } else if (e.key === 'ArrowUp') {
-                if (list.hidden || activeIdx() <= 0) return;   // deja subir de sección cuando está cerrado
+                if (list.hidden) return;
                 e.preventDefault();
-                setActive(activeIdx() - 1);
+                setActive(Math.max(activeIdx() - 1, 0));
             } else if (e.key === 'Enter') {
                 const act = opts[activeIdx()] || (opts.length === 1 ? opts[0] : null);
                 if (!list.hidden && act) { e.preventDefault(); commit(act); }
-                else if (!list.hidden && committed && input.value === committed) { close(); }
+                else if (committed && input.value === committed) {
+                    e.preventDefault();
+                    close();
+                    confirmNext();
+                }
             } else if (e.key === 'Escape') {
                 if (!list.hidden) { e.preventDefault(); input.value = committed; close(); }
             }
-        });
+        }
+        input.addEventListener('keydown', handleKeydown);
         list.addEventListener('mousedown', (e) => {
             const opt = e.target.closest('.cbx-opt');
             if (opt) { e.preventDefault(); commit(opt); }
@@ -184,7 +213,7 @@
                 if (typed && idx >= 0) {
                     render('');
                     const el = visibleOpts().find((o) => Number(o.dataset.i) === idx);
-                    if (el) { commit(el); return; }
+                    if (el) { commit(el, false); return; }
                 }
                 wrap.classList.toggle('cbx--invalid', !!typed);
                 if (!typed && committed) { committed = ''; if (onSelect) onSelect(null); }
@@ -197,6 +226,7 @@
             input,
             open,
             close,
+            handleKeydown,
             setValue(label) {
                 committed = label || '';
                 input.value = label || '';
@@ -228,6 +258,19 @@
         });
     }
 
+    function setupComboboxDelegation() {
+        if (comboboxDelegationReady) return;
+        comboboxDelegationReady = true;
+        document.addEventListener('focusin', (e) => {
+            const control = cbx[e.target?.id];
+            if (control?.input === e.target) control.open();
+        }, true);
+        document.addEventListener('keydown', (e) => {
+            const control = cbx[e.target?.id];
+            if (control?.input === e.target) control.handleKeydown(e);
+        }, true);
+    }
+
     /* ═══════════ Estados clínicos (neuro / hemo / resp) ═══════════ */
     const ESTADOS = [
         { field: 'estadoNeurologico',  lista: 'NEURO' },
@@ -256,20 +299,20 @@
                 state[field] = value || '';
                 group.classList.toggle('estado-group--done', !!value);
                 emit();
-                if (value && chainNext) setTimeout(chainNext, 0);
             },
+            onConfirm: chainNext,
         });
         group._expand = (focus) => { if (focus) cbx[field]?.input.focus(); };
         group._search = cbx[field]?.input;
     }
 
     /* ═══════════ Multi-add genérico (picker con buscador + tarjetas) ═══════════ */
-    function createMultiAdd({ pickerWrap, options, toggleLabel, placeholder, getUsed, onAdd, keepOpen, renderExtra }) {
+    function createMultiAdd({ pickerWrap, options, toggleLabel, placeholder, getUsed, onAdd, onRemove, keepOpen, onFinish, renderExtra }) {
         pickerWrap.innerHTML = '';
         const pickerId = `${pickerWrap.id || uid()}-listbox`;
         const search = document.createElement('input');
         search.type = 'search';
-        search.className = 'multi-add-input';
+        search.className = 'multi-add-input cbx-input';
         search.placeholder = placeholder || toggleLabel || 'Buscar o seleccionar…';
         search.autocomplete = 'off';
         search.setAttribute('role', 'combobox');
@@ -278,127 +321,189 @@
         search.setAttribute('aria-controls', pickerId);
         search.setAttribute('aria-expanded', 'false');
         search.setAttribute('aria-label', toggleLabel || placeholder || 'Seleccionar opciones');
+        search.setAttribute('aria-keyshortcuts', 'Shift+Enter Shift+Backspace');
+
         const picker = document.createElement('div');
-        picker.className = 'multi-add-picker multi-add-picker--portal';
+        picker.className = 'cbx-list cbx-list--portal multi-cbx-list';
         picker.id = pickerId;
+        picker.setAttribute('role', 'listbox');
+        picker.setAttribute('aria-multiselectable', 'true');
         picker.hidden = true;
-
-        const opts = document.createElement('div');
-        opts.className = 'options options--list multi-add-options';
-        opts.setAttribute('role', 'listbox');
-
-        picker.append(opts);
         pickerWrap.append(search);
         document.body.appendChild(picker);
+
         let openNow = false;
+        const visibleOpts = () => [...picker.querySelectorAll('.cbx-opt')];
+        const activeIdx = () => visibleOpts().findIndex((opt) => opt.classList.contains('cbx-opt--active'));
+
+        function setActive(idx) {
+            const visible = visibleOpts();
+            visible.forEach((opt, i) => opt.classList.toggle('cbx-opt--active', i === idx));
+            const active = visible[idx];
+            if (active) {
+                search.setAttribute('aria-activedescendant', active.id);
+                active.scrollIntoView({ block: 'nearest' });
+            } else search.removeAttribute('aria-activedescendant');
+        }
 
         function renderPicker() {
             const q = norm(search.value.trim());
             const used = new Set(getUsed());
-            opts.innerHTML = '';
-            options().forEach((entry) => {
+            const previousValue = visibleOpts()[activeIdx()]?.dataset.value;
+            picker.innerHTML = '';
+            options().forEach((entry, index) => {
                 if (entry.group) {
-                    const t = document.createElement('div');
-                    t.className = 'region-group-title';
-                    t.textContent = entry.group;
-                    t.dataset.group = '1';
-                    opts.appendChild(t);
+                    const title = document.createElement('div');
+                    title.className = 'region-group-title';
+                    title.textContent = entry.group;
+                    title.dataset.group = '1';
+                    picker.appendChild(title);
                     return;
                 }
                 const label = entry.label;
-                if (used.has(label)) return;
                 if (q && !norm(label).includes(q)) return;
-                const opt = createOption(label, '', {});
+                const selected = used.has(label);
+                const opt = document.createElement('div');
+                opt.className = `cbx-opt${selected ? ' cbx-opt--selected' : ''}`;
+                opt.id = `${pickerId}-opt-${index}`;
                 opt.dataset.value = label;
-                opt.setAttribute('aria-selected', 'false');
-                opts.appendChild(opt);
+                opt.setAttribute('role', 'option');
+                opt.setAttribute('aria-selected', selected ? 'true' : 'false');
+                opt.innerHTML = `<span class="multi-cbx-check" aria-hidden="true">${selected ? '&#10003;' : ''}</span><span>${esc(label)}</span>`;
+                picker.appendChild(opt);
             });
-            // Ocultar títulos de grupo sin opciones visibles debajo
-            [...opts.querySelectorAll('[data-group]')].forEach((t) => {
-                let sib = t.nextElementSibling;
+            [...picker.querySelectorAll('[data-group]')].forEach((title) => {
+                let sibling = title.nextElementSibling;
                 let hasChild = false;
-                while (sib && !sib.dataset.group) {
-                    if (sib.classList.contains('option')) { hasChild = true; break; }
-                    sib = sib.nextElementSibling;
+                while (sibling && !sibling.dataset.group) {
+                    if (sibling.classList.contains('cbx-opt')) { hasChild = true; break; }
+                    sibling = sibling.nextElementSibling;
                 }
-                t.style.display = hasChild ? '' : 'none';
+                title.style.display = hasChild ? '' : 'none';
             });
-            if (!opts.querySelector('.option')) {
-                opts.innerHTML = '<p class="hint">No hay más opciones disponibles.</p>';
-            } else {
-                setupOptionList(opts, { searchInput: search });
-            }
+            if (!picker.querySelector('.cbx-opt')) picker.innerHTML = '<div class="cbx-empty">Sin coincidencias</div>';
+            const restored = previousValue ? visibleOpts().findIndex((opt) => opt.dataset.value === previousValue) : -1;
+            setActive(restored);
         }
 
         function positionPicker() {
             if (!openNow) return;
-            const r = search.getBoundingClientRect();
+            const rect = search.getBoundingClientRect();
+            if (!search.isConnected || rect.bottom < 0 || rect.top > window.innerHeight) { closePicker(); return; }
             const gap = 6;
-            const below = window.innerHeight - r.bottom - gap;
-            const above = r.top - gap;
-            const openAbove = below < 240 && above > below;
-            const maxH = Math.max(180, Math.min(360, Math.max(below, above) - 12));
-            picker.style.left = `${Math.round(r.left)}px`;
-            picker.style.width = `${Math.max(Math.round(r.width), 360)}px`;
-            picker.style.maxWidth = `${Math.max(280, window.innerWidth - Math.round(r.left) - 16)}px`;
-            picker.style.maxHeight = `${Math.round(maxH)}px`;
-            picker.style.top = openAbove ? 'auto' : `${Math.round(r.bottom + gap)}px`;
-            picker.style.bottom = openAbove ? `${Math.round(window.innerHeight - r.top + gap)}px` : 'auto';
+            const viewportGap = 12;
+            const below = window.innerHeight - rect.bottom - gap;
+            const above = rect.top - gap;
+            const openAbove = below < 220 && above > below;
+            const available = Math.max(openAbove ? above : below, 96);
+            const width = Math.min(Math.max(rect.width, 320), window.innerWidth - viewportGap * 2);
+            const left = Math.min(Math.max(rect.left, viewportGap), window.innerWidth - width - viewportGap);
+            picker.style.left = `${Math.round(left)}px`;
+            picker.style.width = `${Math.round(width)}px`;
+            picker.style.maxHeight = `${Math.round(Math.min(320, available))}px`;
+            picker.style.top = openAbove ? 'auto' : `${Math.round(rect.bottom + gap)}px`;
+            picker.style.bottom = openAbove ? `${Math.round(window.innerHeight - rect.top + gap)}px` : 'auto';
         }
 
         function openPicker() {
+            const anchor = search.getBoundingClientRect();
+            if (anchor.bottom < 0 || anchor.top > window.innerHeight) {
+                revealImmediately(search);
+                requestAnimationFrame(openPicker);
+                return;
+            }
             picker.hidden = false;
             openNow = true;
             search.setAttribute('aria-expanded', 'true');
             renderPicker();
             positionPicker();
         }
+
         function closePicker() {
             picker.hidden = true;
             openNow = false;
             search.setAttribute('aria-expanded', 'false');
             search.removeAttribute('aria-activedescendant');
             search.value = '';
+            setActive(-1);
+        }
+
+        function toggleOption(opt) {
+            if (!opt) return;
+            const value = opt.dataset.value;
+            if (getUsed().includes(value)) onRemove?.(value);
+            else onAdd(value);
+            emit();
+            if (keepOpen) {
+                renderPicker();
+                search.focus();
+                positionPicker();
+            } else closePicker();
+        }
+
+        function finishSelection(e) {
+            if (!onFinish) return false;
+            e.preventDefault();
+            e.stopPropagation();
+            closePicker();
+            onFinish();
+            return true;
         }
 
         search.addEventListener('focus', openPicker);
         search.addEventListener('click', openPicker);
         search.addEventListener('input', () => { openPicker(); renderPicker(); });
         search.addEventListener('keydown', (e) => {
-            if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
-            const visible = [...opts.querySelectorAll('.option')].filter((o) => o.style.display !== 'none');
-            if (e.key === 'Enter') {
-                if (visible.length === 1) { e.preventDefault(); visible[0].click(); return; }
-                if (visible[0]) { e.preventDefault(); focusOption(visible[0], opts); }
-            } else if (e.key === 'ArrowDown') {
-                if (visible[0]) { e.preventDefault(); focusOption(visible[0], opts); }
-            } else if (e.key === 'Escape') {
-                e.preventDefault(); closePicker(); search.focus();
+            if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                finishSelection(e);
+                return;
             }
-        });
-        search.addEventListener('blur', () => {
-            setTimeout(() => {
-                if (document.activeElement === search || picker.contains(document.activeElement)) return;
+            if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
+            if (e.key === 'Tab') {
                 closePicker();
-            }, 120);
-        });
-        picker.addEventListener('mousedown', (e) => {
-            if (e.target.closest('.option')) e.preventDefault();
-        });
-        opts.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') {
+                return;
+            }
+            if (e.key === 'ArrowRight' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+                && search.selectionStart === search.value.length && search.selectionEnd === search.value.length) {
+                const alternative = pickerWrap.closest('.selection-choice-row')?.querySelector('.none-choice');
+                if (alternative) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    closePicker();
+                    alternative.focus();
+                    return;
+                }
+            }
+            if (e.key === 'Enter') {
+                const active = visibleOpts()[activeIdx()] || (visibleOpts().length === 1 ? visibleOpts()[0] : null);
+                if (active) { e.preventDefault(); toggleOption(active); }
+            } else if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                if (!openNow) openPicker();
+                setActive(Math.min(activeIdx() + 1, visibleOpts().length - 1));
+            } else if (e.key === 'ArrowUp') {
+                if (!openNow) return;
+                e.preventDefault();
+                setActive(Math.max(activeIdx() - 1, 0));
+            } else if (e.key === 'Backspace' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && getUsed().length) {
+                e.preventDefault();
+                onRemove?.(getUsed()[getUsed().length - 1]);
+                emit();
+                renderPicker();
+            } else if (e.key === 'Escape') {
                 e.preventDefault();
                 closePicker();
                 search.focus();
             }
         });
-        opts.addEventListener('click', (e) => {
-            const opt = e.target.closest('.option');
-            if (!opt || opt.style.display === 'none') return;
-            onAdd(opt.dataset.value);
-            if (keepOpen) { renderPicker(); search.focus(); }
-            else closePicker();
-            emit();
+        search.addEventListener('blur', () => setTimeout(() => {
+            if (document.activeElement !== search) closePicker();
+        }, 120));
+        picker.addEventListener('mousedown', (e) => {
+            const opt = e.target.closest('.cbx-opt');
+            if (!opt) return;
+            e.preventDefault();
+            toggleOption(opt);
         });
         window.addEventListener('resize', positionPicker);
         window.addEventListener('scroll', positionPicker, true);
@@ -409,6 +514,7 @@
 
     /* ═══════════ Fase B: escalas de valoración con puntaje ═══════════ */
     let escalasUI = null;
+    let lastEducationId = null;
 
     function syncNoneChoice(buttonId, active) {
         const btn = document.getElementById(buttonId);
@@ -447,6 +553,27 @@
         return !Number.isNaN(n) && n >= item.min && n <= item.max;
     }
 
+    function focusStageContinue(stageId) {
+        const button = document.querySelector(`[data-flow-continue="${stageId}"]`);
+        button?.focus();
+        if (button) scrollSoft(button, 'nearest');
+    }
+
+    function bindAddedItemShortcut(container, remove, restoreFocus) {
+        if (!container) return;
+        container.querySelectorAll('input, textarea, select, button').forEach((control) => {
+            const current = control.getAttribute('aria-keyshortcuts');
+            control.setAttribute('aria-keyshortcuts', [current, 'Shift+Backspace'].filter(Boolean).join(' '));
+        });
+        container.addEventListener('keydown', (e) => {
+            if (e.key !== 'Backspace' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+            e.preventDefault();
+            e.stopPropagation();
+            remove();
+            setTimeout(restoreFocus, 0);
+        });
+    }
+
     function renderEscalas() {
         const wrap = document.getElementById('escalasList');
         if (!wrap) return;
@@ -476,14 +603,24 @@
                 input.classList.toggle('puntaje-invalid', bad);
                 errEl.hidden = !bad;
                 errEl.textContent = bad ? `Debe estar entre ${item.display}` : '';
+                return !bad && item.puntaje !== '';
             };
             input.addEventListener('input', () => { validate(); emit(); });
-            card.querySelector('.multi-add-remove').addEventListener('click', () => {
+            input.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                e.preventDefault();
+                if (!validate()) return;
+                emit();
+                escalasUI?.search.focus();
+            });
+            const remove = () => {
                 state.escalas = state.escalas.filter((e2) => e2.id !== item.id);
                 renderEscalas();
                 escalasUI?.renderPicker();
                 emit();
-            });
+            };
+            card.querySelector('.multi-add-remove').addEventListener('click', remove);
+            bindAddedItemShortcut(card, remove, () => escalasUI?.search.focus());
             wrap.appendChild(card);
         });
     }
@@ -494,6 +631,161 @@
     function isoToDMY(iso) {
         const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso || '');
         return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || '');
+    }
+
+    function todayIso() {
+        const now = new Date();
+        return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+    }
+
+    function validateClinicalDate(value, { min = '1900-01-01', max = todayIso(), required = false } = {}) {
+        if (!value) return { valid: !required, empty: true, message: required ? 'Ingrese una fecha completa' : '' };
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+        if (!match) return { valid: false, empty: false, message: 'Use una fecha con año de cuatro dígitos' };
+        const [, yearText, monthText, dayText] = match;
+        const year = Number(yearText);
+        const month = Number(monthText);
+        const day = Number(dayText);
+        const date = new Date(Date.UTC(year, month - 1, day));
+        const real = date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+        if (!real) return { valid: false, empty: false, message: 'Ingrese una fecha real' };
+        if ((min && value < min) || (max && value > max)) {
+            return { valid: false, empty: false, message: `Ingrese una fecha entre ${isoToDMY(min)} y ${isoToDMY(max)}` };
+        }
+        return { valid: true, empty: false, message: '' };
+    }
+
+    /* Enmascara dígitos sueltos como DD/MM/AAAA (inserta las barras automáticamente) */
+    function maskDMY(raw) {
+        const digits = String(raw).replace(/\D/g, '').slice(0, 8);
+        const dd = digits.slice(0, 2);
+        const mm = digits.slice(2, 4);
+        const yy = digits.slice(4, 8);
+        let out = dd;
+        if (digits.length > 2) out = `${dd}/${mm}`;
+        if (digits.length > 4) out = `${dd}/${mm}/${yy}`;
+        return out;
+    }
+
+    /* Convierte "DD/MM/AAAA" → ISO "AAAA-MM-DD" (o '' si está incompleta) */
+    function dmyToIso(display) {
+        const m = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(display || '');
+        return m ? `${m[3]}-${m[2]}-${m[1]}` : '';
+    }
+
+    /* Campo de fecha clínico en formato colombiano DD/MM/AAAA (híbrido).
+       - Input de TEXTO visible: muestra y acepta DD/MM/AAAA en cualquier navegador
+         o configuración regional (el `type="date"` nativo mostraría MM/DD/YYYY).
+       - Selector de calendario: un `type="date"` invisible superpuesto se abre al
+         hacer clic en el campo o en el icono, y su selección se vuelca al texto.
+       Ambas vías de ingreso conviven. El ISO (fuente de verdad) vive en dataset.iso;
+       onChange recibe siempre ISO ('' mientras esté incompleta o inválida). */
+    function setupClinicalDateInput(input, onChange, { required = false, nextFocus, min = '1900-01-01', max = todayIso() } = {}) {
+        if (!input || input.dataset.clinicalReady) return;
+        input.dataset.clinicalReady = '1';
+        input.type = 'text';
+        input.inputMode = 'numeric';
+        input.maxLength = 10;
+        input.autocomplete = 'off';
+        input.placeholder = 'DD/MM/AAAA';
+        input.classList.add('clinical-date-input');
+        if (required) input.setAttribute('aria-required', 'true');
+        else input.removeAttribute('aria-required');
+
+        // Envolver el campo para alojar el input de texto + el calendario nativo + el icono
+        const field = document.createElement('div');
+        field.className = 'clinical-date-field';
+        input.parentNode.insertBefore(field, input);
+        field.appendChild(input);
+
+        // Calendario nativo invisible: solo aporta el selector (no su formato de texto)
+        const native = document.createElement('input');
+        native.type = 'date';
+        native.className = 'clinical-date-native';
+        native.tabIndex = -1;
+        native.setAttribute('aria-hidden', 'true');
+        native.min = min;
+        native.max = max;
+        field.appendChild(native);
+
+        const calBtn = document.createElement('button');
+        calBtn.type = 'button';
+        calBtn.className = 'clinical-date-cal';
+        calBtn.tabIndex = -1;
+        calBtn.setAttribute('aria-label', 'Abrir calendario');
+        calBtn.innerHTML = '<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="16.5" rx="2"/><path d="M16 2.5v4M8 2.5v4M3 9.5h18"/></svg>';
+        field.appendChild(calBtn);
+
+        // Estado inicial: si trae ISO previo (re-render de dispositivo), mostrarlo DD/MM/AAAA
+        if (input.dataset.iso) {
+            input.value = isoToDMY(input.dataset.iso);
+            native.value = input.dataset.iso;
+        }
+
+        const evaluate = (final = false) => {
+            const complete = /^\d{2}\/\d{2}\/\d{4}$/.test(input.value);
+            const iso = dmyToIso(input.value);
+            let result;
+            if (!input.value) {
+                result = { valid: !required, empty: true, message: required ? 'Ingrese una fecha completa' : '' };
+            } else if (!complete) {
+                // Mientras se escribe no se marca error; solo al perder foco o confirmar
+                result = { valid: false, empty: !final, message: final ? 'Complete la fecha con formato DD/MM/AAAA' : '' };
+            } else {
+                result = validateClinicalDate(iso, { min, max, required });
+            }
+            input.dataset.iso = result.valid ? iso : '';
+            if (result.valid) native.value = iso;
+            input.setCustomValidity(result.message || '');
+            input.classList.toggle('clinical-date-invalid', !result.valid && !result.empty);
+            return { result, iso: result.valid ? iso : '' };
+        };
+
+        // ── Escritura manual ──
+        input.addEventListener('input', () => {
+            const masked = maskDMY(input.value);
+            if (masked !== input.value) input.value = masked;
+            const { result, iso } = evaluate(false);
+            onChange(iso, result);
+        });
+        input.addEventListener('blur', () => { evaluate(true); });
+        input.addEventListener('keydown', (e) => {
+            if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+            const { result, iso } = evaluate(true);
+            if (!result.valid) return;
+            e.preventDefault();
+            onChange(iso, result);
+            nextFocus?.();
+        });
+
+        // ── Selección desde el calendario nativo ──
+        const commitFromNative = () => {
+            if (!native.value) return;
+            input.value = isoToDMY(native.value);
+            const { result, iso } = evaluate(true);
+            onChange(iso, result);
+        };
+        native.addEventListener('input', commitFromNative);
+        native.addEventListener('change', commitFromNative);
+
+        // ── Abrir el calendario (clic en el campo o en el icono) sin perder la escritura ──
+        const openCalendar = () => {
+            native.value = dmyToIso(input.value) || '';
+            if (typeof native.showPicker === 'function') {
+                try { native.showPicker(); return; } catch (_) {}
+            }
+            native.focus();
+            native.click();
+        };
+        input.addEventListener('click', openCalendar);
+        calBtn.addEventListener('click', (e) => { e.preventDefault(); input.focus(); openCalendar(); });
+
+        evaluate(false);
+        return { validate: () => evaluate(true).result };
+    }
+
+    function setupDeviceDateInput(input, onChange, options = {}) {
+        return setupClinicalDateInput(input, onChange, options);
     }
 
     function renderDispositivos() {
@@ -512,11 +804,11 @@
                 <div class="device-fields">
                     <div class="field-group">
                         <label>Fecha de inserción <span class="required-star" aria-label="obligatorio">*</span></label>
-                        <input type="date" class="dev-fecha-ins" value="${esc(item.fechaInsercion)}" aria-label="Fecha de inserción de ${esc(item.nombre)}">
+                        <input type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" class="dev-fecha-ins clinical-date-input" data-iso="${esc(item.fechaInsercion)}" autocomplete="off" aria-label="Fecha de inserción de ${esc(item.nombre)}, formato día, mes y año">
                     </div>
                     <div class="field-group">
                         <label>Última curación <span class="label-optional">(opcional)</span></label>
-                        <input type="date" class="dev-fecha-cur" value="${esc(item.fechaCuracion)}" aria-label="Fecha de última curación de ${esc(item.nombre)}">
+                        <input type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" class="dev-fecha-cur clinical-date-input" data-iso="${esc(item.fechaCuracion)}" autocomplete="off" aria-label="Fecha de última curación de ${esc(item.nombre)}, formato día, mes y año">
                     </div>
                     <div class="field-group field-group--wide">
                         <label>Estado del dispositivo <span class="required-star" aria-label="obligatorio">*</span></label>
@@ -527,21 +819,119 @@
             fillSelect(sel, estados, 'Seleccionar estado…');
             if (item.estado) sel.value = item.estado;
 
-            card.querySelector('.multi-add-remove').addEventListener('click', () => {
+            const remove = () => {
                 state.dispositivos = state.dispositivos.filter((d) => d.id !== item.id);
                 renderDispositivos();
                 dispositivosUI?.renderPicker();
                 emit();
+            };
+            card.querySelector('.multi-add-remove').addEventListener('click', remove);
+            const insertion = card.querySelector('.dev-fecha-ins');
+            const healing = card.querySelector('.dev-fecha-cur');
+            setupDeviceDateInput(insertion, (value) => { item.fechaInsercion = value; emit(); }, {
+                required: true,
+                nextFocus: () => healing?.focus(),
             });
-            card.querySelector('.dev-fecha-ins').addEventListener('change', (e) => { item.fechaInsercion = e.target.value; emit(); });
-            card.querySelector('.dev-fecha-cur').addEventListener('change', (e) => { item.fechaCuracion = e.target.value; emit(); });
+            setupDeviceDateInput(healing, (value) => { item.fechaCuracion = value; emit(); }, {
+                nextFocus: () => sel.focus(),
+            });
             sel.addEventListener('change', () => { item.estado = sel.value; emit(); });
+            let statusFocusAt = 0;
+            sel.addEventListener('focus', () => { statusFocusAt = performance.now(); });
+            const confirmStatus = (e) => {
+                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || !sel.value) return;
+                e.preventDefault();
+                item.estado = sel.value;
+                emit();
+                const nextCard = card.nextElementSibling;
+                const nextField = nextCard?.querySelector('.dev-fecha-ins');
+                if (nextField) nextField.focus();
+                else focusStageContinue('faseC');
+            };
+            sel.addEventListener('keydown', confirmStatus);
+            sel.addEventListener('keyup', (e) => {
+                if (performance.now() - statusFocusAt > 20) confirmStatus(e);
+            });
+            bindAddedItemShortcut(card, remove, () => dispositivosUI?.search.focus());
             wrap.appendChild(card);
         });
     }
 
     /* ═══════════ Fase D: regiones (chips) y educación ═══════════ */
     let regionesUI = null;
+
+    function focusEducationEntry() {
+        const target = document.querySelector('#eduQuick .edu-quick-btn')
+            || document.querySelector('[data-flow-continue="faseD"]');
+        target?.focus();
+        if (target) scrollSoft(target, 'nearest');
+    }
+
+    function focusEducationCompletion() {
+        const pendingTopic = [...document.querySelectorAll('#educacionList .edu-tema')]
+            .find((field) => !field.value.trim());
+        if (pendingTopic) pendingTopic.focus();
+        else focusStageContinue('faseD');
+    }
+
+    function focusEducationTopicsStart() {
+        const firstTopic = document.querySelector('#educacionList .edu-tema');
+        if (firstTopic) firstTopic.focus();
+        else focusStageContinue('faseD');
+    }
+
+    function educationWritingTarget() {
+        const topics = [...document.querySelectorAll('#educacionList .edu-tema')];
+        if (!topics.length) return null;
+        const firstEmpty = topics.find((field) => !field.value.trim());
+        if (firstEmpty) return firstEmpty;
+        const lastSelected = lastEducationId
+            ? topics.find((field) => field.dataset.eduId === lastEducationId)
+            : null;
+        return lastSelected || topics.at(-1);
+    }
+
+    function focusScaleCompletion() {
+        const pending = [...document.querySelectorAll('#escalasList .escala-puntaje')]
+            .find((input) => !input.value.trim() || input.classList.contains('puntaje-invalid'));
+        if (pending) pending.focus();
+        else if (state.escalas.length || state.sinEscalas) focusStageContinue('faseB');
+        else escalasUI?.search.focus();
+    }
+
+    function focusDeviceCompletion() {
+        const cards = [...document.querySelectorAll('#dispositivosList .multi-add-item')];
+        for (const card of cards) {
+            const insertion = card.querySelector('.dev-fecha-ins');
+            const status = card.querySelector('.dev-estado');
+            if (insertion && !insertion.dataset.iso) { insertion.focus(); return; }
+            if (status && !status.value) { status.focus(); return; }
+        }
+        if (state.dispositivos.length || state.sinDispositivos) focusStageContinue('faseC');
+        else dispositivosUI?.search.focus();
+    }
+
+    function bindNoneChoice(buttonId, kind, nextFocus) {
+        const button = document.getElementById(buttonId);
+        if (!button) return;
+        button.addEventListener('click', () => setNoneChoice(kind, button.getAttribute('aria-pressed') !== 'true'));
+        button.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowLeft' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                const search = button.closest('.selection-choice-row')?.querySelector('.multi-add-input');
+                if (search) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    search.focus();
+                }
+                return;
+            }
+            if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+            e.preventDefault();
+            const activate = button.getAttribute('aria-pressed') !== 'true';
+            setNoneChoice(kind, activate);
+            if (activate) setTimeout(nextFocus, 0);
+        });
+    }
 
     function renderRegiones() {
         const wrap = document.getElementById('regionesChips');
@@ -554,12 +944,38 @@
             chip.className = 'region-chip';
             chip.setAttribute('aria-label', `Quitar ${nombre}`);
             chip.innerHTML = `<span>${esc(nombre)}</span><span class="region-chip-x" aria-hidden="true">×</span>`;
-            chip.addEventListener('click', () => {
+            const remove = () => {
                 state.regiones = state.regiones.filter((r) => r !== nombre);
                 renderRegiones();
                 regionesUI?.renderPicker();
                 emit();
+            };
+            chip.addEventListener('click', remove);
+            chip.addEventListener('keydown', (e) => {
+                if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    const chips = [...wrap.querySelectorAll('.region-chip')];
+                    const next = chips[chips.indexOf(chip) + (e.key === 'ArrowRight' ? 1 : -1)];
+                    if (next) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        next.focus();
+                    }
+                    return;
+                }
+                if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                e.preventDefault();
+                e.stopPropagation();
+                regionesUI?.closePicker();
+                focusEducationEntry();
             });
+            chip.addEventListener('keydown', (e) => {
+                if (e.key !== 'Backspace' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                e.preventDefault();
+                e.stopPropagation();
+                remove();
+                setTimeout(() => regionesUI?.search.focus(), 0);
+            });
+            chip.setAttribute('aria-keyshortcuts', 'Enter Shift+Enter Shift+Backspace');
             wrap.appendChild(chip);
         });
     }
@@ -571,6 +987,7 @@
         state.educacion.forEach((item) => {
             const card = document.createElement('div');
             card.className = 'multi-add-item';
+            card.dataset.eduId = item.id;
             const sinTema = noEdu(item.destinatario);
             card.innerHTML = `
                 <div class="multi-add-item-head">
@@ -583,13 +1000,47 @@
                     <textarea class="edu-tema obs-textarea" rows="2" placeholder="Describa el contenido educativo impartido…"
                               aria-label="Tema de educación para ${esc(item.destinatario)}">${esc(item.tema)}</textarea>
                 </div>`}`;
-            card.querySelector('.multi-add-remove').addEventListener('click', () => {
+            const remove = () => {
                 state.educacion = state.educacion.filter((e2) => e2.id !== item.id);
+                if (lastEducationId === item.id) lastEducationId = state.educacion.at(-1)?.id || null;
                 renderEducacion();
                 emit();
-            });
+            };
+            const removeButton = card.querySelector('.multi-add-remove');
+            removeButton.tabIndex = -1;
+            removeButton.addEventListener('mousedown', (e) => e.preventDefault());
+            removeButton.addEventListener('click', remove);
             const ta = card.querySelector('.edu-tema');
-            if (ta) ta.addEventListener('input', () => { item.tema = ta.value.trim(); emit(); });
+            if (ta) {
+                ta.dataset.eduId = item.id;
+                ta.addEventListener('input', () => { item.tema = ta.value.trim(); emit(); });
+                ta.addEventListener('keydown', (e) => {
+                    if (e.key === 'ArrowLeft' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey
+                        && ta.selectionStart === 0 && ta.selectionEnd === 0) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        removeButton.focus();
+                        return;
+                    }
+                    if (e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    item.tema = ta.value.trim();
+                    emit();
+                    focusEducationCompletion();
+                });
+                removeButton.addEventListener('keydown', (e) => {
+                    if (e.key !== 'ArrowRight' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                    e.preventDefault();
+                    e.stopPropagation();
+                    ta.focus();
+                    ta.setSelectionRange(0, 0);
+                });
+            }
+            bindAddedItemShortcut(card, remove, () => {
+                [...document.querySelectorAll('#eduQuick .edu-quick-btn')]
+                    .find((button) => button.dataset.eduDest === item.destinatario)?.focus();
+            });
             wrap.appendChild(card);
         });
         document.querySelectorAll('#eduQuick [data-edu-dest]').forEach((btn) => {
@@ -610,32 +1061,55 @@
             btn.className = 'edu-quick-btn';
             btn.dataset.eduDest = dest;
             btn.setAttribute('aria-pressed', 'false');
+            btn.setAttribute('aria-keyshortcuts', 'Enter Space Shift+Enter Shift+Backspace');
             btn.textContent = dest
                 .replace('Familiar directo (cónyuge / padre / madre / hijo/a)', 'Familiar directo')
                 .replace('No fue posible brindar educación – ', 'No fue posible: ');
             btn.title = dest;
-            btn.addEventListener('click', () => {
+            btn.addEventListener('click', (e) => {
                 const existing = state.educacion.find((e2) => e2.destinatario === dest);
-                if (existing) state.educacion = state.educacion.filter((e2) => e2.id !== existing.id);
-                else state.educacion.push({ id: uid(), destinatario: dest, tema: '' });
+                if (existing) {
+                    state.educacion = state.educacion.filter((e2) => e2.id !== existing.id);
+                    if (lastEducationId === existing.id) lastEducationId = state.educacion.at(-1)?.id || null;
+                } else {
+                    const added = { id: uid(), destinatario: dest, tema: '' };
+                    state.educacion.push(added);
+                    lastEducationId = added.id;
+                }
                 renderEducacion();
                 emit();
-                if (!existing && !noEdu(dest)) {
-                    setTimeout(() => {
-                        const cards = [...document.querySelectorAll('#educacionList .multi-add-item')];
-                        cards[cards.length - 1]?.querySelector('.edu-tema')?.focus();
-                    }, 0);
+            });
+            btn.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    focusEducationTopicsStart();
+                    return;
                 }
+                if (e.key === 'ArrowDown' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && btn.getAttribute('aria-pressed') === 'true') {
+                    const entry = state.educacion.find((item) => item.destinatario === dest);
+                    const topic = entry && document.querySelector(`#educacionList .edu-tema[data-edu-id="${entry.id}"]`);
+                    if (topic) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        topic.focus();
+                    }
+                    return;
+                }
+                if (e.key !== 'Backspace' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || btn.getAttribute('aria-pressed') !== 'true') return;
+                e.preventDefault();
+                e.stopPropagation();
+                state.educacion = state.educacion.filter((item) => item.destinatario !== dest);
+                if (lastEducationId && !state.educacion.some((item) => item.id === lastEducationId)) {
+                    lastEducationId = state.educacion.at(-1)?.id || null;
+                }
+                renderEducacion();
+                emit();
+                [...document.querySelectorAll('#eduQuick .edu-quick-btn')]
+                    .find((candidate) => candidate.dataset.eduDest === dest)?.focus();
             });
             wrap.appendChild(btn);
         });
-    }
-
-    /* ═══════════ Fase F: vigentes al cierre (autocompuesto) ═══════════ */
-    function renderVigentes() {
-        const el = document.getElementById('vigentesLine');
-        if (!el) return;
-        el.textContent = formatVigentes();
     }
 
     /* ═══════════ Formatters para la nota ═══════════ */
@@ -800,9 +1274,13 @@
     }
 
     /* Buscador visible de la fase (para la escritura directa global) */
-    function searchForPhase(id) {
+    function searchForPhase(id, origin = document.activeElement) {
         const phase = document.getElementById(id);
         if (!phase) return null;
+        if (id === 'faseD') {
+            const topic = educationWritingTarget();
+            if (topic?.offsetParent !== null) return topic;
+        }
         const boxes = [...phase.querySelectorAll('.estado-group .cbx-input, .multi-add-input')];
         return boxes.find((b) => !b.closest('[hidden]') && b.offsetParent !== null) || null;
     }
@@ -828,7 +1306,7 @@
         } else if (id === 'faseC') {
             if (!state.diagnosticoMedico) { document.getElementById('diagnosticoMedico')?.focus(); return true; }
             if (m.faseC.length) {
-                const bad = [...document.querySelectorAll('#dispositivosList .dev-fecha-ins')].find((i) => !i.value)
+                const bad = [...document.querySelectorAll('#dispositivosList .dev-fecha-ins')].find((i) => !i.dataset.iso)
                     || [...document.querySelectorAll('#dispositivosList .dev-estado')].find((s) => !s.value)
                     || (!state.dispositivos.length && !state.sinDispositivos ? document.querySelector('#dispositivosBlock .multi-add-input') : null)
                     || (!state.estadoDental ? document.getElementById('estadoDental') : null);
@@ -843,11 +1321,19 @@
             const seq = [
                 [!state.respuesta, 'respuestaIntervenciones'],
                 [!state.tendencia, 'tendenciaEvolutiva'],
+                [!document.getElementById('metaLograda')?.value, '__meta__'],
                 [!state.criterioClinico, 'criterioClinico'],
                 [!state.pendientes, 'pendientes'],
             ];
             const hit = seq.find(([miss]) => miss);
-            if (hit) { document.getElementById(hit[1])?.focus(); return true; }
+            if (hit) {
+                if (hit[1] === '__meta__') {
+                    const meta = document.querySelector('#metaSeg [role="radio"][tabindex="0"]')
+                        || document.querySelector('#metaSeg [role="radio"]');
+                    meta?.focus();
+                } else document.getElementById(hit[1])?.focus();
+                return true;
+            }
         }
         return false;
     }
@@ -874,7 +1360,76 @@
         });
     }
 
+    function bindSelectConfirm(select, onChange, nextFocus) {
+        if (!select) return;
+        let focusAt = 0;
+        select.addEventListener('focus', () => { focusAt = performance.now(); });
+        select.addEventListener('change', onChange);
+        const confirm = (e) => {
+            if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || !select.value) return;
+            e.preventDefault();
+            onChange();
+            nextFocus?.();
+        };
+        select.addEventListener('keydown', confirm);
+        select.addEventListener('keyup', (e) => {
+            if (performance.now() - focusAt > 20) confirm(e);
+        });
+    }
+
     /* ═══════════ Reset ═══════════ */
+    function resetPhase(id) {
+        if (id === 'patient') {
+            Object.assign(state, { posicion: '', numCama: '', numHabitacion: '', servicio: '' });
+            cbx.posicion?.setValue('');
+            cbx.servicio?.setValue('');
+            ['numCama', 'numHabitacion'].forEach((fieldId) => {
+                const field = document.getElementById(fieldId);
+                if (field) field.value = '';
+            });
+        } else if (id === 'faseB') {
+            Object.assign(state, {
+                estadoNeurologico: '', estadoHemodinamico: '', estadoRespiratorio: '',
+                escalas: [], sinEscalas: false,
+            });
+            ['estadoNeurologico', 'estadoHemodinamico', 'estadoRespiratorio'].forEach((fieldId) => cbx[fieldId]?.setValue(''));
+            document.querySelectorAll('.estado-group').forEach((group) => group.classList.remove('estado-group--done'));
+            renderEscalas();
+            syncNoneChoice('sinEscalasBtn', false);
+            escalasUI?.renderPicker();
+        } else if (id === 'faseC') {
+            Object.assign(state, {
+                diagnosticoMedico: '', aislamiento: 'No aplica', estadoDental: '',
+                dispositivos: [], sinDispositivos: false,
+            });
+            const diagnosis = document.getElementById('diagnosticoMedico');
+            const isolation = document.getElementById('aislamiento');
+            if (diagnosis) diagnosis.value = '';
+            if (isolation) isolation.value = 'No aplica';
+            cbx.estadoDental?.setValue('');
+            renderDispositivos();
+            syncNoneChoice('sinDispositivosBtn', false);
+            dispositivosUI?.renderPicker();
+        } else if (id === 'faseD') {
+            Object.assign(state, { regiones: [], sinAlteraciones: false, educacion: [] });
+            lastEducationId = null;
+            renderRegiones();
+            renderEducacion();
+            syncNoneChoice('sinAlteracionesBtn', false);
+            regionesUI?.renderPicker();
+        } else if (id === 'faseF') {
+            Object.assign(state, { respuesta: '', tendencia: '', criterioClinico: '', pendientes: '' });
+            ['respuestaIntervenciones', 'criterioClinico', 'pendientes'].forEach((fieldId) => {
+                const field = document.getElementById(fieldId);
+                if (field) field.value = '';
+            });
+            cbx.tendenciaEvolutiva?.setValue('');
+        } else return false;
+        closeMenus();
+        emit();
+        return true;
+    }
+
     function reset() {
         Object.assign(state, {
             posicion: '', numCama: '', numHabitacion: '', servicio: '',
@@ -883,15 +1438,15 @@
             dispositivos: [], sinDispositivos: false, regiones: [], sinAlteraciones: false, educacion: [],
             respuesta: '', tendencia: '', criterioClinico: '', pendientes: '',
         });
-        ['posicion', 'servicio', 'areaClinica', 'estadoDental', 'estadoNeurologico', 'estadoHemodinamico', 'estadoRespiratorio'].forEach((id) => cbx[id]?.setValue(''));
+        lastEducationId = null;
+        ['posicion', 'servicio', 'estadoDental', 'estadoNeurologico', 'estadoHemodinamico', 'estadoRespiratorio'].forEach((id) => cbx[id]?.setValue(''));
         ['numCama', 'numHabitacion', 'diagnosticoMedico', 'respuestaIntervenciones', 'criterioClinico', 'pendientes'].forEach((id) => {
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
         const ais = document.getElementById('aislamiento');
         if (ais) ais.value = 'No aplica';
-        const ten = document.getElementById('tendenciaEvolutiva');
-        if (ten) ten.value = '';
+        cbx.tendenciaEvolutiva?.setValue('');
         document.querySelectorAll('.estado-group').forEach((g) => g.classList.remove('estado-group--done'));
         document.querySelectorAll('.multi-add-picker').forEach((p) => { p.hidden = true; });
         document.querySelectorAll('.multi-add-input').forEach((t) => t.setAttribute('aria-expanded', 'false'));
@@ -899,7 +1454,6 @@
         renderDispositivos();
         renderRegiones();
         renderEducacion();
-        renderVigentes();
         syncNoneChoice('sinEscalasBtn', false);
         syncNoneChoice('sinDispositivosBtn', false);
         syncNoneChoice('sinAlteracionesBtn', false);
@@ -909,40 +1463,38 @@
     }
 
     /* ═══════════ Init ═══════════ */
-    function init({ onChange, onAreaSelect } = {}) {
+    function init({ onChange } = {}) {
         onChangeCb = onChange || (() => {});
-        onAreaSelectCb = onAreaSelect || (() => true);
         const L = NL().listas;
 
         /* Fase A: comboboxes + encadenado de teclado */
         cbx.posicion = createCombobox({
             id: 'posicion',
             options: () => L.POSICION || [],
-            onSelect: (v) => { state.posicion = v || ''; emit(); if (v) document.getElementById('numCama')?.focus(); },
+            onSelect: (v) => { state.posicion = v || ''; emit(); },
+            onConfirm: () => document.getElementById('numCama')?.focus(),
         });
         cbx.servicio = createCombobox({
             id: 'servicio',
             options: () => L.SERVICIO || [],
-            onSelect: (v) => { state.servicio = v || ''; emit(); if (v) document.getElementById('areaClinica')?.focus(); },
-        });
-        cbx.areaClinica = createCombobox({
-            id: 'areaClinica',
-            options: () => NL().areas,
-            onSelect: (opt) => {
-                if (!opt) { onAreaSelectCb(null); return true; }
-                return onAreaSelectCb(opt.key);
-            },
+            onSelect: (v) => { state.servicio = v || ''; emit(); },
+            onConfirm: () => focusStageContinue('patient'),
         });
         cbx.estadoDental = createCombobox({
             id: 'estadoDental',
             options: () => L.DENTAL || [],
             onSelect: (v) => { state.estadoDental = v || ''; emit(); },
+            onConfirm: () => dispositivosUI?.search.focus(),
         });
+        setupComboboxDelegation();
 
         wireSimpleField('numCama', 'numCama');
         wireSimpleField('numHabitacion', 'numHabitacion');
         chainField('numCama', () => document.getElementById('numHabitacion')?.focus());
-        chainField('numHabitacion', () => document.getElementById('servicio')?.focus());
+        chainField('numHabitacion', () => {
+            document.getElementById('servicio')?.focus();
+            cbx.servicio?.open();
+        });
 
         /* Fase B: estados con auto-colapso encadenados */
         const groups = ESTADOS.map((cfg) => `[data-estado="${cfg.field}"]`);
@@ -969,6 +1521,11 @@
                     inputs[inputs.length - 1]?.focus();
                 }, 0);
             },
+            onRemove: (nombre) => {
+                state.escalas = state.escalas.filter((item) => item.nombre !== nombre);
+                renderEscalas();
+            },
+            onFinish: focusScaleCompletion,
         });
 
         /* Fase C */
@@ -978,7 +1535,9 @@
         const ais = document.getElementById('aislamiento');
         if (ais) {
             ais.value = 'No aplica';
-            ais.addEventListener('change', () => { state.aislamiento = ais.value || 'No aplica'; emit(); });
+            bindSelectConfirm(ais,
+                () => { state.aislamiento = ais.value || 'No aplica'; emit(); },
+                () => document.getElementById('estadoDental')?.focus());
         }
 
         dispositivosUI = createMultiAdd({
@@ -997,6 +1556,11 @@
                     cards[cards.length - 1]?.querySelector('.dev-fecha-ins')?.focus();
                 }, 0);
             },
+            onRemove: (nombre) => {
+                state.dispositivos = state.dispositivos.filter((item) => item.nombre !== nombre);
+                renderDispositivos();
+            },
+            onFinish: focusDeviceCompletion,
         });
 
         /* Fase D */
@@ -1021,49 +1585,63 @@
                 state.regiones.push(nombre);
                 renderRegiones();
             },
+            onRemove: (nombre) => {
+                state.regiones = state.regiones.filter((region) => region !== nombre);
+                renderRegiones();
+            },
+            onFinish: focusEducationEntry,
         });
 
         const educationLegacyPicker = document.getElementById('educacionPicker');
         if (educationLegacyPicker) educationLegacyPicker.hidden = true;
         setupEduQuick();
 
-        document.getElementById('sinEscalasBtn')?.addEventListener('click', () => setNoneChoice('escalas', !state.sinEscalas));
-        document.getElementById('sinDispositivosBtn')?.addEventListener('click', () => setNoneChoice('dispositivos', !state.sinDispositivos));
-        document.getElementById('sinAlteracionesBtn')?.addEventListener('click', () => setNoneChoice('alteraciones', !state.sinAlteraciones));
+        bindNoneChoice('sinEscalasBtn', 'escalas', () => focusStageContinue('faseB'));
+        bindNoneChoice('sinDispositivosBtn', 'dispositivos', () => focusStageContinue('faseC'));
+        bindNoneChoice('sinAlteracionesBtn', 'alteraciones', focusEducationEntry);
 
         /* Fase F */
         wireSimpleField('respuestaIntervenciones', 'respuesta');
-        fillSelect(document.getElementById('tendenciaEvolutiva'), L.TENDENCIA, 'Seleccionar tendencia…');
-        const ten = document.getElementById('tendenciaEvolutiva');
-        if (ten) ten.addEventListener('change', () => { state.tendencia = ten.value; emit(); });
+        cbx.tendenciaEvolutiva = createCombobox({
+            id: 'tendenciaEvolutiva',
+            options: () => L.TENDENCIA || [],
+            onSelect: (value) => { state.tendencia = value || ''; emit(); },
+            onConfirm: () => {
+                const meta = document.querySelector('#metaSeg [role="radio"][tabindex="0"]')
+                    || document.querySelector('#metaSeg [role="radio"]');
+                meta?.focus();
+            },
+        });
         wireSimpleField('criterioClinico', 'criterioClinico');
         wireSimpleField('pendientes', 'pendientes');
 
-        renderVigentes();
+    }
+
+    function closeMenus() {
+        Object.values(cbx).forEach((control) => control?.close?.());
+        escalasUI?.closePicker();
+        dispositivosUI?.closePicker();
+        regionesUI?.closePicker();
     }
 
     window.NotaCampos = {
         state,
         init,
         reset,
+        resetPhase,
         getMissing,
         phaseStatus,
         focusPhase,
         focusFirstPending,
         searchForPhase,
+        closeMenus,
+        setupDateInput: setupClinicalDateInput,
+        validateDate: validateClinicalDate,
+        formatDate: isoToDMY,
         formatEscalas,
         formatDispositivos,
         formatRegiones,
         formatEducacion,
         formatVigentes,
-        setArea(key) {
-            const entry = NL().areas.find((a) => a.key === key);
-            cbx.areaClinica?.setValue(entry ? entry.label : '');
-        },
-        setAreaEnabled(enabled) {
-            cbx.areaClinica?.setDisabled(!enabled);
-            const hint = document.getElementById('areaClinicaHint');
-            if (hint) hint.hidden = !!enabled;
-        },
     };
 })();

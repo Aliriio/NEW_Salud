@@ -735,8 +735,8 @@ body.cf-app-body {
   min-height: 0 !important;
 }
 .cf-app-body .container {
-  --note-width-main: 1440px;
-  --note-width-with-aside: 1440px;
+  --note-width-main: clamp(960px, 72vw, 1100px);
+  --note-width-with-aside: clamp(1120px, 82vw, 1240px);
   width: 100%;
   max-width: var(--note-width-main) !important;   /* cap para lectura cómoda en escritorio */
   margin: 0 auto !important;       /* centrado */
@@ -755,8 +755,8 @@ body.cf-app-body {
 
 /* Header de página delgado para Entrega (centrado con el note app) */
 .cf-page-head {
-  --note-width-main: 1440px;
-  --note-width-with-aside: 1440px;
+  --note-width-main: clamp(960px, 72vw, 1100px);
+  --note-width-with-aside: clamp(1120px, 82vw, 1240px);
   margin: 0 auto var(--cf-6);
   max-width: var(--note-width-main);
 }

@@ -10,9 +10,9 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/tokens.css">
     <!-- Estilos del note app (lógica intacta; solo tokens de color actualizados) -->
-    <link rel="stylesheet" href="styles.css?v=3">
+    <link rel="stylesheet" href="styles.css?v=11">
     <!-- Shell + capa de integración (carga después para envolver el note app) -->
-    <link rel="stylesheet" href="css/careflow.css?v=2">
+    <link rel="stylesheet" href="css/careflow.css?v=3">
     <script src="js/auth.js"></script>
     <script>if (window.CareFlowAuth) window.CareFlowAuth.guard();</script>
 </head>
@@ -85,11 +85,11 @@
                         <h1>Entrega</h1>
                         <p>Completa los campos guiados; CareFlow genera la nota de entrega de turno lista para revisar.</p>
                     </div>
-                    <button type="button" class="preview-launch" id="noteToggleBtn" aria-expanded="false" aria-controls="noteSection">
+                    <button type="button" class="preview-launch" id="noteToggleBtn" aria-expanded="false" aria-controls="noteSection" hidden>
                         <span class="preview-launch-icon" aria-hidden="true">&#128196;</span>
                         <span class="preview-launch-copy">
-                            <strong>Vista previa</strong>
-                            <small id="previewLaunchStatus">Borrador · campos pendientes</small>
+                            <strong>Ver nota</strong>
+                            <small id="previewLaunchStatus">Nota lista para revisar</small>
                         </span>
                     </button>
                 </div>
@@ -130,6 +130,17 @@
                             </div>
                         </aside>
 
+                        <dialog class="reset-dialog" id="resetDialog" aria-labelledby="resetDialogTitle" aria-describedby="resetDialogDescription">
+                            <div class="reset-dialog-icon" aria-hidden="true">↺</div>
+                            <h2 id="resetDialogTitle">¿Qué deseas reiniciar?</h2>
+                            <p id="resetDialogDescription">Puedes limpiar solo la sección <strong id="resetDialogSectionName">actual</strong> y conservar el resto de la nota, o reiniciar toda la nota y comenzar de nuevo. Esta acción no se puede deshacer.</p>
+                            <div class="reset-dialog-actions">
+                                <button type="button" class="reset-dialog-cancel" id="resetCancelBtn">Cancelar</button>
+                                <button type="button" class="reset-dialog-section" id="resetSectionBtn">Reiniciar solo esta sección</button>
+                                <button type="button" class="reset-dialog-all" id="resetAllBtn">Reiniciar toda la nota</button>
+                            </div>
+                        </dialog>
+
                         <section class="workflow" aria-label="Flujo de trabajo">
 
                             <nav class="flow-nav" aria-label="Etapas de la nota" id="flowNav">
@@ -158,10 +169,8 @@
                                     <h3>Datos del paciente</h3>
                                     <div class="patient-header-right">
                                         <span class="required-note">* Obligatorios</span>
-                                        <button type="button" class="reset-icon-btn" id="resetBtn"
-                                                title="Reiniciar proceso" aria-label="Reiniciar todo el proceso">
-                                            ↺
-                                        </button>
+                                        <button type="button" class="reset-icon-btn" data-reset-section="patient"
+                                                title="Reiniciar información" aria-label="Opciones para reiniciar Datos del paciente">↺</button>
                                     </div>
                                 </div>
                                 <div class="patient-block-body">
@@ -175,23 +184,10 @@
                                             <input type="hidden" id="sexo" value="___">
                                         </div>
                                         <div class="field-group field-group--dob">
-                                            <label>Fecha de nacimiento <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <div class="dob-inputs" role="group" aria-label="Fecha de nacimiento">
-                                                <input type="text" inputmode="numeric" id="dobDia"
-                                                       maxlength="2" placeholder="DD"
-                                                       aria-label="Día de nacimiento"
-                                                       class="dob-field" autocomplete="off">
-                                                <span class="dob-sep" aria-hidden="true">/</span>
-                                                <input type="text" inputmode="numeric" id="dobMes"
-                                                       maxlength="2" placeholder="MM"
-                                                       aria-label="Mes de nacimiento"
-                                                       class="dob-field" autocomplete="off">
-                                                <span class="dob-sep" aria-hidden="true">/</span>
-                                                <input type="text" inputmode="numeric" id="dobAnio"
-                                                       maxlength="4" placeholder="AAAA"
-                                                       aria-label="Año de nacimiento"
-                                                       class="dob-field dob-field--year" autocomplete="off">
-                                            </div>
+                                            <label for="dobFecha">Fecha de nacimiento <span class="required-star" aria-label="obligatorio">*</span></label>
+                                            <input type="text" id="dobFecha" class="clinical-date-input"
+                                                   inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA"
+                                                   aria-label="Fecha de nacimiento, formato día, mes y año" autocomplete="off">
                                             <div class="dob-feedback" id="dobFeedback" aria-live="polite"></div>
                                         </div>
                                         <div class="field-group">
@@ -222,16 +218,6 @@
                                                 <div class="cbx-list" role="listbox" hidden></div>
                                             </div>
                                         </div>
-                                        <div class="field-group field-group--wide">
-                                            <label for="areaClinica">Área clínica <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <div class="cbx" data-cbx="areaClinica">
-                                                <input type="text" id="areaClinica" class="cbx-input" placeholder="Buscar área clínica…"
-                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                                       aria-label="Área clínica">
-                                                <div class="cbx-list" role="listbox" hidden></div>
-                                            </div>
-                                            <div class="field-hint" id="areaClinicaHint" hidden>Complete sexo, fecha de nacimiento y servicio para habilitar</div>
-                                        </div>
                                     </div>
                                 </div>
                                 <div class="flow-stage-footer">
@@ -245,6 +231,8 @@
                                 <div class="phase-header">
                                     <h3 id="faseBTitle">Estado clínico</h3>
                                     <span class="phase-badge" data-phase-badge="faseB" aria-live="polite"></span>
+                                    <button type="button" class="reset-icon-btn" data-reset-section="faseB"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Estado clínico">↺</button>
                                 </div>
                                 <div class="phase-body">
                                     <div class="estado-group" data-estado="estadoNeurologico" data-label="Estado neurológico"></div>
@@ -255,8 +243,10 @@
                                             <label>Escalas de valoración <span class="required-star" aria-label="obligatorio">*</span></label>
                                             <span class="subblock-hint">Seleccione cada escala aplicada y registre su puntaje</span>
                                         </div>
-                                        <div class="multi-add-wrap" id="escalasPicker"></div>
-                                        <button type="button" class="none-choice" id="sinEscalasBtn" aria-pressed="false">No se aplicaron escalas de valoración</button>
+                                        <div class="selection-choice-row" role="group" aria-label="Elegir escalas aplicadas o indicar que no se aplicaron">
+                                            <div class="multi-add-wrap" id="escalasPicker"></div>
+                                            <button type="button" class="none-choice" id="sinEscalasBtn" aria-pressed="false">No se aplicaron escalas de valoración</button>
+                                        </div>
                                         <div class="multi-add-list" id="escalasList"></div>
                                     </div>
                                 </div>
@@ -271,6 +261,8 @@
                                 <div class="phase-header">
                                     <h3 id="faseCTitle">Diagnóstico médico y dispositivos</h3>
                                     <span class="phase-badge" data-phase-badge="faseC" aria-live="polite"></span>
+                                    <button type="button" class="reset-icon-btn" data-reset-section="faseC"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Diagnóstico y dispositivos">↺</button>
                                 </div>
                                 <div class="phase-body">
                                     <div class="phase-field-row">
@@ -297,8 +289,10 @@
                                             <label>Dispositivos presentes <span class="required-star" aria-label="obligatorio">*</span></label>
                                             <span class="subblock-hint">Cada dispositivo requiere fecha de inserción y estado</span>
                                         </div>
-                                        <div class="multi-add-wrap" id="dispositivosPicker"></div>
-                                        <button type="button" class="none-choice" id="sinDispositivosBtn" aria-pressed="false">Sin dispositivos invasivos o de soporte</button>
+                                        <div class="selection-choice-row" role="group" aria-label="Elegir dispositivos presentes o indicar que no hay dispositivos">
+                                            <div class="multi-add-wrap" id="dispositivosPicker"></div>
+                                            <button type="button" class="none-choice" id="sinDispositivosBtn" aria-pressed="false">Sin dispositivos invasivos o de soporte</button>
+                                        </div>
                                         <div class="multi-add-list" id="dispositivosList"></div>
                                     </div>
                                 </div>
@@ -313,6 +307,8 @@
                                 <div class="phase-header">
                                     <h3 id="faseDTitle">Hallazgos y educación</h3>
                                     <span class="phase-badge" data-phase-badge="faseD" aria-live="polite"></span>
+                                    <button type="button" class="reset-icon-btn" data-reset-section="faseD"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Hallazgos y educación">↺</button>
                                 </div>
                                 <div class="phase-body">
                                     <div class="subblock" id="regionesBlock">
@@ -321,8 +317,10 @@
                                             <span class="subblock-hint">Marque todas las zonas con alteraciones identificadas</span>
                                         </div>
                                         <div class="region-chips" id="regionesChips" hidden></div>
-                                        <div class="multi-add-wrap" id="regionesPicker"></div>
-                                        <button type="button" class="none-choice" id="sinAlteracionesBtn" aria-pressed="false">Sin alteraciones relevantes identificadas</button>
+                                        <div class="selection-choice-row" role="group" aria-label="Elegir regiones afectadas o indicar que no hay alteraciones">
+                                            <div class="multi-add-wrap" id="regionesPicker"></div>
+                                            <button type="button" class="none-choice" id="sinAlteracionesBtn" aria-pressed="false">Sin alteraciones relevantes identificadas</button>
+                                        </div>
                                     </div>
                                     <div class="subblock" id="educacionBlock">
                                         <div class="subblock-head">
@@ -345,6 +343,8 @@
                             <div class="phase-header phase-header--pae">
                                 <h3 id="fasePAETitle">Plan de atención (PAE)</h3>
                                 <span class="phase-hint">NANDA · NOC · NIC · Evaluación B6</span>
+                                <button type="button" class="reset-icon-btn" data-reset-section="fasePAE"
+                                        title="Reiniciar información" aria-label="Opciones para reiniciar Plan de atención PAE">↺</button>
                             </div>
 
                             <div class="progress-track">
@@ -506,6 +506,8 @@
                                 <div class="phase-header">
                                     <h3 id="faseFTitle">Evaluación y entrega del turno</h3>
                                     <span class="phase-badge" data-phase-badge="faseF" aria-live="polite"></span>
+                                    <button type="button" class="reset-icon-btn" data-reset-section="faseF"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Evaluación y entrega">↺</button>
                                 </div>
                                 <div class="phase-body">
                                     <div class="field-group">
@@ -517,11 +519,16 @@
                                     <div class="phase-field-row">
                                         <div class="field-group field-group--wide">
                                             <label for="tendenciaEvolutiva">Tendencia evolutiva <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <select id="tendenciaEvolutiva" class="field-select" aria-label="Tendencia evolutiva del paciente"></select>
+                                            <div class="cbx" data-cbx="tendenciaEvolutiva">
+                                                <input type="text" id="tendenciaEvolutiva" class="cbx-input" placeholder="Buscar o seleccionar tendencia…"
+                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                       aria-label="Tendencia evolutiva del paciente">
+                                                <div class="cbx-list" role="listbox" hidden></div>
+                                            </div>
                                         </div>
                                     </div>
 
-                                    <div class="meta-block" id="metaBlock" hidden>
+                                    <div class="meta-block" id="metaBlock">
                                         <label id="metaLabel">Estado de la meta (NOC) al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
                                         <div class="meta-chip-group" role="radiogroup" aria-labelledby="metaLabel" id="metaSeg">
                                             <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Alcanzada" tabindex="0">Alcanzada</button>
@@ -538,12 +545,6 @@
                                         <textarea id="criterioClinico" class="obs-textarea" rows="2"
                                                   placeholder="Evidencia objetiva del estado de la meta…"
                                                   aria-label="Criterio clínico u objetivo alcanzado"></textarea>
-                                    </div>
-
-                                    <div class="vigentes-line" id="vigentesWrap">
-                                        <span class="vigentes-label">Dispositivos y terapias vigentes al cierre</span>
-                                        <span class="vigentes-auto-badge" title="Se construye automáticamente desde el estado respiratorio y los dispositivos no retirados">Automático</span>
-                                        <div class="vigentes-text" id="vigentesLine" aria-live="polite">—</div>
                                     </div>
 
                                     <div class="field-group">
@@ -605,8 +606,8 @@
     <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
          (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
          orden de documento, así que NotaCampos existe cuando app.js corre. -->
-    <script src="js/nota-campos.js?v=2" defer></script>
-    <script src="js/app.js?v=3" defer></script>
+    <script src="js/nota-campos.js?v=8" defer></script>
+    <script src="js/app.js?v=10" defer></script>
     <!-- Shell del producto -->
     <script src="js/shell.js"></script>
 </body>
