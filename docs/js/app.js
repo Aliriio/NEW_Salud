@@ -1893,6 +1893,12 @@ function joinClause(arr) {
     return items.slice(0, -1).join(', ') + ' y ' + items[items.length - 1];
 }
 
+/* ─── Lista de viñetas para un grupo denso de la nota (mismo <ul><li> que NIC/
+   transversales, para consistencia visual y copia en texto plano). items ya escapados. ─── */
+function noteListHtml(items) {
+    return `<ul>${items.map((i) => `<li>${i}</li>`).join('')}</ul>`;
+}
+
 /* ─── Formatea texto libre (observaciones): escapa HTML, preserva saltos
    de línea como <br> y convierte viñetas "- " / "* " en "• " ─── */
 function formatFreeText(text) {
@@ -2476,103 +2482,145 @@ function updateNote() {
 
     const now = new Date();
     const fecha = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
-    const hora = now.toLocaleTimeString('es-CO', { hour12: false });
+    const hora = now.toLocaleTimeString('es-CO', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
     const dobResult  = validateDOB();
     const edadTexto  = dobResult.valid ? dobResult.ageText : '';
     const metaEstado = els.metaLograda?.value || '';
     const gap = '___';
+    /* Quita el punto final de un valor que se inserta a mitad de frase: la plantilla
+       ya aporta su propia puntuación y si no, quedan artefactos tipo "enfermedad., con". */
+    const sinPuntoFinal = (x) => String(x || '').replace(/\s*\.\s*$/, '');
     // Campo con valor → negrita; vacío → hueco visible "___"
     const v = (x) => `<strong>${x ? escapeHtml(x) : gap}</strong>`;
+    // Igual que v(), para valores seguidos de coma/punto en la redacción
+    const vMid = (x) => v(sinPuntoFinal(x));
     const sexoVal = els.sexo?.value !== '___' ? els.sexo?.value : '';
     // "en posición Posición de Fowler…" → "en posición Fowler…"
     const posDisp = (s?.posicion || '').replace(/^Posición de /i, '');
 
-    let note = `<strong>NOTA DE ENTREGA DE TURNO</strong><br>`;
-    note += `<strong>Fecha:</strong> ${fecha} &nbsp; <strong>Hora:</strong> ${hora}<br>`;
-    note += `Fundación Clínica Santa Fe de Bogotá<br><br>`;
+    /* La nota se arma por BLOQUES: cada bloque es un párrafo o una sección y se
+       separa del siguiente con una línea en blanco (lo aporta .note-block, no
+       <br> sueltos). Dentro de un bloque los saltos son simples: <br> para líneas
+       y <ul> para listas, que quedan pegadas a su texto guía. Así la separación
+       es consistente por construcción, con pocos o con muchos datos. */
+    const blocks = [];
+
+    // Encabezado
+    blocks.push(
+        `<strong class="note-title">NOTA DE ENTREGA DE TURNO</strong><br>` +
+        `<strong>Fecha:</strong> ${fecha} &nbsp; <strong>Hora:</strong> ${hora}<br>` +
+        `Fundación Clínica Santa Fe de Bogotá`
+    );
 
     // Párrafo 1 — identificación, ubicación y estado clínico
-    note += `Se entrega paciente ${v(sexoVal)}, de ${v(edadTexto)} de edad, `;
-    note += `en posición ${v(posDisp)} en cama ${v(s?.numCama)} de la habitación ${v(s?.numHabitacion)}, `;
-    note += `ubicado en el servicio de ${v(s?.servicio)}, correspondiente al área clínica de ${v(selected.areaNombre)}. `;
-    note += `Al momento de la entrega, el paciente se encuentra ${v(s?.estadoNeurologico)}, ${v(s?.estadoHemodinamico)} `;
-    note += `y ${v(s?.estadoRespiratorio)}.`;
-    if (s?.sinEscalas) note += ` No se aplicaron escalas de valoración durante el turno.`;
-    else note += ` Se registraron las siguientes escalas de valoración: ${v(nc?.formatEscalas())}.`;
+    let p1 = `Se entrega paciente ${v(sexoVal)}, de ${v(edadTexto)} de edad, `
+        + `en posición ${v(posDisp)} en cama ${v(s?.numCama)} de la habitación ${v(s?.numHabitacion)}, `
+        + `ubicado en el servicio de ${v(s?.servicio)}, correspondiente al área clínica de ${v(selected.areaNombre)}. `
+        + `Al momento de la entrega, el paciente se encuentra ${v(s?.estadoNeurologico)}, ${v(s?.estadoHemodinamico)} `
+        + `y ${v(s?.estadoRespiratorio)}.`;
+    if (s?.sinEscalas) p1 += ` No se aplicaron escalas de valoración durante el turno.`;
+    else if ((s?.escalas?.length || 0) <= 2) {
+        // Pocas escalas: en línea
+        p1 += ` Se registraron las siguientes escalas de valoración: ${v(nc?.formatEscalas())}.`;
+    } else {
+        // Muchas escalas: lista de viñetas bajo el mismo texto guía
+        p1 += ` Se registraron las siguientes escalas de valoración:${noteListHtml(nc.escalasItems().map(escapeHtml))}`;
+    }
+    blocks.push(p1);
 
     // Párrafo 2 — diagnóstico médico, aislamiento, dispositivos y estado dental
     const aisl = s?.aislamiento && s.aislamiento !== 'No aplica' ? `, en ${escapeHtml(s.aislamiento)},` : ',';
-    note += `<br><br>Paciente con ${v(s?.diagnosticoMedico)}${aisl} `;
-    if (s?.sinDispositivos) note += `sin dispositivos invasivos o de soporte reportados. `;
-    else note += `portador de ${v(nc?.formatDispositivos())}. `;
-    note += `Presenta estado dental ${v(s?.estadoDental)}. `;
-    note += `Se reporta a enfermero/a entrante el estado actual de cada dispositivo.`;
+    let p2 = `Paciente con ${vMid(s?.diagnosticoMedico)}${aisl} `;
+    if (s?.sinDispositivos) p2 += `sin dispositivos invasivos o de soporte reportados. `;
+    else if ((s?.dispositivos?.length || 0) <= 1) {
+        // Un solo dispositivo: en línea
+        p2 += `portador de ${v(nc?.formatDispositivos())}. `;
+    } else {
+        // Varios dispositivos (nombre + fechas + estado): lista de viñetas
+        p2 += `portador de:${noteListHtml(nc.dispositivosItems().map(escapeHtml))}`;
+    }
+    p2 += `Presenta estado dental ${v(s?.estadoDental)}. `
+        + `Se reporta a enfermero/a entrante el estado actual de cada dispositivo.`;
+    blocks.push(p2);
 
     // Párrafo 3 — medidas de seguridad institucionales (texto fijo)
-    note += `<br><br>Se confirman medidas de seguridad institucionales al momento de la entrega, `;
-    note += `incluyendo manilla de identificación, barandas elevadas y demás medidas según protocolo.`;
+    blocks.push(
+        `Se confirman medidas de seguridad institucionales al momento de la entrega, `
+        + `incluyendo manilla de identificación, barandas elevadas y demás medidas según protocolo.`
+    );
 
     // Párrafo 4 — hallazgos de valoración física y educación (opcional)
+    let p4;
     if (s?.sinAlteraciones) {
-        note += `<br><br>Durante el turno no se identificaron alteraciones relevantes adicionales.`;
+        p4 = `Durante el turno no se identificaron alteraciones relevantes adicionales.`;
+    } else if ((s?.regiones?.length || 0) <= 3) {
+        // Pocas alteraciones: en línea
+        p4 = `Durante el turno se identificaron alteraciones relevantes en ${v(nc?.formatRegiones())} `
+            + `y sin otros hallazgos de importancia adicionales.`;
     } else {
-        note += `<br><br>Durante el turno se identificaron alteraciones relevantes en ${v(nc?.formatRegiones())} `;
-        note += `y sin otros hallazgos de importancia adicionales.`;
+        // Muchas alteraciones: lista de viñetas; el resto de la frase se cierra aparte
+        p4 = `Durante el turno se identificaron alteraciones relevantes en:${noteListHtml(nc.regionesItems().map(escapeHtml))}`
+            + `Sin otros hallazgos de importancia adicionales.`;
     }
     const eduFrase = nc?.formatEducacion();
-    if (eduFrase) note += ` ${escapeHtml(eduFrase)}`;
-    note += ` Se reportan estos hallazgos como parte del resumen clínico de entrega.`;
+    if (eduFrase) p4 += ` ${escapeHtml(eduFrase)}`;
+    p4 += ` Se reportan estos hallazgos como parte del resumen clínico de entrega.`;
+    blocks.push(p4);
 
     // Párrafo 5 — PAE: diagnóstico NANDA priorizado, RC/EP y NOC
-    note += `<br><br>Durante el turno se trabajó el diagnóstico prioritario ${v(selected.diagnosticoNombre)}`;
-    if (selected.rc.length) note += `, relacionado con <strong>${joinClause(selected.rc)}</strong>`;
-    if (selected.ep.length) note += `, evidenciado por <strong>${joinClause(selected.ep)}</strong>`;
-    note += `. `;
+    let p5 = `Durante el turno se trabajó el diagnóstico prioritario ${v(selected.diagnosticoNombre)}`;
+    if (selected.rc.length) p5 += `, relacionado con <strong>${joinClause(selected.rc)}</strong>`;
+    if (selected.ep.length) p5 += `, evidenciado por <strong>${joinClause(selected.ep)}</strong>`;
+    p5 += `. `;
     const nocDisp = selected.nocNombre
-        ? (selected.nocCustom ? escapeHtml(selected.nocNombre) : selected.nocNombre)
+        ? sinPuntoFinal(selected.nocCustom ? escapeHtml(selected.nocNombre) : selected.nocNombre)
         : gap;
-    note += `El resultado esperado (NOC) establecido fue: <strong>${nocDisp}</strong>, `;
-    note += `con seguimiento durante el turno a continuación descrito.`;
+    p5 += `El resultado esperado (NOC) establecido fue: <strong>${nocDisp}</strong>, `
+        + `con seguimiento durante el turno a continuación descrito.`;
+    blocks.push(p5);
 
-    // Intervenciones NIC y transversales
+    // Intervenciones NIC (la lista va pegada a su encabezado, sin <br> intermedio)
     const nicsHtml = selected.nics.length
-        ? `<ul>${selected.nics.map((n) => `<li>${selected.customNics.includes(n) ? escapeHtml(n) : n}</li>`).join('')}</ul>`
-        : `<em>Pendiente de selección</em><br>`;
-    note += `<br><br><strong>INTERVENCIONES NIC REALIZADAS DURANTE EL TURNO</strong><br>${nicsHtml}`;
+        ? noteListHtml(selected.nics.map((n) => (selected.customNics.includes(n) ? escapeHtml(n) : n)))
+        : `<br><em>Pendiente de selección</em>`;
+    blocks.push(`<strong class="note-heading">INTERVENCIONES NIC REALIZADAS DURANTE EL TURNO</strong>${nicsHtml}`);
 
+    // Intervenciones transversales
     const trans = selected.datosDiag?.trans || [];
     if (trans.length) {
-        note += `<strong>INTERVENCIONES TRANSVERSALES REALIZADAS</strong><br><ul>${trans.map((t) => `<li>${t}</li>`).join('')}</ul>`;
+        blocks.push(`<strong class="note-heading">INTERVENCIONES TRANSVERSALES REALIZADAS</strong>${noteListHtml(trans)}`);
     }
 
     // Evaluación del turno — indicador B6 + respuesta + tendencia
-    note += `<strong>EVALUACIÓN DEL TURNO</strong><br>`;
+    let ev = `<strong class="note-heading">EVALUACIÓN DEL TURNO</strong><br>`;
     if (selected.b6Puntuacion && selected.nocNombre) {
         const b6Desc = (selected.b6Descripcion || '').replace(/^\d+\s*[.,\-=:]\s*/, '');
-        note += `Indicador B6 para «${nocDisp}»: puntuación <strong>${selected.b6Puntuacion}</strong> — ${b6Desc}.<br>`;
+        ev += `Indicador B6 para «${nocDisp}»: puntuación <strong>${selected.b6Puntuacion}</strong> — ${b6Desc}.<br>`;
     } else {
-        note += `Indicador B6: <strong>${gap}</strong>.<br>`;
+        ev += `Indicador B6: <strong>${gap}</strong>.<br>`;
     }
-    note += `Se evidencia ${v(s?.respuesta)}, con ${v(s?.tendencia)} respecto al inicio del mismo. `;
-    note += `Estos hallazgos son reportados al enfermero/a que recibe el turno.`;
+    ev += `Se evidencia ${vMid(s?.respuesta)}, con ${v(s?.tendencia)} respecto al inicio del mismo. `
+        + `Estos hallazgos son reportados al enfermero/a que recibe el turno.`;
+    blocks.push(ev);
 
     // Entrega del turno — meta, criterio, estado de salida y pendientes
-    note += `<br><br><strong>ENTREGA DEL TURNO</strong><br>`;
-    note += `Dadas estas intervenciones y al finalizar el turno, se evaluó la meta del cuidado, `;
-    note += `la cual se encuentra ${v(metaEstado)}, evidenciado por ${v(s?.criterioClinico)}. `;
-    note += `Se hace entrega del paciente en posición ${v(posDisp)}, con ${v(nc?.formatVigentes())}, `;
-    note += `medidas de seguridad confirmadas${aisl === ',' ? '' : aisl.replace(/,$/, '')}. `;
-    note += `Se comunican verbalmente y por escrito los siguientes pendientes para continuidad del cuidado `;
-    note += `en el próximo turno: ${v(s?.pendientes)}`;
+    let en = `<strong class="note-heading">ENTREGA DEL TURNO</strong><br>`
+        + `Dadas estas intervenciones y al finalizar el turno, se evaluó la meta del cuidado, `
+        + `la cual se encuentra ${v(metaEstado)}, evidenciado por ${vMid(s?.criterioClinico)}. `
+        + `Se hace entrega del paciente en posición ${v(posDisp)}, con ${v(nc?.formatVigentes())}, `
+        + `medidas de seguridad confirmadas${aisl === ',' ? '' : aisl.replace(/,$/, '')}. `
+        + `Se comunican verbalmente y por escrito los siguientes pendientes para continuidad del cuidado `
+        + `en el próximo turno: ${v(s?.pendientes)}`;
+    blocks.push(en);
 
     // Observaciones adicionales (campo opcional)
     const comentarios = els.otrosComentarios?.value.trim();
     if (comentarios) {
-        note += `<br><br><strong>Observaciones:</strong><br>${formatFreeText(comentarios)}`;
+        blocks.push(`<strong class="note-heading">Observaciones:</strong><br>${formatFreeText(comentarios)}`);
     }
 
-    els.noteContent.innerHTML = note;
+    els.noteContent.innerHTML = blocks.map((b) => `<div class="note-block">${b}</div>`).join('');
     updateCopyBtnState();
 }
 
@@ -2585,11 +2633,19 @@ function noteToPlainText(el) {
         const children = Array.from(node.childNodes).map(extract).join('');
         if (tag === 'BR') return '\n';
         if (tag === 'LI') return '• ' + children.trim() + '\n';
+        // La lista abre línea propia y queda pegada a su texto guía (sin línea en blanco)
         if (tag === 'UL' || tag === 'OL') return '\n' + children;
+        // Cada bloque de la nota (párrafo o sección) se separa con una línea en blanco
+        if (node.classList?.contains('note-block')) return children.trim() + '\n\n';
         if (tag === 'P') return children + '\n';
         return children;
     }
-    return extract(el).replace(/\n{3,}/g, '\n\n').trim();
+    return extract(el)
+        .replace(/ /g, ' ')        // &nbsp; → espacio normal (evita basura en el portapapeles)
+        .replace(/[ \t]{2,}/g, ' ')     // el HTML colapsa espacios al mostrar: el texto copiado debe coincidir
+        .replace(/[ \t]+\n/g, '\n')     // sin espacios colgando al final de línea
+        .replace(/\n{3,}/g, '\n\n')     // nunca más de una línea en blanco seguida
+        .trim();
 }
 
 /* ─── Copia la nota (solo si está completa) ─── */

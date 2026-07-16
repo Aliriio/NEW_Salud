@@ -1876,10 +1876,32 @@ body {
   /* max-height lo gestiona JS en syncNotePanelHeight() */
 }
 
+/* Cada párrafo/sección de la nota es un bloque; la separación entre bloques la
+   da este margen (no <br> sueltos), así el ritmo vertical es siempre consistente. */
+.note-content .note-block { margin: 0 0 var(--sp-3); }
+.note-content .note-block:last-child { margin-bottom: 0; }
+
 .note-content ul,
 .note-content ol {
   padding-left: var(--sp-6);
-  margin: var(--sp-1) 0;
+  margin: var(--sp-2) 0;
+}
+/* Lista al cierre de un bloque: el bloque ya aporta la separación inferior */
+.note-content .note-block > ul:last-child,
+.note-content .note-block > ol:last-child { margin-bottom: 0; }
+.note-content li {
+  margin: 3px 0;
+  line-height: 1.55;
+}
+
+/* Jerarquía dentro de la nota (emphasis tipográfico; el ritmo vertical lo dan los <br>) */
+.note-content .note-title {
+  font-size: 0.92rem;
+  letter-spacing: .02em;
+}
+.note-content .note-heading {
+  color: var(--blue-dark);
+  letter-spacing: .03em;
 }
 
 /* === EMPTY STATE === */

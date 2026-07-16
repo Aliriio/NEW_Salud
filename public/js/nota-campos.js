@@ -1116,24 +1116,36 @@
     const joinNat = (arr) => arr.length <= 1 ? arr.join('')
         : arr.slice(0, -1).join(', ') + ' y ' + arr[arr.length - 1];
 
-    function formatEscalas() {
-        if (state.sinEscalas) return 'No se aplicaron escalas de valoración';
-        if (!state.escalas.length) return '';
-        return state.escalas
-            .map((e2) => `${e2.corto}: ${e2.puntaje !== '' ? e2.puntaje : '___'}`)
-            .join('; ');
+    /* Ítems sueltos de cada grupo denso — misma fuente que los formatters de string.
+       Permiten a la nota presentarlos en línea (pocos) o como lista de viñetas (muchos). */
+    function escalasItems() {
+        return state.escalas.map((e2) => `${e2.corto}: ${e2.puntaje !== '' ? e2.puntaje : '___'}`);
     }
 
-    function formatDispositivos() {
-        if (state.sinDispositivos) return 'Sin dispositivos invasivos o de soporte';
-        if (!state.dispositivos.length) return '';
+    function dispositivosItems() {
         return state.dispositivos.map((d) => {
             const extras = [];
             if (d.fechaInsercion) extras.push(`inserción ${isoToDMY(d.fechaInsercion)}`);
             if (d.fechaCuracion) extras.push(`última curación ${isoToDMY(d.fechaCuracion)}`);
             if (d.estado) extras.push(`estado: ${d.estado}`);
             return d.nombre + (extras.length ? ` (${extras.join(', ')})` : '');
-        }).join('; ');
+        });
+    }
+
+    function regionesItems() {
+        return state.regiones.slice();
+    }
+
+    function formatEscalas() {
+        if (state.sinEscalas) return 'No se aplicaron escalas de valoración';
+        if (!state.escalas.length) return '';
+        return escalasItems().join('; ');
+    }
+
+    function formatDispositivos() {
+        if (state.sinDispositivos) return 'Sin dispositivos invasivos o de soporte';
+        if (!state.dispositivos.length) return '';
+        return dispositivosItems().join('; ');
     }
 
     function formatRegiones() {
@@ -1643,5 +1655,8 @@
         formatRegiones,
         formatEducacion,
         formatVigentes,
+        escalasItems,
+        dispositivosItems,
+        regionesItems,
     };
 })();

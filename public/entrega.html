@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/tokens.css">
     <!-- Estilos del note app (lógica intacta; solo tokens de color actualizados) -->
-    <link rel="stylesheet" href="styles.css?v=11">
+    <link rel="stylesheet" href="styles.css?v=13">
     <!-- Shell + capa de integración (carga después para envolver el note app) -->
     <link rel="stylesheet" href="css/careflow.css?v=3">
     <script src="js/auth.js"></script>
@@ -606,8 +606,11 @@
     <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
          (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
          orden de documento, así que NotaCampos existe cuando app.js corre. -->
-    <script src="js/nota-campos.js?v=8" defer></script>
-    <script src="js/app.js?v=10" defer></script>
+    <script src="js/nota-campos.js?v=10" defer></script>
+    <script src="js/app.js?v=14" defer></script>
+    <!-- ⚠️ DEMO TEMPORAL — botón de escenarios para QA de la nota.
+         Para quitarlo: borrar esta línea y el archivo js/demo-escenarios.js -->
+    <script src="js/demo-escenarios.js?v=1" defer></script>
     <!-- Shell del producto -->
     <script src="js/shell.js"></script>
 </body>
