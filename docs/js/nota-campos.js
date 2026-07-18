@@ -49,6 +49,16 @@
     const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
     const noEdu = (dest) => String(dest).startsWith('No fue posible');
 
+    /* Mide el ancho en píxeles de un texto con una fuente dada (canvas reutilizado).
+       Sirve para saber dónde termina el texto visible de un input y distinguir
+       la "zona de texto" (escribir) de la "zona libre" (abrir calendario). */
+    let _measureCtx = null;
+    function measureTextWidth(text, font) {
+        if (!_measureCtx) _measureCtx = document.createElement('canvas').getContext('2d');
+        _measureCtx.font = font;
+        return _measureCtx.measureText(text || '').width;
+    }
+
     function emit() {
         onChangeCb();
     }
@@ -238,24 +248,6 @@
                 if (dis) close();
             },
         };
-    }
-
-    /* ═══════════ Selects nativos ═══════════ */
-    function fillSelect(sel, items, placeholder) {
-        if (!sel) return;
-        sel.innerHTML = '';
-        if (placeholder) {
-            const ph = document.createElement('option');
-            ph.value = '';
-            ph.textContent = placeholder;
-            sel.appendChild(ph);
-        }
-        (items || []).forEach((t) => {
-            const o = document.createElement('option');
-            o.value = t;
-            o.textContent = t;
-            sel.appendChild(o);
-        });
     }
 
     function setupComboboxDelegation() {
@@ -768,7 +760,7 @@
         native.addEventListener('input', commitFromNative);
         native.addEventListener('change', commitFromNative);
 
-        // ── Abrir el calendario (clic en el campo o en el icono) sin perder la escritura ──
+        // ── Abrir el calendario (clic en la zona libre o en el icono) sin perder la escritura ──
         const openCalendar = () => {
             native.value = dmyToIso(input.value) || '';
             if (typeof native.showPicker === 'function') {
@@ -777,8 +769,39 @@
             native.focus();
             native.click();
         };
-        input.addEventListener('click', openCalendar);
-        calBtn.addEventListener('click', (e) => { e.preventDefault(); input.focus(); openCalendar(); });
+
+        /* Píxel donde termina el texto visible (valor escrito o placeholder DD/MM/AAAA),
+           medido con la tipografía real del campo. Todo lo que quede a su derecha es
+           "zona libre". */
+        const textRightEdge = () => {
+            const cs = getComputedStyle(input);
+            const shown = input.value || input.placeholder || '';
+            const font = `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+            const padLeft = parseFloat(cs.paddingLeft) || 0;
+            const borderLeft = parseFloat(cs.borderLeftWidth) || 0;
+            return borderLeft + padLeft + measureTextWidth(shown, font);
+        };
+
+        /* Clic sobre DD, MM o AAAA → se deja el comportamiento por defecto (foco + cursor
+           de escritura) para editar ese segmento con el teclado. Clic en la zona libre
+           (a la derecha del texto) → se abre el calendario SIN colocar el cursor de
+           escritura, porque en ese punto no se puede escribir. Se usa `mousedown` para
+           poder impedir el foco antes de que el navegador coloque el caret. */
+        input.addEventListener('mousedown', (e) => {
+            if (e.button !== 0) return;
+            const clickX = e.clientX - input.getBoundingClientRect().left;
+            if (clickX <= textRightEdge() + 8) return;  // zona de texto: dejar escribir
+            e.preventDefault();                          // evita foco/caret en la zona libre
+            if (document.activeElement === input) input.blur();
+            openCalendar();
+        });
+        // El icono abre el calendario; tampoco debe dejar el cursor parpadeando en el texto.
+        calBtn.addEventListener('mousedown', (e) => e.preventDefault());
+        calBtn.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (document.activeElement === input) input.blur();
+            openCalendar();
+        });
 
         evaluate(false);
         return { validate: () => evaluate(true).result };
@@ -791,9 +814,13 @@
     function renderDispositivos() {
         const wrap = document.getElementById('dispositivosList');
         if (!wrap) return;
+        // Las listas de los comboboxes de estado se portalan a <body> al abrirse; al
+        // reconstruir las tarjetas hay que retirar las huérfanas para no acumularlas.
+        document.querySelectorAll('body > .cbx-list[id^="dev-estado-"]').forEach((el) => el.remove());
         wrap.innerHTML = '';
         const estados = NL().listas.ESTADO_DISPOSITIVO || [];
         state.dispositivos.forEach((item) => {
+            const estadoId = `dev-estado-${item.id}`;
             const card = document.createElement('div');
             card.className = 'multi-add-item multi-add-item--device';
             card.innerHTML = `
@@ -811,13 +838,18 @@
                         <input type="text" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" class="dev-fecha-cur clinical-date-input" data-iso="${esc(item.fechaCuracion)}" autocomplete="off" aria-label="Fecha de última curación de ${esc(item.nombre)}, formato día, mes y año">
                     </div>
                     <div class="field-group field-group--wide">
-                        <label>Estado del dispositivo <span class="required-star" aria-label="obligatorio">*</span></label>
-                        <select class="dev-estado field-select" aria-label="Estado de ${esc(item.nombre)}"></select>
+                        <label for="${estadoId}">Estado del dispositivo <span class="required-star" aria-label="obligatorio">*</span></label>
+                        <div class="cbx" data-cbx="${estadoId}">
+                            <input type="text" id="${estadoId}" class="cbx-input dev-estado" placeholder="Buscar estado…"
+                                   role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                   aria-label="Estado de ${esc(item.nombre)}">
+                            <div class="cbx-list" role="listbox" hidden></div>
+                        </div>
                     </div>
                 </div>`;
-            const sel = card.querySelector('.dev-estado');
-            fillSelect(sel, estados, 'Seleccionar estado…');
-            if (item.estado) sel.value = item.estado;
+            // Insertar la tarjeta antes de crear el combobox: createCombobox busca sus
+            // nodos en el document (data-cbx / id), no dentro del fragmento suelto.
+            wrap.appendChild(card);
 
             const remove = () => {
                 state.dispositivos = state.dispositivos.filter((d) => d.id !== item.id);
@@ -828,32 +860,29 @@
             card.querySelector('.multi-add-remove').addEventListener('click', remove);
             const insertion = card.querySelector('.dev-fecha-ins');
             const healing = card.querySelector('.dev-fecha-cur');
+
+            // Estado del dispositivo: mismo combobox buscable que el resto del formulario.
+            const estadoCombo = createCombobox({
+                id: estadoId,
+                options: () => estados,
+                onSelect: (value) => { item.estado = value || ''; emit(); },
+                onConfirm: () => {
+                    const nextCard = card.nextElementSibling;
+                    const nextField = nextCard?.querySelector('.dev-fecha-ins');
+                    if (nextField) nextField.focus();
+                    else focusStageContinue('faseC');
+                },
+            });
+            if (item.estado) estadoCombo?.setValue(item.estado);
+
             setupDeviceDateInput(insertion, (value) => { item.fechaInsercion = value; emit(); }, {
                 required: true,
                 nextFocus: () => healing?.focus(),
             });
             setupDeviceDateInput(healing, (value) => { item.fechaCuracion = value; emit(); }, {
-                nextFocus: () => sel.focus(),
-            });
-            sel.addEventListener('change', () => { item.estado = sel.value; emit(); });
-            let statusFocusAt = 0;
-            sel.addEventListener('focus', () => { statusFocusAt = performance.now(); });
-            const confirmStatus = (e) => {
-                if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || !sel.value) return;
-                e.preventDefault();
-                item.estado = sel.value;
-                emit();
-                const nextCard = card.nextElementSibling;
-                const nextField = nextCard?.querySelector('.dev-fecha-ins');
-                if (nextField) nextField.focus();
-                else focusStageContinue('faseC');
-            };
-            sel.addEventListener('keydown', confirmStatus);
-            sel.addEventListener('keyup', (e) => {
-                if (performance.now() - statusFocusAt > 20) confirmStatus(e);
+                nextFocus: () => estadoCombo?.input.focus(),
             });
             bindAddedItemShortcut(card, remove, () => dispositivosUI?.search.focus());
-            wrap.appendChild(card);
         });
     }
 
@@ -1072,6 +1101,11 @@
                     state.educacion = state.educacion.filter((e2) => e2.id !== existing.id);
                     if (lastEducationId === existing.id) lastEducationId = state.educacion.at(-1)?.id || null;
                 } else {
+                    // "No fue posible" (educación NO realizada) es excluyente con las
+                    // opciones que indican que SÍ se educó. Al elegir una, se descartan
+                    // las del grupo opuesto para no dejar estados contradictorios.
+                    const addingNegative = noEdu(dest);
+                    state.educacion = state.educacion.filter((e2) => noEdu(e2.destinatario) === addingNegative);
                     const added = { id: uid(), destinatario: dest, tema: '' };
                     state.educacion.push(added);
                     lastEducationId = added.id;
@@ -1372,23 +1406,6 @@
         });
     }
 
-    function bindSelectConfirm(select, onChange, nextFocus) {
-        if (!select) return;
-        let focusAt = 0;
-        select.addEventListener('focus', () => { focusAt = performance.now(); });
-        select.addEventListener('change', onChange);
-        const confirm = (e) => {
-            if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey || !select.value) return;
-            e.preventDefault();
-            onChange();
-            nextFocus?.();
-        };
-        select.addEventListener('keydown', confirm);
-        select.addEventListener('keyup', (e) => {
-            if (performance.now() - focusAt > 20) confirm(e);
-        });
-    }
-
     /* ═══════════ Reset ═══════════ */
     function resetPhase(id) {
         if (id === 'patient') {
@@ -1415,9 +1432,8 @@
                 dispositivos: [], sinDispositivos: false,
             });
             const diagnosis = document.getElementById('diagnosticoMedico');
-            const isolation = document.getElementById('aislamiento');
             if (diagnosis) diagnosis.value = '';
-            if (isolation) isolation.value = 'No aplica';
+            cbx.aislamiento?.setValue('No aplica');
             cbx.estadoDental?.setValue('');
             renderDispositivos();
             syncNoneChoice('sinDispositivosBtn', false);
@@ -1456,8 +1472,7 @@
             const el = document.getElementById(id);
             if (el) el.value = '';
         });
-        const ais = document.getElementById('aislamiento');
-        if (ais) ais.value = 'No aplica';
+        cbx.aislamiento?.setValue('No aplica');
         cbx.tendenciaEvolutiva?.setValue('');
         document.querySelectorAll('.estado-group').forEach((g) => g.classList.remove('estado-group--done'));
         document.querySelectorAll('.multi-add-picker').forEach((p) => { p.hidden = true; });
@@ -1543,14 +1558,15 @@
         /* Fase C */
         wireSimpleField('diagnosticoMedico', 'diagnosticoMedico');
         chainField('diagnosticoMedico', () => document.getElementById('aislamiento')?.focus());
-        fillSelect(document.getElementById('aislamiento'), L.AISLAMIENTO);
-        const ais = document.getElementById('aislamiento');
-        if (ais) {
-            ais.value = 'No aplica';
-            bindSelectConfirm(ais,
-                () => { state.aislamiento = ais.value || 'No aplica'; emit(); },
-                () => document.getElementById('estadoDental')?.focus());
-        }
+        // Aislamiento: mismo combobox buscable que el resto del formulario (opcional; por defecto "No aplica").
+        cbx.aislamiento = createCombobox({
+            id: 'aislamiento',
+            options: () => L.AISLAMIENTO || [],
+            onSelect: (value) => { state.aislamiento = value || 'No aplica'; emit(); },
+            onConfirm: () => document.getElementById('estadoDental')?.focus(),
+        });
+        cbx.aislamiento?.setValue('No aplica');
+        state.aislamiento = 'No aplica';
 
         dispositivosUI = createMultiAdd({
             pickerWrap: document.getElementById('dispositivosPicker'),

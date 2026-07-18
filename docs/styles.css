@@ -2241,6 +2241,17 @@ body {
 
 .cbx-opt--selected { font-weight: 700; color: var(--blue-dark); }
 
+/* Afordancia de desplegable unificada: el mismo chevron de "Dispositivos presentes"
+   (y de los estados neuro/hemo/resp) en los comboboxes de campo — aislamiento,
+   estado dental, posición, servicio, tendencia y estado del dispositivo — para que
+   todo lo que abre una lista comparta el mismo lenguaje visual. */
+.field-group .cbx-input {
+  padding-right: 34px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none'%3E%3Cpath d='M1 1.5L6 6.5L11 1.5' stroke='%236b84a0' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+}
+
 .cbx-empty {
   padding: 8px 10px;
   font-size: 0.8rem;

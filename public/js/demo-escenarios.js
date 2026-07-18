@@ -278,8 +278,10 @@
 
         // — Diagnóstico y dispositivos (Fase C)
         setSimple('diagnosticoMedico', d.clinico.diagnosticoMedico);
-        setSimple('aislamiento', d.clinico.aislamiento);
+        // Aislamiento ahora es combobox: se fija el valor visible sin abrir el desplegable.
         st.aislamiento = d.clinico.aislamiento;
+        const aisEl = document.getElementById('aislamiento');
+        if (aisEl) aisEl.value = d.clinico.aislamiento;
         st.estadoDental = d.clinico.estadoDental;
         const dentEl = document.getElementById('estadoDental');
         if (dentEl) dentEl.value = d.clinico.estadoDental;
