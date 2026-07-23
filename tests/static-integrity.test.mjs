@@ -111,9 +111,11 @@ test('delivery accessibility ownership stays explicit in source markup', async (
       assert.equal(attribute(tag, 'tabindex'), null, 'Inactive PAE headers must not enter the tab order');
     });
 
+    const lifecycle = source.indexOf('js/note-lifecycle.js');
     const core = source.indexOf('js/interaction-core.js');
     const fields = source.indexOf('js/nota-campos.js');
     const app = source.indexOf('js/app.js');
+    assert.ok(lifecycle >= 0 && lifecycle < app, 'Lifecycle state must load before app.js');
     assert.ok(core >= 0 && core < fields && fields < app, 'Interaction scripts must preserve core → fields → app order');
   }
 });

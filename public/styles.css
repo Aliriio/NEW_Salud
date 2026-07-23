@@ -251,6 +251,31 @@ body {
   padding: var(--sp-4) var(--sp-5);
 }
 
+/* Identificación del paciente: encabezado calmado, sin card. Se separa del resto
+   con un hairline en lugar de un recuadro, y sus campos comparten la rejilla de
+   .patient-field-row para que los bordes izquierdo y derecho alineen con las filas
+   siguientes (Tipo en la col. 1; Número ocupa las col. 2–3, sin espacio vacío). */
+.patient-context {
+  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border-faint);
+}
+
+.patient-context-title {
+  margin: 0 0 var(--sp-3);
+  color: var(--text-secondary);
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.patient-context-fields {
+  display: grid;
+  grid-template-columns: minmax(180px, .9fr) minmax(190px, auto) minmax(280px, 1.45fr);
+  gap: clamp(12px, 1.5cqi, 16px);
+}
+
+.patient-context-fields .field-group--id-number { grid-column: 2 / -1; }
+
 .patient-field-row {
   display: grid;
   /* La columna de fecha es `auto`: mide justo lo que ocupan DD/MM/AAAA, de modo
@@ -451,24 +476,21 @@ body {
   white-space: nowrap;
 }
 
-/* === BLOQUE META (estado al cierre del turno) === */
+/* === BLOQUE META (estado al cierre del turno) ===
+   Sin recuadro verde: el color/emphasis lo lleva solo el chip seleccionado, no el
+   contenedor. Se comporta como un campo más dentro del grupo "Cierre de la meta". */
 .meta-block {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  padding: var(--sp-4) var(--sp-5);
-  background: var(--success-bg);
-  border: 1.5px solid rgba(8, 116, 67, .22);
-  border-radius: var(--r-md);
-  animation: fadeSlideIn var(--mid) var(--ease);
 }
 
 .meta-block label {
-  font-size: 0.78rem;
+  font-size: 0.73rem;
   font-weight: 700;
-  color: var(--success);
+  color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: .04em;
+  letter-spacing: .05em;
 }
 
 .meta-block select {
@@ -1987,6 +2009,39 @@ body {
   opacity: 0.7;
 }
 
+.note-action-secondary {
+  min-height: 42px;
+  padding: 9px 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: var(--white);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.note-action-secondary:hover:not(:disabled) {
+  border-color: var(--blue-mid);
+  color: var(--blue-dark);
+}
+
+.note-action-secondary:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: .72;
+}
+
+.note-action-secondary[hidden] {
+  display: none !important;
+}
+
+.workflow-discard-btn {
+  width: auto;
+  margin-left: auto;
+}
+
 /* === RESPONSIVE === */
 @media (max-width: 1100px) {
   .content {
@@ -2889,12 +2944,49 @@ body {
 #educacionList .multi-add-item-head { padding-top: 7px; }
 #educacionList .field-group { min-width: 0; }
 
-/* Cierre compacto; observaciones conserva su componente y comportamiento. */
-#faseF .phase-body { display: grid; grid-template-columns: minmax(0, 1.5fr) minmax(280px, .75fr); align-items: start; }
-#faseF .phase-body > .phase-field-row { grid-template-columns: 1fr; }
-#faseF .phase-body > .meta-block { grid-column: 1 / -1; }
-#faseF > .obs-block { margin: 0 var(--sp-5) var(--sp-4); }
-#faseF > .workflow-actions { margin: 0 var(--sp-5) var(--sp-5); }
+/* Fase F: la evaluación se recorre como 3 grupos clínicos apilados
+   (Evolución → Cierre de la meta → Traspaso), separados por hairlines, no por cajas.
+   Cada grupo ordena sus campos internamente; la lectura es de arriba hacia abajo. */
+#faseF .phase-body { display: flex; flex-direction: column; gap: 0; }
+
+.delivery-group { padding-block: clamp(16px, 2cqi, 20px); }
+.delivery-group:first-child { padding-top: 0; }
+.delivery-group:last-child { padding-bottom: 0; }
+.delivery-group + .delivery-group { border-top: 1px solid var(--border-faint); }
+
+.delivery-group-title {
+  margin: 0 0 var(--sp-3);
+  font-size: .82rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+}
+
+.delivery-group-fields { display: flex; flex-direction: column; gap: clamp(12px, 1.5cqi, 16px); }
+.delivery-group-fields--pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(260px, 1fr);
+  gap: clamp(16px, 2cqi, 24px);
+  align-items: start;
+}
+/* La tendencia es un control corto; no debe estirarse a lo alto del textarea vecino. */
+.field-group--trend { align-self: start; }
+
+/* Observaciones (opcional) dentro del grupo Traspaso: sin caja, tono secundario. */
+.obs-block--inline { border: 0; background: none; padding: 0; }
+
+/* Barra de cierre: pie de sección claro con estado + acción primaria "Revisar nota". */
+#faseF > .workflow-actions {
+  margin: 0 var(--sp-5) var(--sp-5);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  border-top: 1px solid var(--border-faint);
+  padding-top: var(--sp-4);
+}
+/* Estado a lo ancho arriba; luego "Revisar nota" (crece) junto al reset en una fila. */
+#faseF > .workflow-actions > .note-status { flex: 1 1 100%; margin: 0; }
+#faseF > .workflow-actions > .copy-btn { width: auto; flex: 1 1 auto; }
 
 /* Geometría de lectura: compacta el recorrido horizontal sin reducir controles. */
 .patient-block-body,
@@ -2922,10 +3014,6 @@ body {
 #educacionList .multi-add-item {
   grid-template-columns: minmax(180px, .7fr) minmax(320px, 1.3fr);
 }
-#faseF .phase-body {
-  grid-template-columns: minmax(0, 1.85fr) minmax(280px, 1fr);
-}
-
 /* Responde al ancho útil del formulario, incluso con sidebar o escalado del SO. */
 @container delivery-workflow (max-width: 920px) {
   .flow-nav-copy small { display: none; }
@@ -2936,6 +3024,8 @@ body {
   #faseC .phase-field-row > :first-child { grid-column: 1 / -1; }
   .device-fields { grid-template-columns: 1fr 1fr; }
   .device-fields > :nth-child(3) { grid-column: 1 / -1; }
+  /* Pares de Fase F apilan cuando el textarea principal se estrecharía demasiado. */
+  .delivery-group-fields--pair { grid-template-columns: 1fr; }
 }
 
 @container delivery-workflow (max-width: 760px) {
@@ -2951,6 +3041,8 @@ body {
   .patient-field-row--loc { grid-template-columns: 1fr 1fr; width: 100%; }
   .patient-field-row:not(.patient-field-row--loc) > :nth-child(3),
   .patient-field-row--loc > :nth-child(3) { grid-column: 1 / -1; }
+  .patient-context-fields { grid-template-columns: 1fr; }
+  .patient-context-fields .field-group--id-number { grid-column: auto; }
   #faseB .phase-body,
   #faseC .phase-field-row,
   #faseF .phase-body,
@@ -3007,6 +3099,13 @@ body {
 .note-drawer-status.complete { background: var(--success-bg); color: var(--success); font-weight: 650; }
 .note-drawer-footer { flex: 0 0 auto; padding: 14px 18px 18px; border-top: 1px solid var(--border-faint); background: var(--white); }
 .note-drawer-footer .copy-btn { margin: 0; }
+.note-drawer-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.note-drawer-footer-actions .copy-btn { flex: 1 1 auto; }
+.note-drawer-footer-actions .note-action-secondary { flex: 0 0 auto; }
 body.note-drawer-open { overflow: hidden; }
 
 @media (max-width: 1180px) {
@@ -3038,6 +3137,11 @@ body.note-drawer-open { overflow: hidden; }
 }
 
 @media (max-width: 560px) {
+  .patient-context-fields { grid-template-columns: 1fr; }
+  .patient-context-fields .field-group--id-number { grid-column: auto; }
+  .note-drawer-footer-actions { align-items: stretch; flex-direction: column; }
+  .note-drawer-footer-actions .note-action-secondary,
+  .note-drawer-footer-actions .copy-btn { width: 100%; }
   .cf-app-body .cf-page-head--delivery { flex-direction: column; }
   .preview-launch { width: 100%; }
   .flow-stage-footer { align-items: stretch; flex-direction: column; }

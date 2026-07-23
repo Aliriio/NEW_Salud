@@ -2,6 +2,11 @@ const datosProPai = window.datosProPai;
 
 /* Tipo de nota que genera esta página (un futuro recibo.html solo cambia esto) */
 const NOTE_TYPE = 'entrega';
+/* Dirección funcional del futuro autocompletado cruzado: Entrega ← Recibo y Recibo ← Entrega. */
+const RELATED_NOTE_TYPE = NOTE_TYPE === 'entrega' ? 'recibo' : 'entrega';
+const NoteLifecycle = window.CareFlowNoteLifecycle;
+const noteLifecycle = NoteLifecycle?.create();
+if (!noteLifecycle) throw new Error('[CareFlow] No fue posible iniciar el ciclo de vida de la nota.');
 
 /* Áreas clínicas con etiqueta amigable: key = clave exacta de datosProPai,
    label = nombre oficial mostrado en UI y en la nota (nota-listas.js). */
@@ -26,8 +31,6 @@ let reversePanelContext = false;
 let flowNavRovingId = 'patient';
 let revisionTrackingEnabled = false;
 let suppressRevisionTracking = false;
-let draftRevision = 0;
-let lastCopiedRevision = 0;
 const stageFocusMemory = new Map();
 const validatedStages = new Set();
 let interactionRegistry = null;
@@ -96,6 +99,9 @@ const els = {
     noteDrawerClose: document.getElementById('noteDrawerClose'),
     noteDrawerScrim: document.getElementById('noteDrawerScrim'),
     drawerCopyBtn:  document.getElementById('drawerCopyBtn'),
+    drawerConfirmBtn: document.getElementById('drawerConfirmBtn'),
+    drawerDiscardBtn: document.getElementById('drawerDiscardBtn'),
+    workflowDiscardBtn: document.getElementById('workflowDiscardBtn'),
     previewStatus:  document.getElementById('previewStatus'),
     previewLaunchStatus: document.getElementById('previewLaunchStatus'),
     previewDraftState: document.getElementById('previewDraftState'),
@@ -139,6 +145,9 @@ const els = {
     sexo:           document.getElementById('sexo'),
     dobFecha:       document.getElementById('dobFecha'),
     dobFeedback:    document.getElementById('dobFeedback'),
+    patientContextPanel: document.getElementById('patientContextPanel'),
+    patientIdType:  document.getElementById('patientIdType'),
+    patientIdNumber: document.getElementById('patientIdNumber'),
     metaLograda:       document.getElementById('metaLograda'),
     metaBlock:         document.getElementById('metaBlock'),
     otrosComentarios:  document.getElementById('otrosComentarios'),
@@ -277,7 +286,148 @@ window.CareFlowAnnounce = announceAction;
 
 function markDraftRevision() {
     if (!revisionTrackingEnabled || suppressRevisionTracking) return;
-    draftRevision += 1;
+    noteLifecycle.markChanged();
+}
+
+function lifecyclePhase() {
+    return noteLifecycle.getPhase();
+}
+
+function isConfirmedPhase() {
+    return lifecyclePhase() === NoteLifecycle.PHASES.CONFIRMED;
+}
+
+function isEditingPhase() {
+    return [
+        NoteLifecycle.PHASES.EDITING,
+        NoteLifecycle.PHASES.REVIEWING_EDIT,
+        NoteLifecycle.PHASES.CONFIRMING_EDIT,
+    ].includes(lifecyclePhase());
+}
+
+function renderPatientContext() {
+    const { lookup, identity, hasConfirmed } = noteLifecycle.getContext();
+    if (els.patientIdType && els.patientIdType.value !== identity.type) els.patientIdType.value = identity.type;
+    if (els.patientIdNumber && els.patientIdNumber.value !== identity.number) els.patientIdNumber.value = identity.number;
+    if (els.patientContextPanel) els.patientContextPanel.dataset.lookupStatus = lookup.status;
+
+    const locked = hasConfirmed;
+    if (els.patientIdType) {
+        els.patientIdType.disabled = locked;
+        els.patientIdType.setAttribute('aria-disabled', locked ? 'true' : 'false');
+    }
+    if (els.patientIdNumber) {
+        els.patientIdNumber.readOnly = locked;
+        els.patientIdNumber.setAttribute('aria-readonly', locked ? 'true' : 'false');
+    }
+}
+
+function syncPatientIdentity({ changed = true } = {}) {
+    const accepted = noteLifecycle.setIdentity({
+        type: els.patientIdType?.value || '',
+        number: els.patientIdNumber?.value || '',
+    });
+    if (!accepted) {
+        renderPatientContext();
+        return false;
+    }
+    if (changed) markDraftRevision();
+    renderPatientContext();
+    return true;
+}
+
+function setPatientLookupState(status, message = '', { announce = false } = {}) {
+    if (!noteLifecycle.setLookup(status, message)) return false;
+    renderPatientContext();
+    if (announce && message) announceAction(message);
+    return true;
+}
+
+/*
+ * Punto de integración deliberadamente local y silencioso.
+ * Mientras no exista backend ni un esquema confirmado para Recibo, no devuelve
+ * pacientes ni aplica datos clínicos simulados. La futura implementación deberá
+ * consultar la última nota confirmada del tipo RELATED_NOTE_TYPE y mapear solo
+ * los campos clínicos cuya relación haya sido validada por enfermería.
+ */
+async function findLatestRelatedNoteForPatient(identity) {
+    void identity;
+    void RELATED_NOTE_TYPE;
+    return { status: NoteLifecycle.LOOKUP_STATES.INTEGRATION_PENDING };
+}
+
+let patientLookupRequest = 0;
+
+async function verifyPatientOnIdentifierExit() {
+    syncPatientIdentity({ changed: false });
+    const identity = noteLifecycle.getContext().identity;
+    if (!identity.type || !identity.number || noteLifecycle.getConfirmationMeta()) {
+        setPatientLookupState(NoteLifecycle.LOOKUP_STATES.IDLE);
+        return;
+    }
+
+    const request = ++patientLookupRequest;
+    setPatientLookupState(NoteLifecycle.LOOKUP_STATES.SEARCHING);
+    try {
+        const result = await findLatestRelatedNoteForPatient({
+            type: identity.type,
+            number: identity.number,
+            noteType: NOTE_TYPE,
+            relatedNoteType: RELATED_NOTE_TYPE,
+        });
+        const currentIdentity = noteLifecycle.getContext().identity;
+        if (request !== patientLookupRequest
+            || currentIdentity.type !== identity.type
+            || currentIdentity.number !== identity.number) return;
+        setPatientLookupState(result?.status || NoteLifecycle.LOOKUP_STATES.NOT_FOUND);
+    } catch {
+        if (request !== patientLookupRequest) return;
+        setPatientLookupState(NoteLifecycle.LOOKUP_STATES.ERROR);
+    }
+}
+
+function setupPatientContext() {
+    renderPatientContext();
+    els.patientIdType?.addEventListener('change', () => {
+        patientLookupRequest += 1;
+        syncPatientIdentity();
+        updateNote();
+    });
+    els.patientIdType?.addEventListener('keydown', (event) => {
+        if (event.ctrlKey || event.metaKey || event.altKey) return;
+        if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
+            event.preventDefault();
+            const direction = event.key === 'ArrowDown' ? 1 : -1;
+            const count = els.patientIdType.options.length;
+            els.patientIdType.selectedIndex = Math.max(0, Math.min(count - 1, els.patientIdType.selectedIndex + direction));
+            syncPatientIdentity({ changed: false });
+            updateNote();
+            return;
+        }
+        if (event.key !== 'Enter' || event.shiftKey) return;
+        event.preventDefault();
+        if (!els.patientIdType.value) {
+            announceAction('Seleccione un tipo de identificación.');
+            return;
+        }
+        syncPatientIdentity({ changed: false });
+        els.patientIdNumber?.focus();
+    });
+    els.patientIdNumber?.addEventListener('input', () => {
+        patientLookupRequest += 1;
+        syncPatientIdentity();
+        updateNote();
+    });
+    els.patientIdNumber?.addEventListener('blur', verifyPatientOnIdentifierExit);
+    els.patientIdNumber?.addEventListener('keydown', (event) => {
+        if (event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        event.preventDefault();
+        requestAnimationFrame(() => focusSexo());
+    });
+
+    if (new URLSearchParams(window.location.search).get('qa') === '1') {
+        window.CareFlowQaPatientLookup = (status) => setPatientLookupState(status);
+    }
 }
 
 function openAppEditorDraft() {
@@ -293,7 +443,7 @@ function openAppEditorDraft() {
 }
 
 function hasUncopiedChanges() {
-    return draftRevision !== lastCopiedRevision || !!openAppEditorDraft();
+    return !!noteLifecycle.hasExitRisk() || !!openAppEditorDraft();
 }
 
 function blockOnOpenAppEditorDraft() {
@@ -489,8 +639,17 @@ function setupExitGuard() {
         event.stopImmediatePropagation();
         runDependentChange({
             title: '¿Salir de esta nota?',
-            description: 'Hay cambios que todavía no se han copiado. Si sale ahora, el borrador se perderá porque CareFlow no lo almacena en este dispositivo.',
-            confirmLabel: 'Salir sin copiar',
+            description: (() => {
+                const risk = noteLifecycle.hasExitRisk();
+                if (risk === 'uncopied') {
+                    return 'La nota está confirmada, pero todavía no se ha copiado al sistema institucional. Si sale ahora, esta versión local se perderá.';
+                }
+                if (risk === 'editing') {
+                    return 'Hay cambios pendientes de confirmación. Si sale ahora, la edición se perderá y CareFlow no podrá recuperarla sin backend.';
+                }
+                return 'Hay un borrador sin confirmar. Si sale ahora, se perderá porque CareFlow todavía no lo almacena.';
+            })(),
+            confirmLabel: 'Salir de la nota',
             trigger: logout || link,
             onConfirm: () => {
                 allowNavigationOnce = true;
@@ -548,11 +707,25 @@ function syncIssueAccessibility(issues) {
 function collectFormIssues() {
     const issues = [];
     const add = (issue) => issues.push(issue);
+    if (!els.patientIdType?.value) {
+        add({
+            id: 'app-patient-id-type', stageId: 'patient', controlId: 'patientIdType', type: 'missing',
+            message: 'Tipo de identificación', order: 0,
+            focus: () => { els.patientIdType?.focus(); return true; },
+        });
+    }
+    if (!els.patientIdNumber?.value?.trim()) {
+        add({
+            id: 'app-patient-id-number', stageId: 'patient', controlId: 'patientIdNumber', type: 'missing',
+            message: 'Número de identificación', order: 1,
+            focus: () => { els.patientIdNumber?.focus(); return true; },
+        });
+    }
     const sexMissing = !els.sexo || els.sexo.value === '___';
     if (sexMissing) {
         add({
             id: 'app-patient-sex', stageId: 'patient', controlId: 'sexoSeg', type: 'missing',
-            message: 'Sexo del paciente', order: 0,
+            message: 'Sexo del paciente', order: 2,
             focus: () => {
                 document.getElementById('sexoSeg')?.querySelector('[role="radio"]')?.focus();
                 return true;
@@ -564,7 +737,7 @@ function collectFormIssues() {
         add({
             id: 'app-patient-dob', stageId: 'patient', controlId: 'dobFecha',
             type: els.dobFecha?.value?.trim() ? 'invalid' : 'missing',
-            message: 'Fecha de nacimiento válida', order: 1,
+            message: 'Fecha de nacimiento válida', order: 3,
             focus: (options = {}) => {
                 els.dobFecha?.focus();
                 if (options.report !== false) els.dobFecha?._notaDateControl?.reportValidity?.();
@@ -666,7 +839,7 @@ function focusFlowStageEntry(id, reason = 'advance') {
     }
     if (reason === 'correction' && restoreStageFocus(id)) return;
     if (id === 'patient') {
-        const target = document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
+        const target = els.patientIdType || document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
         target?.focus();
     } else if (id === 'fasePAE') {
         focusStepEntry(currentStep);
@@ -708,7 +881,9 @@ function activateFlowStage(id, opts = {}) {
 
 function focusPatientPending() {
     const s = window.NotaCampos?.state;
-    const target = (!els.sexo || els.sexo.value === '___') ? document.getElementById('sexoSeg')?.querySelector('[role="radio"]')
+    const target = !els.patientIdType?.value ? els.patientIdType
+        : !els.patientIdNumber?.value?.trim() ? els.patientIdNumber
+        : (!els.sexo || els.sexo.value === '___') ? document.getElementById('sexoSeg')?.querySelector('[role="radio"]')
         : !validateDOB().valid ? els.dobFecha
         : !s?.posicion ? document.getElementById('posicion')
         : !s?.numCama ? document.getElementById('numCama')
@@ -1249,7 +1424,12 @@ function updateEpConfirmBtn() {
 function toggleNote(force, invoker = null) {
     const next = typeof force === 'boolean' ? force : !noteVisible;
     if (next && blockOnOpenAppEditorDraft()) return;
-    if (next) window.NotaCampos?.commitDrafts?.();
+    if (next) {
+        const confirmedCommit = isConfirmedPhase();
+        if (confirmedCommit) suppressRevisionTracking = true;
+        window.NotaCampos?.commitDrafts?.();
+        if (confirmedCommit) suppressRevisionTracking = false;
+    }
     if (next && !isNoteComplete().complete) {
         const issue = collectFormIssues()[0];
         if (issue) {
@@ -1262,11 +1442,14 @@ function toggleNote(force, invoker = null) {
         updateCopyBtnState();
         return;
     }
+    if (next) noteLifecycle.openReview({ complete: true });
     const nativeDialog = els.noteSection?.tagName === 'DIALOG' && typeof els.noteSection.showModal === 'function';
     if (next === noteVisible && (nativeDialog ? els.noteSection?.open === next : els.noteSection?.hidden === !next)) return;
     noteVisible = next;
 
     if (noteVisible) {
+        const confirmed = noteLifecycle.getConfirmed();
+        if (isConfirmedPhase() && confirmed?.noteHtml) els.noteContent.innerHTML = confirmed.noteHtml;
         window.NotaCampos?.closeMenus?.();
         previewReturnFocus = invoker?.isConnected ? invoker : document.activeElement;
         if (interactionOverlays && !interactionOverlays.get('note-review')) {
@@ -1291,6 +1474,7 @@ function toggleNote(force, invoker = null) {
         syncNotePanelHeight();
         requestAnimationFrame(() => els.noteDrawerClose?.focus());
     } else {
+        noteLifecycle.closeReview();
         if (nativeDialog && els.noteSection.open) els.noteSection.close();
         else if (els.noteSection) els.noteSection.hidden = true;
         interactionOverlays?.remove('note-review', { restoreFocus: false });
@@ -1301,6 +1485,7 @@ function toggleNote(force, invoker = null) {
         previewReturnFocus = null;
         requestAnimationFrame(() => target?.focus());
     }
+    updateCopyBtnState();
 }
 
 /* ─── Bloquea/desbloquea el paso 1 del PAE según datos del paciente ─── */
@@ -1372,17 +1557,24 @@ function triggerBtnBurst(btn) {
 function updateCopyBtnState() {
     const { complete, missing } = isNoteComplete();
     if (!els.copyBtn || !els.noteStatus) return;
-    const changedAfterCopy = lastCopiedRevision > 0 && draftRevision !== lastCopiedRevision;
+    const phase = lifecyclePhase();
+    const confirmed = noteLifecycle.getConfirmationMeta();
+    const editing = isEditingPhase();
+    const reviewingDraft = phase === NoteLifecycle.PHASES.REVIEWING_DRAFT;
+    const reviewingEdit = phase === NoteLifecycle.PHASES.REVIEWING_EDIT;
+    const canCopy = noteLifecycle.canCopy();
 
     if (complete) {
         els.copyBtn.hidden = false;
         els.copyBtn.disabled = false;
         els.copyBtn.removeAttribute('aria-disabled');
-        els.copyBtn.textContent = 'Revisar nota';
+        els.copyBtn.textContent = editing ? 'Revisar cambios' : canCopy ? 'Ver nota confirmada' : 'Revisar nota';
         els.noteStatus.className = 'note-status complete';
-        els.noteStatus.textContent = changedAfterCopy
-            ? 'La nota cambió desde la última copia; revise y copie nuevamente.'
-            : '✓ Nota lista para revisión final';
+        els.noteStatus.textContent = editing
+            ? 'Edición pendiente · confirme o descarte los cambios.'
+            : canCopy
+                ? (confirmed?.copied ? '✓ Nota confirmada y copiada' : '✓ Nota confirmada · lista para copiar')
+                : '✓ Nota lista para revisión final';
     } else {
         const reviewHadFocus = document.activeElement === els.copyBtn || document.activeElement === els.noteToggleBtn;
         els.copyBtn.hidden = true;
@@ -1397,8 +1589,22 @@ function updateCopyBtnState() {
     }
 
     if (els.drawerCopyBtn) {
-        els.drawerCopyBtn.disabled = !complete;
-        els.drawerCopyBtn.setAttribute('aria-disabled', complete ? 'false' : 'true');
+        els.drawerCopyBtn.hidden = !canCopy;
+        els.drawerCopyBtn.disabled = !canCopy;
+        els.drawerCopyBtn.setAttribute('aria-disabled', canCopy ? 'false' : 'true');
+    }
+    if (els.drawerConfirmBtn) {
+        const showConfirm = reviewingDraft || reviewingEdit;
+        els.drawerConfirmBtn.hidden = !showConfirm;
+        els.drawerConfirmBtn.disabled = !complete;
+        els.drawerConfirmBtn.setAttribute('aria-disabled', complete ? 'false' : 'true');
+        els.drawerConfirmBtn.textContent = reviewingEdit ? 'Confirmar cambios' : 'Confirmar nota';
+    }
+    if (els.drawerDiscardBtn) {
+        els.drawerDiscardBtn.hidden = !reviewingEdit;
+    }
+    if (els.workflowDiscardBtn) {
+        els.workflowDiscardBtn.hidden = !editing;
     }
     if (els.noteToggleBtn) {
         els.noteToggleBtn.hidden = !complete;
@@ -1408,21 +1614,30 @@ function updateCopyBtnState() {
     }
     if (els.previewLaunchStatus) {
         els.previewLaunchStatus.textContent = complete
-            ? (changedAfterCopy ? 'Cambió desde la última copia' : 'Nota lista para revisar')
+            ? (editing ? 'Edición pendiente' : canCopy ? 'Nota confirmada' : 'Nota lista para revisar')
             : `${missing.length} pendiente${missing.length === 1 ? '' : 's'}`;
     }
     if (els.previewStatus) {
         els.previewStatus.className = `note-drawer-status ${complete ? 'complete' : 'incomplete'}`;
         els.previewStatus.textContent = complete
-            ? (changedAfterCopy
-                ? 'La nota cambió desde la última copia. Revísela y copie esta nueva versión.'
-                : 'La nota está completa y lista para revisión final.')
+            ? (reviewingEdit
+                ? 'Revise la edición. La copia seguirá bloqueada hasta confirmar estos cambios.'
+                : reviewingDraft
+                    ? 'La nota está completa. Confírmela para habilitar la copia.'
+                    : canCopy
+                        ? (confirmed?.copied
+                            ? 'Esta es la versión confirmada que ya fue copiada.'
+                            : 'Esta es la versión confirmada disponible para copiar.')
+                        : 'La nota está completa y lista para revisión final.')
             : `${missing.length} campo${missing.length === 1 ? '' : 's'} pendiente${missing.length === 1 ? '' : 's'}. Primero: ${missing[0]}.`;
     }
     if (els.previewDraftState) {
-        els.previewDraftState.textContent = complete ? 'Lista para revisar' : 'Borrador';
+        els.previewDraftState.textContent = reviewingEdit || editing
+            ? 'Edición pendiente'
+            : canCopy ? 'Confirmada' : reviewingDraft ? 'Revisión' : 'Borrador';
     }
 
+    renderPatientContext();
     updatePhaseBadges();
     updateStep1Lock();
     updateFlowNavigator();
@@ -2555,6 +2770,8 @@ function setupInternalFieldNavigation(root) {
 
 function setupFieldNavigationRegistry() {
     const fields = [
+        ['patient-id-type', 'patient', '#patientIdType', '#patientIdType'],
+        ['patient-id-number', 'patient', '#patientIdNumber', '#patientIdNumber'],
         ['patient-sex', 'patient', '#sexoSeg', '#sexoSeg'],
         ['patient-dob', 'patient', () => document.getElementById('dobFecha')?.closest('.field-group'), '#dobFecha'],
         ['patient-position', 'patient', '[data-cbx="posicion"]', '#posicion'],
@@ -2889,8 +3106,13 @@ function moveDialogActionFocus(dialog, origin, direction) {
         })
         .filter(Boolean)
         .sort((a, b) => a.score - b.score)[0]?.candidate;
-    if (next) next.focus({ preventScroll: true });
-    return true;
+    const fallbackIndex = Math.max(0, Math.min(
+        buttons.length - 1,
+        buttons.indexOf(button) + (sign > 0 ? 1 : -1),
+    ));
+    const destination = next || buttons[fallbackIndex];
+    destination?.focus({ preventScroll: true });
+    return !!destination;
 }
 
 function setupDialogActionNavigation(dialog) {
@@ -2904,6 +3126,13 @@ function setupDialogActionNavigation(dialog) {
         event.preventDefault();
         event.stopPropagation();
     });
+}
+
+function primaryReviewAction() {
+    if (els.drawerConfirmBtn && !els.drawerConfirmBtn.hidden && !els.drawerConfirmBtn.disabled) return els.drawerConfirmBtn;
+    if (els.drawerCopyBtn && !els.drawerCopyBtn.hidden && !els.drawerCopyBtn.disabled) return els.drawerCopyBtn;
+    if (els.drawerDiscardBtn && !els.drawerDiscardBtn.hidden) return els.drawerDiscardBtn;
+    return els.noteDrawerClose;
 }
 
 function setupInteractionCore() {
@@ -2937,6 +3166,8 @@ function setupInteractionCore() {
     interactionRegistry.register({ id: 'obs', root: () => els.otrosComentarios, priority: 20 });
     interactionRegistry.register({ id: 'note', root: () => els.copyBtn, priority: 20 });
     interactionRegistry.register({ id: 'copy', root: () => els.drawerCopyBtn, priority: 20 });
+    interactionRegistry.register({ id: 'confirm-note', root: () => els.drawerConfirmBtn, priority: 20 });
+    interactionRegistry.register({ id: 'discard-note', root: () => els.drawerDiscardBtn, priority: 20 });
 
     interactionFocus = new core.FocusManager({ registry: interactionRegistry, root: document });
     interactionFocus.startTracking(document);
@@ -3011,13 +3242,7 @@ function setupInteractionCore() {
                 showKeyboardCoach();
                 if (overlay?.modal !== false && keepTabInsideDialog(event, overlay?.element)) return true;
                 if (key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
-                    if (overlay?.id === 'note-review') els.drawerCopyBtn?.focus();
-                    return true;
-                }
-                if (overlay?.id !== 'note-review') return false;
-                if (key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
-                    if (target === els.drawerCopyBtn) els.drawerCopyBtn.click();
-                    else els.drawerCopyBtn?.focus();
+                    if (overlay?.id === 'note-review') primaryReviewAction()?.focus();
                     return true;
                 }
                 return false;
@@ -4095,8 +4320,7 @@ function getMetaLograda() {
 /* ─── Genera y actualiza la nota de enfermería ───
    Sigue párrafo a párrafo la plantilla oficial de NOTA DE ENTREGA DE TURNO
    (NOTA_FINAL_ENTREGA.docx). Los campos vacíos se muestran como "___". */
-function updateNote() {
-    markDraftRevision();
+function renderNote({ confirmationTime = null } = {}) {
     const nc = window.NotaCampos;
     const s = nc?.state;
     const hasData = (els.sexo && els.sexo.value !== '___')
@@ -4110,9 +4334,14 @@ function updateNote() {
         return;
     }
 
-    const now = new Date();
-    const fecha = `${String(now.getDate()).padStart(2,'0')}/${String(now.getMonth()+1).padStart(2,'0')}/${now.getFullYear()}`;
-    const hora = now.toLocaleTimeString('es-CO', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    const lifecycleContext = noteLifecycle.getContext();
+    const confirmationMeta = noteLifecycle.getConfirmationMeta();
+    const fecha = lifecycleContext.shiftDate;
+    const hora = confirmationTime
+        || (lifecyclePhase() === NoteLifecycle.PHASES.CONFIRMED
+            ? confirmationMeta?.confirmationTime
+            : '')
+        || 'Pendiente de confirmación';
 
     const dobResult  = validateDOB();
     const edadTexto  = dobResult.valid ? dobResult.ageText : '';
@@ -4254,6 +4483,160 @@ function updateNote() {
     updateCopyBtnState();
 }
 
+function updateNote() {
+    markDraftRevision();
+    renderNote();
+}
+
+function cloneFormData(value) {
+    if (value == null) return value;
+    if (typeof structuredClone === 'function') return structuredClone(value);
+    return JSON.parse(JSON.stringify(value));
+}
+
+function captureFormSnapshot() {
+    return {
+        notaCampos: window.NotaCampos?.captureState?.() || cloneFormData(window.NotaCampos?.state || {}),
+        selected: cloneFormData(selected),
+        reverse: cloneFormData(reverse),
+        scalar: {
+            sexo: els.sexo?.value || '___',
+            dob: els.dobFecha?.value || '',
+            dobIso: els.dobFecha?.dataset.iso || '',
+            meta: els.metaLograda?.value || '',
+            observations: els.otrosComentarios?.value || '',
+        },
+        currentStep,
+        maxReachedStep,
+        activeFlowStage,
+    };
+}
+
+function restoreSegmentedControl(groupId, hidden, value, emptyValue = '') {
+    if (hidden) hidden.value = value || emptyValue;
+    const buttons = [...document.querySelectorAll(`#${groupId} [role="radio"]`)];
+    const chosen = buttons.find((button) => button.dataset.value === value);
+    buttons.forEach((button, index) => {
+        const active = button === chosen;
+        button.setAttribute('aria-checked', active ? 'true' : 'false');
+        button.tabIndex = active || (!chosen && index === 0) ? 0 : -1;
+    });
+}
+
+function restorePaeSnapshot(snapshot) {
+    const restored = cloneFormData(snapshot.selected || {});
+    Object.keys(selected).forEach((key) => {
+        if (Object.prototype.hasOwnProperty.call(restored, key)) selected[key] = restored[key];
+    });
+    Object.assign(reverse, cloneFormData(snapshot.reverse || { mode: 'forward', findingKeys: [], kindFilter: 'all' }));
+
+    loadAreas();
+    els.areas?.querySelectorAll('.option').forEach((option) => {
+        option.classList.toggle('selected', option.dataset.area === selected.area);
+    });
+    syncOptionSelectionState(els.areas);
+
+    if (selected.area) {
+        loadDiagnosticos(selected.area);
+        selected.datosDiag = datosProPai[selected.area]?.[selected.diagnostico] || selected.datosDiag;
+        els.diagnosticos?.querySelectorAll('.option').forEach((option) => {
+            option.classList.toggle('selected', option.dataset.diagnostico === selected.diagnostico);
+        });
+        syncOptionSelectionState(els.diagnosticos);
+    } else {
+        els.diagnosticos.innerHTML = '';
+    }
+
+    if (selected.datosDiag) {
+        loadRc(selected.datosDiag);
+        loadEp(selected.datosDiag);
+        loadNocs(selected.datosDiag);
+        loadIntervenciones(selected.datosDiag);
+        if (selected.nocNombre) loadEvaluaciones(selected.datosDiag, selected.nocNombre);
+    }
+    setMode(reverse.mode);
+    renderSelectedFindings();
+    syncFindingKindFilters();
+    renderTransversales(selected.datosDiag);
+    showMetaBlock(!!selected.b6Puntuacion);
+}
+
+function restoreConfirmedVersion(version) {
+    if (!version?.formSnapshot) return false;
+    suppressRevisionTracking = true;
+    cancelPendingUndo();
+    window.NotaCampos?.restoreState?.(version.formSnapshot.notaCampos);
+    restoreSegmentedControl('sexoSeg', els.sexo, version.formSnapshot.scalar?.sexo, '___');
+    restoreSegmentedControl('metaSeg', els.metaLograda, version.formSnapshot.scalar?.meta, '');
+    if (els.dobFecha) {
+        els.dobFecha.value = version.formSnapshot.scalar?.dob || '';
+        els.dobFecha.dataset.iso = version.formSnapshot.scalar?.dobIso || '';
+    }
+    validateDOB();
+    if (els.otrosComentarios) els.otrosComentarios.value = version.formSnapshot.scalar?.observations || '';
+    restorePaeSnapshot(version.formSnapshot);
+
+    currentStep = version.formSnapshot.currentStep || 1;
+    maxReachedStep = version.formSnapshot.maxReachedStep || currentStep;
+    const stage = FLOW_STAGE_ORDER.includes(version.formSnapshot.activeFlowStage)
+        ? version.formSnapshot.activeFlowStage
+        : 'patient';
+    activateFlowStage(stage, { focus: false });
+    if (stage === 'fasePAE') activateStep(currentStep, { focus: false });
+    if (els.noteContent && version.noteHtml) els.noteContent.innerHTML = version.noteHtml;
+    suppressRevisionTracking = false;
+    updateCopyBtnState();
+    return true;
+}
+
+function confirmCurrentNote() {
+    if (blockOnOpenAppEditorDraft()) return;
+    window.NotaCampos?.commitDrafts?.();
+    const { complete } = isNoteComplete();
+    if (!complete || !noteLifecycle.beginConfirmation()) {
+        updateCopyBtnState();
+        return;
+    }
+
+    const wasEditing = lifecyclePhase() === NoteLifecycle.PHASES.REVIEWING_EDIT;
+    const confirmedAt = new Date();
+    const confirmationTime = NoteLifecycle.formatLocalTime(confirmedAt);
+    suppressRevisionTracking = true;
+    renderNote({ confirmationTime });
+    const version = {
+        confirmedAt: confirmedAt.toISOString(),
+        confirmationTime,
+        noteHtml: els.noteContent.innerHTML,
+        noteText: noteToPlainText(els.noteContent),
+        formSnapshot: captureFormSnapshot(),
+    };
+    suppressRevisionTracking = false;
+    noteLifecycle.completeConfirmation(version);
+    updateCopyBtnState();
+    announceAction(wasEditing ? 'Cambios confirmados. Ya puede copiar la nueva versión.' : 'Nota confirmada. Ya puede copiarla.');
+    requestAnimationFrame(() => els.drawerCopyBtn?.focus());
+}
+
+function requestDiscardEditing(trigger = document.activeElement) {
+    if (!isEditingPhase()) return;
+    runDependentChange({
+        title: '¿Descartar los cambios pendientes?',
+        description: 'Se eliminará la edición actual y se restaurará exactamente la última versión confirmada.',
+        confirmLabel: 'Descartar cambios',
+        trigger,
+        onConfirm: () => {
+            if (noteVisible) toggleNote(false);
+            const version = noteLifecycle.discardEditing();
+            if (!restoreConfirmedVersion(version)) return;
+            announceAction('Cambios descartados. Se restauró la última versión confirmada.');
+            requestAnimationFrame(() => {
+                const target = els.copyBtn && !els.copyBtn.hidden ? els.copyBtn : els.noteToggleBtn;
+                target?.focus?.({ preventScroll: true });
+            });
+        },
+    });
+}
+
 /* ─── Convierte HTML de nota a texto plano preservando viñetas ─── */
 function noteToPlainText(el) {
     function extract(node) {
@@ -4304,10 +4687,10 @@ async function writeClipboardText(text) {
 
 /* ─── Copia la nota (solo si está completa y dentro de revisión) ─── */
 async function copyNote() {
-    const { complete } = isNoteComplete();
-    if (!complete) { updateCopyBtnState(); return; }
+    const confirmed = noteLifecycle.getConfirmed();
+    if (!noteLifecycle.canCopy() || !confirmed?.noteText) { updateCopyBtnState(); return; }
 
-    const text = noteToPlainText(els.noteContent);
+    const text = confirmed.noteText;
     const showCopied = () => {
         [els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
             btn.textContent = '✓ ¡Copiado!';
@@ -4324,7 +4707,7 @@ async function copyNote() {
     const copied = await writeClipboardText(text);
     if (copied) {
         interactionMetrics?.record('copy', { outcome: 'success', stageId: 'note' });
-        lastCopiedRevision = draftRevision;
+        noteLifecycle.markCopied();
         showCopied();
         updateCopyBtnState();
         announceAction('Nota copiada correctamente.');
@@ -4391,6 +4774,13 @@ function resetCurrentSection(sectionId) {
     validatedStages.delete(sectionId);
     if (sectionId === 'patient') {
         window.NotaCampos?.resetPhase('patient');
+        if (!noteLifecycle.getConfirmationMeta()) {
+            if (els.patientIdType) els.patientIdType.value = '';
+            if (els.patientIdNumber) els.patientIdNumber.value = '';
+            noteLifecycle.setIdentity({ type: '', number: '' });
+            noteLifecycle.setLookup(NoteLifecycle.LOOKUP_STATES.IDLE);
+            renderPatientContext();
+        }
         resetSegmentedValue('sexoSeg', els.sexo, '___');
         if (els.dobFecha) { els.dobFecha.value = ''; els.dobFecha.dataset.iso = ''; }
         els.dobFecha?.classList.remove('clinical-date-invalid');
@@ -4419,6 +4809,12 @@ function openResetDialog(sectionId, invoker = document.activeElement) {
     pendingResetRestoreFocus = true;
     if (els.resetDialogSectionName) els.resetDialogSectionName.textContent = label;
     if (els.resetSectionBtn) els.resetSectionBtn.textContent = `Reiniciar solo ${label}`;
+    if (els.resetDialogDescription) {
+        els.resetDialogDescription.innerHTML = noteLifecycle.getConfirmationMeta()
+            ? `Puede limpiar solo <strong id="resetDialogSectionName">${escapeHtml(label)}</strong> y conservar la identidad confirmada como una edición pendiente. Reiniciar toda la nota eliminará de este dispositivo el único contexto confirmado local; CareFlow todavía no puede recuperarlo sin backend.`
+            : `Puede limpiar solo la sección <strong id="resetDialogSectionName">${escapeHtml(label)}</strong> y conservar el resto de la nota, o reiniciar toda la nota y comenzar de nuevo. Esta acción no se puede deshacer.`;
+        els.resetDialogSectionName = document.getElementById('resetDialogSectionName');
+    }
     if (interactionOverlays && !interactionOverlays.get('reset')) {
         interactionOverlays.push({
             id: 'reset',
@@ -4437,6 +4833,7 @@ function resetWorkflow({ confirmed = false } = {}) {
 
     cancelPendingUndo();
     suppressRevisionTracking = true;
+    noteLifecycle.reset();
     currentStep = 1;
     maxReachedStep = 1;
     patientGateEverUnlocked = false;
@@ -4497,6 +4894,8 @@ function resetWorkflow({ confirmed = false } = {}) {
         b.tabIndex = i === 0 ? 0 : -1;
     });
     if (els.otrosComentarios) els.otrosComentarios.value = '';
+    if (els.patientIdType) els.patientIdType.value = '';
+    if (els.patientIdNumber) els.patientIdNumber.value = '';
     if (els.dobFecha) { els.dobFecha.value = ''; els.dobFecha.dataset.iso = ''; }
     if (els.dobFeedback) { els.dobFeedback.textContent = ''; els.dobFeedback.className = 'dob-feedback'; }
     els.dobFecha?.classList.remove('clinical-date-invalid');
@@ -4529,11 +4928,10 @@ function resetWorkflow({ confirmed = false } = {}) {
     updateCopyBtnState();
     updateLayout();
     syncNotePanelHeight();
-    draftRevision = 0;
-    lastCopiedRevision = 0;
     suppressRevisionTracking = false;
-    // Listo para el siguiente paciente: foco en Sexo (inicio del flujo)
-    focusSexo();
+    renderPatientContext();
+    // Listo para el siguiente paciente: foco en el inicio del contexto.
+    els.patientIdType?.focus();
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 }
 
@@ -5153,6 +5551,7 @@ function init() {
     window.NotaCampos?.init({
         onChange: updateNote,
     });
+    setupPatientContext();
     setupGlobalFlow();
 
     loadAreas();
@@ -5225,7 +5624,11 @@ function init() {
 
     // Botones de acción
     els.copyBtn?.addEventListener('click', (event) => toggleNote(true, event.currentTarget));
+    els.drawerConfirmBtn?.addEventListener('click', confirmCurrentNote);
     els.drawerCopyBtn?.addEventListener('click', copyNote);
+    els.drawerDiscardBtn?.addEventListener('click', (event) => requestDiscardEditing(event.currentTarget));
+    els.workflowDiscardBtn?.addEventListener('click', (event) => requestDiscardEditing(event.currentTarget));
+    setupDialogActionNavigation(els.noteSection);
     document.querySelectorAll('[data-reset-section]').forEach((button) => {
         button.addEventListener('click', (event) => openResetDialog(button.dataset.resetSection, event.currentTarget));
     });

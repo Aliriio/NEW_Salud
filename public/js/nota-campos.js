@@ -2198,6 +2198,61 @@
         regionesUI?.renderPicker();
     }
 
+    function cloneState(value) {
+        if (typeof structuredClone === 'function') return structuredClone(value);
+        return JSON.parse(JSON.stringify(value));
+    }
+
+    /* Adaptadores de infraestructura para conservar una única versión confirmada
+       en memoria. No alteran reglas, catálogos ni validaciones clínicas. */
+    function captureState() {
+        return cloneState(state);
+    }
+
+    function restoreState(snapshot) {
+        if (!snapshot || typeof snapshot !== 'object') return false;
+        const next = cloneState(snapshot);
+        Object.keys(state).forEach((key) => {
+            if (Object.prototype.hasOwnProperty.call(next, key)) state[key] = next[key];
+        });
+        deviceDrafts.clear();
+        lastEducationId = state.educacion.at(-1)?.id || null;
+
+        ['posicion', 'servicio', 'estadoDental', 'estadoNeurologico', 'estadoHemodinamico', 'estadoRespiratorio']
+            .forEach((fieldId) => cbx[fieldId]?.setValue(state[fieldId] || ''));
+        cbx.aislamiento?.setValue(state.aislamiento || 'No aplica');
+        cbx.tendenciaEvolutiva?.setValue(state.tendencia || '');
+
+        const scalarFields = {
+            numCama: state.numCama,
+            numHabitacion: state.numHabitacion,
+            diagnosticoMedico: state.diagnosticoMedico,
+            respuestaIntervenciones: state.respuesta,
+            criterioClinico: state.criterioClinico,
+            pendientes: state.pendientes,
+        };
+        Object.entries(scalarFields).forEach(([id, value]) => {
+            const field = document.getElementById(id);
+            if (field) field.value = value || '';
+        });
+
+        document.querySelectorAll('.estado-group').forEach((group) => {
+            group.classList.toggle('estado-group--done', !!state[group.dataset.estado]);
+        });
+        renderEscalas();
+        renderDispositivos();
+        renderRegiones();
+        renderEducacion();
+        syncNoneChoice('sinEscalasBtn', state.sinEscalas);
+        syncNoneChoice('sinDispositivosBtn', state.sinDispositivos);
+        syncNoneChoice('sinAlteracionesBtn', state.sinAlteraciones);
+        escalasUI?.renderPicker();
+        dispositivosUI?.renderPicker();
+        regionesUI?.renderPicker();
+        closeMenus();
+        return true;
+    }
+
     /* ═══════════ Init ═══════════ */
     function init({ onChange } = {}) {
         if (lifecycleController) destroy();
@@ -2511,6 +2566,8 @@
         init,
         reset,
         resetPhase,
+        captureState,
+        restoreState,
         getMissing,
         getIssues,
         phaseStatus,

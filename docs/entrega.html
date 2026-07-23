@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/tokens.css">
     <!-- Estilos del note app (lógica intacta; solo tokens de color actualizados) -->
-    <link rel="stylesheet" href="styles.css?v=18">
+    <link rel="stylesheet" href="styles.css?v=21">
     <!-- Shell + capa de integración (carga después para envolver el note app) -->
     <link rel="stylesheet" href="css/careflow.css?v=3">
     <script src="js/auth.js"></script>
@@ -126,7 +126,11 @@
                                 <div class="note-content" id="noteContent" role="document"></div>
                             </div>
                             <div class="note-drawer-footer">
-                                <button type="button" class="copy-btn" id="drawerCopyBtn" disabled aria-disabled="true">Copiar nota</button>
+                                <div class="note-drawer-footer-actions" data-dialog-actions>
+                                    <button type="button" class="note-action-secondary" id="drawerDiscardBtn" hidden>Descartar cambios</button>
+                                    <button type="button" class="copy-btn" id="drawerConfirmBtn" hidden>Confirmar nota</button>
+                                    <button type="button" class="copy-btn" id="drawerCopyBtn" disabled aria-disabled="true" hidden>Copiar nota</button>
+                                </div>
                             </div>
                         </dialog>
 
@@ -219,6 +223,25 @@
                                     </div>
                                 </div>
                                 <div class="patient-block-body">
+                                    <div class="patient-context" id="patientContextPanel" aria-labelledby="patientContextTitle" data-lookup-status="idle">
+                                        <h4 class="patient-context-title" id="patientContextTitle">Identificación del paciente</h4>
+                                        <div class="patient-context-fields">
+                                            <div class="field-group">
+                                                <label for="patientIdType">Tipo de identificación <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <select id="patientIdType" aria-required="true">
+                                                    <option value="">Seleccione un tipo</option>
+                                                    <option value="cc">Cédula de ciudadanía</option>
+                                                    <option value="birthCertificate">Certificado de nacimiento</option>
+                                                    <option value="liveBirthCertificate">Certificado de nacido vivo</option>
+                                                </select>
+                                            </div>
+                                            <div class="field-group field-group--id-number">
+                                                <label for="patientIdNumber">Número de identificación <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <input type="text" id="patientIdNumber" autocomplete="off" aria-required="true"
+                                                       placeholder="Ingrese el número">
+                                            </div>
+                                        </div>
+                                    </div>
                                     <div class="patient-field-row">
                                         <div class="field-group">
                                             <label id="sexoLabel">Sexo <span class="required-star" aria-label="obligatorio">*</span></label>
@@ -562,80 +585,97 @@
                                     <span class="phase-badge" data-phase-badge="faseF"></span>
                                 </div>
                                 <div class="phase-body">
-                                    <div class="field-group">
-                                        <label for="respuestaIntervenciones">Respuesta del paciente a las intervenciones <span class="required-star" aria-label="obligatorio">*</span></label>
-                                        <textarea id="respuestaIntervenciones" class="obs-textarea" rows="2"
-                                                  placeholder="Ej: disminución del dolor tras analgesia, tolerancia a la vía oral…"
-                                                  aria-label="Respuesta del paciente a las intervenciones" aria-required="true"></textarea>
-                                    </div>
-                                    <div class="phase-field-row">
-                                        <div class="field-group field-group--wide">
-                                            <label for="tendenciaEvolutiva">Tendencia evolutiva <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <div class="cbx" data-cbx="tendenciaEvolutiva">
-                                                <input type="text" id="tendenciaEvolutiva" class="cbx-input" placeholder="Buscar o seleccionar tendencia…"
-                                                       role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                                       aria-label="Tendencia evolutiva del paciente" aria-required="true">
-                                                <div class="cbx-list" role="listbox" hidden></div>
+                                    <!-- Grupo 1 · Evolución del paciente (cómo respondió + tendencia global) -->
+                                    <div class="delivery-group">
+                                        <h4 class="delivery-group-title">Evolución del paciente</h4>
+                                        <div class="delivery-group-fields delivery-group-fields--pair">
+                                            <div class="field-group">
+                                                <label for="respuestaIntervenciones">Respuesta del paciente a las intervenciones <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <textarea id="respuestaIntervenciones" class="obs-textarea" rows="2"
+                                                          placeholder="Ej: disminución del dolor tras analgesia, tolerancia a la vía oral…"
+                                                          aria-label="Respuesta del paciente a las intervenciones" aria-required="true"></textarea>
+                                            </div>
+                                            <div class="field-group field-group--trend">
+                                                <label for="tendenciaEvolutiva">Tendencia evolutiva <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <div class="cbx" data-cbx="tendenciaEvolutiva">
+                                                    <input type="text" id="tendenciaEvolutiva" class="cbx-input" placeholder="Buscar o seleccionar tendencia…"
+                                                           role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                           aria-label="Tendencia evolutiva del paciente" aria-required="true">
+                                                    <div class="cbx-list" role="listbox" hidden></div>
+                                                </div>
                                             </div>
                                         </div>
                                     </div>
 
-                                    <div class="meta-block" id="metaBlock">
-                                        <label id="metaLabel">Estado de la meta (NOC) al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
-                                        <div class="meta-chip-group" role="radiogroup" aria-orientation="horizontal" aria-labelledby="metaLabel" aria-required="true" id="metaSeg">
-                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Alcanzada" tabindex="0">Alcanzada</button>
-                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Parcialmente alcanzada" tabindex="-1">Parcialmente alcanzada</button>
-                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No alcanzada" tabindex="-1">No alcanzada</button>
-                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="En progreso – continúa en siguiente turno" tabindex="-1" title="En progreso – continúa en siguiente turno">En progreso</button>
-                                            <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No evaluable – cambio de condición clínica durante el turno" tabindex="-1" title="No evaluable – cambio de condición clínica durante el turno">No evaluable</button>
+                                    <!-- Grupo 2 · Cierre de la meta (estado + su evidencia) -->
+                                    <div class="delivery-group">
+                                        <h4 class="delivery-group-title">Cierre de la meta</h4>
+                                        <div class="delivery-group-fields">
+                                            <div class="meta-block" id="metaBlock">
+                                                <label id="metaLabel">Estado de la meta (NOC) al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <div class="meta-chip-group" role="radiogroup" aria-orientation="horizontal" aria-labelledby="metaLabel" aria-required="true" id="metaSeg">
+                                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Alcanzada" tabindex="0">Alcanzada</button>
+                                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Parcialmente alcanzada" tabindex="-1">Parcialmente alcanzada</button>
+                                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No alcanzada" tabindex="-1">No alcanzada</button>
+                                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="En progreso – continúa en siguiente turno" tabindex="-1" title="En progreso – continúa en siguiente turno">En progreso</button>
+                                                    <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No evaluable – cambio de condición clínica durante el turno" tabindex="-1" title="No evaluable – cambio de condición clínica durante el turno">No evaluable</button>
+                                                </div>
+                                                <input type="hidden" id="metaLograda" value="">
+                                            </div>
+                                            <div class="field-group">
+                                                <label for="criterioClinico">Criterio clínico u objetivo alcanzado <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <textarea id="criterioClinico" class="obs-textarea" rows="2"
+                                                          placeholder="Evidencia objetiva del estado de la meta…"
+                                                          aria-label="Criterio clínico u objetivo alcanzado" aria-required="true"></textarea>
+                                            </div>
                                         </div>
-                                        <input type="hidden" id="metaLograda" value="">
                                     </div>
 
-                                    <div class="field-group">
-                                        <label for="criterioClinico">Criterio clínico u objetivo alcanzado <span class="required-star" aria-label="obligatorio">*</span></label>
-                                        <textarea id="criterioClinico" class="obs-textarea" rows="2"
-                                                  placeholder="Evidencia objetiva del estado de la meta…"
-                                                  aria-label="Criterio clínico u objetivo alcanzado" aria-required="true"></textarea>
-                                    </div>
-
-                                    <div class="field-group">
-                                        <label for="pendientes">Pendientes para el siguiente turno <span class="required-star" aria-label="obligatorio">*</span></label>
-                                        <textarea id="pendientes" class="obs-textarea" rows="2"
-                                                  placeholder="Tareas o seguimientos que debe continuar el turno entrante…"
-                                                  aria-label="Pendientes para el siguiente turno" aria-required="true"></textarea>
+                                    <!-- Grupo 3 · Traspaso al siguiente turno (pendientes + notas opcionales) -->
+                                    <div class="delivery-group">
+                                        <h4 class="delivery-group-title">Traspaso al siguiente turno</h4>
+                                        <div class="delivery-group-fields delivery-group-fields--pair">
+                                            <div class="field-group">
+                                                <label for="pendientes">Pendientes para el siguiente turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <textarea id="pendientes" class="obs-textarea" rows="2"
+                                                          placeholder="Tareas o seguimientos que debe continuar el turno entrante…"
+                                                          aria-label="Pendientes para el siguiente turno" aria-required="true"></textarea>
+                                            </div>
+                                            <div class="obs-block obs-block--inline">
+                                                <div class="obs-block-header">
+                                                    <label for="otrosComentarios" class="obs-label">Otros comentarios u observaciones</label>
+                                                    <div class="obs-badges">
+                                                        <span class="obs-optional-badge">Opcional</span>
+                                                        <span class="obs-info">
+                                                            <svg class="obs-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                <circle cx="8" cy="8" r="6.5"/>
+                                                                <line x1="8" y1="7.5" x2="8" y2="11"/>
+                                                                <circle cx="8" cy="5.2" r="0.6" fill="currentColor" stroke="none"/>
+                                                            </svg>
+                                                            <span class="obs-tooltip" id="otrosComentariosHelp" role="tooltip">
+                                                                Este es un espacio opcional en el que puede describir, con sus propias palabras, situaciones, observaciones o información relevante que no haya sido contemplada en los apartados anteriores.
+                                                            </span>
+                                                        </span>
+                                                    </div>
+                                                </div>
+                                                <textarea
+                                                    id="otrosComentarios"
+                                                    class="obs-textarea"
+                                                    rows="2"
+                                                    placeholder="Ejemplo: paciente irritable durante el examen, poco colaborador o con dificultad para seguir indicaciones."
+                                                    aria-label="Otros comentarios u observaciones (opcional)"
+                                                    aria-describedby="otrosComentariosHelp"
+                                                ></textarea>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>
-
-                            <div class="obs-block">
-                                <div class="obs-block-header">
-                                    <label for="otrosComentarios" class="obs-label">Otros comentarios u observaciones</label>
-                                    <div class="obs-badges">
-                                        <span class="obs-optional-badge">Opcional</span>
-                                        <span class="obs-info">
-                                            <svg class="obs-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                <circle cx="8" cy="8" r="6.5"/>
-                                                <line x1="8" y1="7.5" x2="8" y2="11"/>
-                                                <circle cx="8" cy="5.2" r="0.6" fill="currentColor" stroke="none"/>
-                                            </svg>
-                                            <span class="obs-tooltip" id="otrosComentariosHelp" role="tooltip">
-                                                Este es un espacio opcional en el que puede describir, con sus propias palabras, situaciones, observaciones o información relevante que no haya sido contemplada en los apartados anteriores.
-                                            </span>
-                                        </span>
-                                    </div>
-                                </div>
-                                <textarea
-                                    id="otrosComentarios"
-                                    class="obs-textarea"
-                                    rows="3"
-                                    placeholder="Ejemplo: paciente irritable durante el examen, poco colaborador o con dificultad para seguir indicaciones."
-                                    aria-label="Otros comentarios u observaciones (opcional)"
-                                    aria-describedby="otrosComentariosHelp"
-                                ></textarea>
-                            </div>
 
                             <div class="workflow-actions">
                                 <div class="note-status" id="noteStatus"></div>
+                                <button type="button" class="note-action-secondary workflow-discard-btn" id="workflowDiscardBtn" hidden>
+                                    Descartar cambios
+                                </button>
                                 <button type="button" class="copy-btn" id="copyBtn" disabled aria-disabled="true" hidden>
                                     Revisar nota
                                 </button>
@@ -662,6 +702,7 @@
     <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
          (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
          orden de documento, así que NotaCampos existe cuando app.js corre. -->
+    <script src="js/note-lifecycle.js?v=1" defer></script>
     <script src="js/interaction-core.js?v=2" defer></script>
     <script src="js/nota-campos.js?v=15" defer></script>
     <script src="js/app.js?v=18" defer></script>

@@ -262,6 +262,13 @@
         if (!st || !window.datosProPai) return;
 
         // — Paciente (Fase A)
+        const idType = document.getElementById('patientIdType');
+        if (idType) {
+            idType.value = 'cc';
+            idType.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+        setSimple('patientIdNumber', `QA-${idx + 1}`);
+        window.CareFlowQaPatientLookup?.('found');
         setSegmented('sexoSeg', 'sexo', d.paciente.sexo);
         const dob = document.getElementById('dobFecha');
         if (dob) { dob.value = d.paciente.dobTxt; dob.dataset.iso = d.paciente.dobIso; }
@@ -366,6 +373,30 @@
         });
 
         document.body.appendChild(btn);
+
+        const lookupWrap = document.createElement('label');
+        lookupWrap.id = 'demoPatientLookup';
+        lookupWrap.style.cssText = [
+            'position:fixed', 'left:16px', 'bottom:118px', 'z-index:120',
+            'display:flex', 'flex-direction:column', 'gap:4px',
+            'padding:8px 10px', 'border:1.5px dashed #31506f', 'border-radius:10px',
+            'background:#f5f9ff', 'color:#183b5b', 'font:inherit',
+            'font-size:.68rem', 'font-weight:700', 'box-shadow:0 4px 14px rgba(0,0,0,.10)',
+        ].join(';');
+        lookupWrap.textContent = 'QA · ESTADO DE BÚSQUEDA';
+        const lookupSelect = document.createElement('select');
+        lookupSelect.id = 'demoPatientLookupState';
+        [
+            ['idle', 'Sin buscar'],
+            ['searching', 'Buscando'],
+            ['found', 'Encontrado'],
+            ['notFound', 'No encontrado'],
+            ['error', 'Error'],
+        ].forEach(([value, label]) => lookupSelect.add(new Option(label, value)));
+        lookupSelect.style.cssText = 'min-height:34px;border:1px solid #9ab3cb;border-radius:7px;background:white;color:#183b5b;font:inherit';
+        lookupSelect.addEventListener('change', () => window.CareFlowQaPatientLookup?.(lookupSelect.value));
+        lookupWrap.appendChild(lookupSelect);
+        document.body.appendChild(lookupWrap);
     }
 
     if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', montar);

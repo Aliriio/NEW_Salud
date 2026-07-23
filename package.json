@@ -4,7 +4,7 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:static",
-    "test:static": "node --test tests/static-integrity.test.mjs",
+    "test:static": "node --test tests/static-integrity.test.mjs tests/note-lifecycle.test.mjs",
     "test:e2e": "playwright test",
     "test:all": "npm run test:static && npm run test:e2e",
     "serve:test": "node tests/static-server.mjs"

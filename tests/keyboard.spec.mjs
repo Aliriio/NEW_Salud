@@ -45,6 +45,16 @@ async function closeReview(page) {
   }
 }
 
+async function confirmOpenReview(page) {
+  const confirm = page.locator('#drawerConfirmBtn');
+  await expect(confirm).toBeVisible();
+  await expect(page.locator('#drawerCopyBtn')).toBeHidden();
+  await confirm.click();
+  await expect(page.locator('#previewDraftState')).toHaveText('Confirmada');
+  await expect(page.locator('#drawerCopyBtn')).toBeVisible();
+  await expect(page.locator('#drawerCopyBtn')).toBeEnabled();
+}
+
 async function loadCompleteQa(page, options = {}) {
   await openDelivery(page, options);
   await loadQaScenario(page);
@@ -52,8 +62,10 @@ async function loadCompleteQa(page, options = {}) {
 }
 
 async function completePatientThroughUi(page) {
+  await page.locator('#patientIdType').selectOption('cc');
+  await page.locator('#patientIdNumber').fill('123456789');
   const sex = page.locator('#sexoSeg [role="radio"]').first();
-  await expect(sex).toBeFocused();
+  await sex.focus();
   await sex.press('Enter');
   await page.locator('#dobFecha').fill('01/01/1990');
   await page.locator('#dobFecha').press('Enter');
@@ -141,9 +153,16 @@ async function recoverCompositeFocusWithTab(page, selectors) {
 }
 
 async function completeMinimumNoteWithKeyboard(page) {
+  const idType = page.locator('#patientIdType');
+  await expect(idType).toBeFocused();
+  await page.keyboard.press('ArrowDown');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#patientIdNumber')).toBeFocused();
+  await page.keyboard.insertText('123456789');
+  await page.keyboard.press('Enter');
   const firstSex = page.locator('#sexoSeg [role="radio"]').first();
-  if (!await firstSex.evaluate((element) => element === document.activeElement)) await page.keyboard.press('Tab');
   await expect(firstSex).toBeFocused();
+  await expect(page.locator('#patientContextPanel')).toHaveAttribute('data-lookup-status', 'integrationPending');
   await page.keyboard.press('Enter');
   await expect(page.locator('#dobFecha')).toBeFocused();
   await page.keyboard.insertText('01011990');
@@ -320,9 +339,73 @@ async function noteFingerprint(page) {
 test('QA controls only mount with ?qa=1', async ({ page }) => {
   await openDelivery(page, { qa: false });
   await expect(page.locator('#demoEscenariosBtn')).toHaveCount(0);
+  await expect(page.locator('#demoPatientLookup')).toHaveCount(0);
 
   await page.goto('/entrega.html?qa=1');
   await expect(page.locator('#demoEscenariosBtn')).toBeVisible();
+  await expect(page.locator('#demoPatientLookup')).toBeVisible();
+});
+
+test('patient identity is required and verification runs silently when the number loses focus', async ({ page }) => {
+  await openDelivery(page, { qa: false });
+  expect(await page.evaluate(() => typeof window.CareFlowQaPatientLookup)).toBe('undefined');
+  await expect(page.locator('#shiftDate')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Buscar paciente' })).toHaveCount(0);
+  await expect(page.locator('#patientLookupStatus')).toHaveCount(0);
+
+  await page.locator('#flowTabPatient').press('Control+Enter');
+  await expect(page.locator('#noteSection')).toHaveJSProperty('open', false);
+  await expect(page.locator('#patientIdType')).toBeFocused();
+
+  await page.locator('#patientIdType').selectOption('liveBirthCertificate');
+  await page.locator('#patientIdNumber').fill('CNV-2026-001');
+  await page.locator('#sexoSeg [role="radio"]').first().focus();
+  await expect(page.locator('#patientContextPanel')).toHaveAttribute('data-lookup-status', 'integrationPending');
+
+  await page.locator('#numCama').fill('22');
+  await expect(page.locator('#patientContextPanel')).toHaveAttribute('data-lookup-status', 'integrationPending');
+  expect(await page.evaluate(() => Object.keys(localStorage))).toEqual([navigationModeKey]);
+});
+
+test('future patient lookup states remain inspectable only through QA controls', async ({ page }) => {
+  await openDelivery(page);
+  const selector = page.locator('#demoPatientLookupState');
+  const context = page.locator('#patientContextPanel');
+
+  for (const value of ['idle', 'searching', 'found', 'notFound', 'error']) {
+    await selector.selectOption(value);
+    await expect(context).toHaveAttribute('data-lookup-status', value);
+  }
+  await expect(page.locator('#patientRegisterPending')).toHaveCount(0);
+});
+
+test('confirmed identity locks and an incomplete pending edition can be discarded exactly', async ({ page }) => {
+  await openDelivery(page);
+  await loadQaScenario(page);
+  const originalPending = await page.locator('#pendientes').inputValue();
+  await confirmOpenReview(page);
+  await expect(page.locator('#noteContent')).not.toContainText('Pendiente de confirmación');
+  const confirmedHtml = await page.locator('#noteContent').innerHTML();
+  await expect(page.locator('#patientIdType')).toBeDisabled();
+  await expect(page.locator('#patientIdNumber')).toHaveAttribute('readonly', '');
+  await closeReview(page);
+
+  await page.locator('#flowTabFaseF').click();
+  await page.locator('#pendientes').fill('');
+  await expect(page.locator('#noteStatus')).toContainText('Pendiente: Pendientes para el siguiente turno');
+  await expect(page.locator('#workflowDiscardBtn')).toBeVisible();
+  await expect(page.locator('#drawerCopyBtn')).toBeHidden();
+
+  await page.locator('#workflowDiscardBtn').click();
+  await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', true);
+  await page.locator('[data-dependent-confirm]').click();
+  await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', false);
+  await expect(page.locator('#pendientes')).toHaveValue(originalPending);
+  await expect(page.locator('#noteStatus')).toContainText('Nota confirmada');
+
+  await page.locator('#noteToggleBtn').click();
+  await expect(page.locator('#drawerCopyBtn')).toBeEnabled();
+  expect(await page.locator('#noteContent').innerHTML()).toBe(confirmedHtml);
 });
 
 test('six-tab stepper uses roving focus with manual activation', async ({ page }) => {
@@ -353,7 +436,7 @@ test('six-tab stepper uses roving focus with manual activation', async ({ page }
 
 test('smart entry focuses only useful pending controls and opens their choices', async ({ page }) => {
   await openDelivery(page, { qa: false });
-  await expect(page.locator('#sexoSeg [role="radio"]').first()).toBeFocused();
+  await expect(page.locator('#patientIdType')).toBeFocused();
   await expect(page.locator('#patientBlockTitle')).not.toHaveAttribute('tabindex', /.+/);
   await expect(page.locator('.obs-info')).not.toHaveAttribute('tabindex', /.+/);
   await expect(page.locator('#otrosComentarios')).toHaveAttribute('aria-describedby', 'otrosComentariosHelp');
@@ -374,12 +457,12 @@ test('smart entry focuses only useful pending controls and opens their choices',
 
 test('Tab alternates the current field and section navigator while Shift+Tab stays native', async ({ page, browserName }) => {
   await openDelivery(page, { qa: false });
-  const sex = page.locator('#sexoSeg [role="radio"]').first();
-  await expect(sex).toBeFocused();
+  const idType = page.locator('#patientIdType');
+  await expect(idType).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(page.locator('#flowTabPatient')).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(sex).toBeFocused();
+  await expect(idType).toBeFocused();
 
   await completePatientThroughUi(page);
   const neuro = page.locator('#estadoNeurologico');
@@ -608,6 +691,8 @@ test('QA scenario opens a modal review and traps/restores focus', async ({ page 
 test('an invalid combobox draft blocks review', async ({ page }) => {
   await openDelivery(page, { qa: false });
 
+  await page.locator('#patientIdType').selectOption('cc');
+  await page.locator('#patientIdNumber').fill('123456789');
   const sex = page.locator('#sexoSeg [role="radio"]').first();
   await sex.focus();
   await sex.press('Enter');
@@ -841,7 +926,7 @@ test('PAE grid semantics, focus reflow, explicit confirmation and undo remain co
   await expect(page.locator('#step3')).not.toHaveClass(/active/);
 });
 
-test('Ctrl+Enter reviews without copying and later edits stale the copied revision', async ({ page }) => {
+test('Ctrl+Enter reviews without copying and later edits create a pending edition', async ({ page }) => {
   await installClipboardStub(page, 'success');
   await loadCompleteQa(page);
 
@@ -853,10 +938,13 @@ test('Ctrl+Enter reviews without copying and later edits stale the copied revisi
   expect(await page.evaluate(() => window.__clipboardCalls)).toBe(0);
 
   await page.keyboard.press('Control+Enter');
-  await expect(page.locator('#drawerCopyBtn')).toBeFocused();
+  await expect(page.locator('#drawerConfirmBtn')).toBeFocused();
   expect(await page.evaluate(() => window.__clipboardCalls)).toBe(0);
 
-  await page.keyboard.press('Shift+Enter');
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#drawerCopyBtn')).toBeEnabled();
+  await expect(page.locator('#drawerCopyBtn')).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect.poll(() => page.evaluate(() => window.__clipboardCalls)).toBe(1);
   await expect(page.locator('#drawerCopyBtn')).toHaveClass(/copied/);
   expect(await page.evaluate(() => window.__clipboardText.trim().length)).toBeGreaterThan(0);
@@ -864,13 +952,24 @@ test('Ctrl+Enter reviews without copying and later edits stale the copied revisi
   await page.keyboard.press('Escape');
   await expect(observations).toBeFocused();
   await observations.fill(`${await observations.inputValue()} Ajuste posterior.`);
-  await expect(page.locator('#noteStatus')).toContainText('La nota cambió desde la última copia');
+  await expect(page.locator('#noteStatus')).toContainText('Edición pendiente');
+  await expect(page.locator('#workflowDiscardBtn')).toBeVisible();
+  await expect(page.locator('#drawerCopyBtn')).toBeHidden();
+
+  await page.locator('#copyBtn').click();
+  await expect(page.locator('#drawerConfirmBtn')).toHaveText('Confirmar cambios');
+  await expect(page.locator('#drawerCopyBtn')).toBeHidden();
+  await page.locator('#drawerConfirmBtn').click();
+  await expect(page.locator('#previewDraftState')).toHaveText('Confirmada');
+  await expect(page.locator('#drawerCopyBtn')).toBeEnabled();
+  await expect(page.locator('#noteContent')).toContainText('Ajuste posterior.');
 });
 
 test('rejected Clipboard API plus failed fallback never reports copy success', async ({ page }) => {
   await installClipboardStub(page, 'reject');
   await openDelivery(page);
   await loadQaScenario(page);
+  await confirmOpenReview(page);
 
   const copy = page.locator('#drawerCopyBtn');
   await copy.click();
@@ -886,6 +985,7 @@ test('missing Clipboard API succeeds only when the fallback confirms copy', asyn
   await installClipboardStub(page, 'fallback-success');
   await openDelivery(page);
   await loadQaScenario(page);
+  await confirmOpenReview(page);
 
   await page.locator('#drawerCopyBtn').click();
   await expect.poll(() => page.evaluate(() => window.__clipboardCalls)).toBe(0);
@@ -1299,7 +1399,7 @@ test('internal navigation warns about uncopied changes without storing the draft
   await page.locator('.cf-nav-item[href="dashboard.html#inicio"]').click();
 
   await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', true);
-  await expect(page.locator('#dependentChangeDescription')).toContainText('todavía no se han copiado');
+  await expect(page.locator('#dependentChangeDescription')).toContainText('borrador sin confirmar');
   await page.keyboard.press('Escape');
   await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', false);
   await expect(page.locator('.cf-nav-item[href="dashboard.html#inicio"]')).toBeFocused();
