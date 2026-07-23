@@ -15,10 +15,34 @@ let previewReturnFocus = null;
 let lastLogicalSectionId = 'patient';
 let sectionTypeaheadBuffer = '';
 let sectionTypeaheadTimer = null;
+let optionActivationAdvances = null;
 const SECTION_TYPEAHEAD_DELAY = 1500;
-let maxReachedStep = 1;  // paso más profundo alcanzado: permite "recuperar" el avance con ↓
+const KEYBOARD_NAVIGATION_MODE_KEY = 'cf_keyboard_navigation_mode';
+const KEYBOARD_NAVIGATION_MODES = new Set(['standard', 'agile']);
+let keyboardNavigationMode = 'standard';
+let maxReachedStep = 1;  // paso más profundo alcanzado: habilita volver a pasos ya recorridos
 let noteVisible = false;  // La nota empieza oculta
 let reversePanelContext = false;
+let flowNavRovingId = 'patient';
+let revisionTrackingEnabled = false;
+let suppressRevisionTracking = false;
+let draftRevision = 0;
+let lastCopiedRevision = 0;
+const stageFocusMemory = new Map();
+const validatedStages = new Set();
+let interactionRegistry = null;
+let interactionFocus = null;
+let interactionIssues = null;
+let interactionAnnouncer = null;
+let interactionOverlays = null;
+let interactionOrigin = null;
+let interactionChanges = null;
+let interactionMetrics = null;
+let keyboardController = null;
+let writingTargetRegistry = null;
+let fieldNavigationRegistry = null;
+let tabLevelController = null;
+let spatialNavigator = null;
 
 const selected = {
     area: null,
@@ -75,6 +99,22 @@ const els = {
     previewStatus:  document.getElementById('previewStatus'),
     previewLaunchStatus: document.getElementById('previewLaunchStatus'),
     previewDraftState: document.getElementById('previewDraftState'),
+    actionAnnouncer: document.getElementById('actionAnnouncer'),
+    keyboardCoach: document.getElementById('keyboardCoach'),
+    shortcutsBtn: document.getElementById('shortcutsBtn'),
+    shortcutsDialog: document.getElementById('shortcutsDialog'),
+    shortcutsClose: document.getElementById('shortcutsClose'),
+    shortcutsDialogDescription: document.getElementById('shortcutsDialogDescription'),
+    shortcutsTabDescription: document.getElementById('shortcutsTabDescription'),
+    shortcutsSpatialRow: document.getElementById('shortcutsSpatialRow'),
+    keyboardNavigationMode: document.getElementById('keyboardNavigationMode'),
+    keyboardNavigationModeCurrent: document.getElementById('keyboardNavigationModeCurrent'),
+    keyboardNavigationModeDescription: document.getElementById('keyboardNavigationModeDescription'),
+    dependentChangeDialog: document.getElementById('dependentChangeDialog'),
+    dependentChangeTitle: document.getElementById('dependentChangeTitle'),
+    dependentChangeDescription: document.getElementById('dependentChangeDescription'),
+    dependentChangeCancel: document.getElementById('dependentChangeCancel'),
+    dependentChangeConfirm: document.getElementById('dependentChangeConfirm'),
     resetDialog:    document.getElementById('resetDialog'),
     resetDialogDescription: document.getElementById('resetDialogDescription'),
     resetDialogSectionName: document.getElementById('resetDialogSectionName'),
@@ -144,41 +184,449 @@ const activePos = (n) => activeSteps().findIndex((s) => s.num === n) + 1;  // 1-
 const totalActive = () => activeSteps().length;
 const nextActiveNum = (n) => { const a = activeSteps(); const i = a.findIndex((s) => s.num === n); return i >= 0 && i < a.length - 1 ? a[i + 1].num : null; };
 
+function normalizeKeyboardNavigationMode(value) {
+    return KEYBOARD_NAVIGATION_MODES.has(value) ? value : 'standard';
+}
+
+function readKeyboardNavigationMode() {
+    try {
+        return normalizeKeyboardNavigationMode(window.localStorage.getItem(KEYBOARD_NAVIGATION_MODE_KEY));
+    } catch (_) {
+        return 'standard';
+    }
+}
+
+function persistKeyboardNavigationMode(mode) {
+    try {
+        window.localStorage.setItem(KEYBOARD_NAVIGATION_MODE_KEY, mode);
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+function isAgileNavigation() {
+    return keyboardNavigationMode === 'agile';
+}
+
+function applyKeyboardNavigationMode(value, { persist = false, announce = false } = {}) {
+    const mode = normalizeKeyboardNavigationMode(value);
+    keyboardNavigationMode = mode;
+    document.documentElement.dataset.keyboardNavigation = mode;
+
+    const agile = mode === 'agile';
+    if (els.keyboardNavigationMode) {
+        els.keyboardNavigationMode.dataset.mode = mode;
+        els.keyboardNavigationMode.setAttribute('aria-checked', agile ? 'true' : 'false');
+        els.keyboardNavigationMode.title = agile
+            ? 'Cambiar a navegación Estándar'
+            : 'Cambiar a navegación Ágil';
+    }
+    if (els.keyboardNavigationModeCurrent) {
+        els.keyboardNavigationModeCurrent.textContent = `${agile ? 'Ágil' : 'Estándar'} activo`;
+    }
+    document.querySelectorAll('[data-navigation-mode-label]').forEach((label) => {
+        label.classList.toggle('is-active', label.dataset.navigationModeLabel === mode);
+    });
+    if (els.shortcutsDialogDescription) {
+        els.shortcutsDialogDescription.textContent = agile
+            ? 'La navegación Ágil conserva las flechas dentro de cada campo y añade desplazamiento espacial entre campos.'
+            : 'La navegación Estándar conserva el recorrido habitual del navegador y todos los controles accesibles.';
+    }
+    if (els.keyboardNavigationModeDescription) {
+        els.keyboardNavigationModeDescription.textContent = agile
+            ? 'Tab alterna entre el campo actual y las secciones; Shift + flechas cambia de campo.'
+            : 'Tab avanza secuencialmente y Shift + flechas conserva su comportamiento nativo.';
+    }
+    if (els.shortcutsTabDescription) {
+        els.shortcutsTabDescription.textContent = agile
+            ? 'Alternar entre el campo actual y las secciones.'
+            : 'Avanzar mediante el recorrido estándar.';
+    }
+    if (els.shortcutsSpatialRow) els.shortcutsSpatialRow.hidden = !agile;
+    if (els.keyboardCoach) {
+        els.keyboardCoach.innerHTML = agile
+            ? '<kbd>Flechas</kbd> dentro del campo · <kbd>Shift</kbd> + <kbd>flechas</kbd> cambiar campo · <kbd>Tab</kbd> secciones · <kbd>Shift</kbd> + <kbd>Enter</kbd> continuar'
+            : '<kbd>Tab</kbd> siguiente · <kbd>Shift</kbd> + <kbd>Tab</kbd> anterior · <kbd>Flechas</kbd> dentro del campo · <kbd>Shift</kbd> + <kbd>Enter</kbd> continuar';
+    }
+    if (persist) persistKeyboardNavigationMode(mode);
+    if (announce) announceAction(`Navegación ${agile ? 'Ágil' : 'Estándar'} activada.`);
+    return mode;
+}
+
 /* ─── Flujo global de Nota de entrega ───
    El PAE conserva su controlador interno; este nivel solo decide qué etapa mayor
    está visible y resume el trabajo ya realizado. */
 const FLOW_STAGE_ORDER = ['patient', 'faseB', 'faseC', 'faseD', 'fasePAE', 'faseF'];
-let patientGateUnlocked = false;
+// Este latch expresa “Paciente estuvo completo alguna vez”. Un reinicio parcial
+// no vuelve a bloquear etapas ya habilitadas; la nota/copia sí exigen validez actual.
+let patientGateEverUnlocked = false;
+
+function announceAction(message) {
+    if (!message) return;
+    if (interactionAnnouncer?.announce) {
+        interactionAnnouncer.announce(message);
+        return;
+    }
+    if (!els.actionAnnouncer || els.actionAnnouncer.textContent === message) return;
+    els.actionAnnouncer.textContent = '';
+    requestAnimationFrame(() => { els.actionAnnouncer.textContent = message; });
+}
+
+window.CareFlowAnnounce = announceAction;
+
+function markDraftRevision() {
+    if (!revisionTrackingEnabled || suppressRevisionTracking) return;
+    draftRevision += 1;
+}
+
+function openAppEditorDraft() {
+    const inline = [...document.querySelectorAll('.custom-form-input')]
+        .find((input) => input.value.trim() !== (input.dataset.initialValue || '').trim());
+    if (inline) return inline;
+    const customScale = document.getElementById('b6CustomScale');
+    if (!customScale || customScale.hidden || !selected.nocCustom || selected.b6EscalaId !== '__custom__') return null;
+    const inputs = [...customScale.querySelectorAll('.b6-cs-input')];
+    const current = inputs.map((input) => input.value.trim()).filter(Boolean);
+    const saved = (selected.b6CustomNiveles || []).map((value) => String(value).trim()).filter(Boolean);
+    return JSON.stringify(current) === JSON.stringify(saved) ? null : (inputs[0] || customScale);
+}
+
+function hasUncopiedChanges() {
+    return draftRevision !== lastCopiedRevision || !!openAppEditorDraft();
+}
+
+function blockOnOpenAppEditorDraft() {
+    const editor = openAppEditorDraft();
+    if (!editor) return false;
+    const stageId = editor.closest?.('[data-flow-stage]')?.dataset.flowStage;
+    if (stageId && stageId !== activeFlowStage) activateFlowStage(stageId, { focus: false, reason: 'validation' });
+    const step = editor.closest?.('.step[data-step]');
+    if (step && !step.classList.contains('active')) activateStep(Number(step.dataset.step), { focus: false });
+    requestAnimationFrame(() => {
+        editor.focus?.();
+        scrollSoft(editor, 'nearest');
+    });
+    announceAction('Confirme o cancele el editor personalizado antes de continuar.');
+    return true;
+}
+
+function stableFocusId(element) {
+    if (!element || !(element instanceof Element)) return '';
+    return element.id || element.dataset.focusId || '';
+}
+
+function rememberStageFocus(element) {
+    const stage = element?.closest?.('[data-flow-stage]');
+    const id = stableFocusId(element);
+    const actionable = element?.matches?.([
+        'input:not([type="hidden"])', 'textarea', 'select',
+        'button:not(.reset-icon-btn):not(.clinical-date-cal)',
+        '[role="option"]', '[role="radio"]', '[role="gridcell"]',
+    ].join(','));
+    if (!stage?.dataset.flowStage || !id || !actionable || element.closest('dialog')) return;
+    stageFocusMemory.set(stage.dataset.flowStage, id);
+}
+
+function restoreStageFocus(stageId) {
+    const remembered = stageFocusMemory.get(stageId);
+    if (!remembered) return false;
+    const target = document.getElementById(remembered)
+        || document.querySelector(`[data-focus-id="${CSS.escape(remembered)}"]`);
+    const stage = document.querySelector(`[data-flow-stage="${stageId}"]:not([hidden])`);
+    if (!target || !stage?.contains(target) || target.closest('[hidden], [inert]')
+        || target.disabled || target.getAttribute('aria-disabled') === 'true') return false;
+    target.focus();
+    scrollSoft(target, 'nearest');
+    return true;
+}
+
+let pendingDependentChange = null;
+let undoTimer = null;
+let undoContextRevision = 0;
+
+function ensureDependentChangeDialog() {
+    let dialog = document.getElementById('dependentChangeDialog');
+    if (dialog) return dialog;
+    dialog = document.createElement('dialog');
+    dialog.id = 'dependentChangeDialog';
+    dialog.className = 'reset-dialog dependent-change-dialog';
+    dialog.setAttribute('aria-labelledby', 'dependentChangeTitle');
+    dialog.setAttribute('aria-describedby', 'dependentChangeDescription');
+    dialog.innerHTML = `
+        <div class="reset-dialog-icon" aria-hidden="true">!</div>
+        <h2 id="dependentChangeTitle">Confirmar cambio</h2>
+        <p id="dependentChangeDescription"></p>
+        <div class="reset-dialog-actions" data-dialog-actions>
+            <button type="button" class="reset-dialog-cancel" data-dependent-cancel>Cancelar</button>
+            <button type="button" class="reset-dialog-section" data-dependent-confirm>Aplicar cambio</button>
+        </div>`;
+    document.body.appendChild(dialog);
+    setupDialogActionNavigation(dialog);
+    const cancel = dialog.querySelector('[data-dependent-cancel]');
+    const confirm = dialog.querySelector('[data-dependent-confirm]');
+    cancel.addEventListener('click', () => dialog.close('cancel'));
+    confirm.addEventListener('click', () => dialog.close('confirm'));
+    dialog.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        dialog.close('cancel');
+    });
+    dialog.addEventListener('close', () => {
+        interactionOverlays?.remove('dependent-change', { restoreFocus: false });
+        const request = pendingDependentChange;
+        pendingDependentChange = null;
+        if (!request) return;
+        if (dialog.returnValue === 'confirm') request.onConfirm();
+        else {
+            request.onCancel?.();
+            requestAnimationFrame(() => {
+                if (!request.trigger?.isConnected) return;
+                request.trigger.focus?.({ preventScroll: true });
+                request.trigger.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+            });
+        }
+    });
+    return dialog;
+}
+
+function requestDependentChange({ title, description, confirmLabel = 'Aplicar cambio', trigger, onConfirm, onCancel }) {
+    const dialog = ensureDependentChangeDialog();
+    pendingDependentChange = { trigger: trigger || document.activeElement, onConfirm, onCancel };
+    dialog.querySelector('#dependentChangeTitle').textContent = title;
+    dialog.querySelector('#dependentChangeDescription').textContent = description;
+    dialog.querySelector('[data-dependent-confirm]').textContent = confirmLabel;
+    dialog.returnValue = '';
+    if (interactionOverlays && !interactionOverlays.get('dependent-change')) {
+        interactionOverlays.push({
+            id: 'dependent-change',
+            element: dialog,
+            invoker: trigger || document.activeElement,
+            modal: true,
+            onClose: () => { if (dialog.open) dialog.close('cancel'); },
+        });
+    }
+    dialog.showModal();
+    requestAnimationFrame(() => dialog.querySelector('[data-dependent-cancel]')?.focus());
+}
+
+function runDependentChange(options) {
+    if (!interactionChanges) {
+        requestDependentChange(options);
+        return Promise.resolve({ status: 'pending' });
+    }
+    return interactionChanges.run({
+        requiresConfirmation: true,
+        confirm: () => new Promise((resolve) => {
+            requestDependentChange({
+                ...options,
+                onConfirm: () => resolve(true),
+                onCancel: () => resolve(false),
+            });
+        }),
+        apply: () => {
+            cancelPendingUndo();
+            return options.onConfirm();
+        },
+    });
+}
+
+function cancelPendingUndo() {
+    undoContextRevision += 1;
+    clearTimeout(undoTimer);
+    undoTimer = null;
+    const toast = document.getElementById('undoToast');
+    if (!toast) return;
+    toast.hidden = true;
+    const button = toast.querySelector('[data-undo-action]');
+    if (button) button.onclick = null;
+}
+
+function offerUndo(message, undo) {
+    let toast = document.getElementById('undoToast');
+    if (!toast) {
+        toast = document.createElement('div');
+        toast.id = 'undoToast';
+        toast.className = 'undo-toast';
+        toast.innerHTML = '<span data-undo-message></span><button type="button" data-undo-action>Deshacer</button>';
+        document.body.appendChild(toast);
+    }
+    clearTimeout(undoTimer);
+    const contextRevision = undoContextRevision;
+    const button = toast.querySelector('[data-undo-action]');
+    toast.querySelector('[data-undo-message]').textContent = message;
+    toast.hidden = false;
+    button.onclick = () => {
+        if (contextRevision !== undoContextRevision) return;
+        clearTimeout(undoTimer);
+        toast.hidden = true;
+        undo();
+        announceAction('Acción deshecha.');
+    };
+    undoTimer = setTimeout(() => { toast.hidden = true; }, 8000);
+    announceAction(`${message}. Puede deshacer durante ocho segundos.`);
+}
+
+window.CareFlowUndo = offerUndo;
+window.CareFlowCancelUndo = cancelPendingUndo;
+window.CareFlowConfirmChange = runDependentChange;
+
+let allowNavigationOnce = false;
+
+function setupExitGuard() {
+    window.addEventListener('beforeunload', (event) => {
+        if (allowNavigationOnce || !hasUncopiedChanges()) return;
+        event.preventDefault();
+        event.returnValue = '';
+    });
+
+    document.addEventListener('click', (event) => {
+        if (allowNavigationOnce) return;
+        if (!hasUncopiedChanges()) return;
+        const link = event.target.closest('a[href]');
+        const logout = event.target.closest('[data-cf-logout]');
+        if ((!link || link.target === '_blank' || link.hasAttribute('download')) && !logout) return;
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        runDependentChange({
+            title: '¿Salir de esta nota?',
+            description: 'Hay cambios que todavía no se han copiado. Si sale ahora, el borrador se perderá porque CareFlow no lo almacena en este dispositivo.',
+            confirmLabel: 'Salir sin copiar',
+            trigger: logout || link,
+            onConfirm: () => {
+                allowNavigationOnce = true;
+                if (logout) logout.click();
+                else window.location.assign(link.href);
+                window.setTimeout(() => { allowNavigationOnce = false; }, 1000);
+            },
+        });
+    }, true);
+}
 
 function isPatientGateUnlocked() {
-    if (!patientGateUnlocked && flowStageState('patient').complete) patientGateUnlocked = true;
-    return patientGateUnlocked;
+    if (!patientGateEverUnlocked && flowStageState('patient').complete) patientGateEverUnlocked = true;
+    return patientGateEverUnlocked;
+}
+
+function syncIssueAccessibility(issues) {
+    const activeControls = new Set();
+    issues.forEach((issue) => {
+        if (!validatedStages.has(issue.stageId) || !issue.controlId) return;
+        const control = document.getElementById(issue.controlId);
+        if (!control) return;
+        activeControls.add(control);
+        // Los componentes que ya exponen aria-invalid conservan su propiedad del
+        // estado; el registro global solo crea y luego retira atributos propios.
+        if (!control.hasAttribute('aria-invalid')) control.dataset.careflowOwnedInvalid = 'true';
+        control.setAttribute('aria-invalid', 'true');
+        if (!control.hasAttribute('aria-errormessage')) {
+            const errorId = `careflow-error-${issue.controlId}`;
+            let error = document.getElementById(errorId);
+            if (!error) {
+                error = document.createElement('span');
+                error.id = errorId;
+                error.className = 'sr-only';
+                error.dataset.careflowIssueMessage = 'true';
+                control.insertAdjacentElement('afterend', error);
+            }
+            error.textContent = issue.message;
+            control.setAttribute('aria-errormessage', errorId);
+            control.dataset.careflowOwnedErrorMessage = 'true';
+        }
+    });
+    document.querySelectorAll('[data-careflow-owned-invalid="true"]').forEach((control) => {
+        if (activeControls.has(control)) return;
+        control.removeAttribute('aria-invalid');
+        delete control.dataset.careflowOwnedInvalid;
+        if (control.dataset.careflowOwnedErrorMessage === 'true') {
+            document.getElementById(control.getAttribute('aria-errormessage'))?.remove();
+            control.removeAttribute('aria-errormessage');
+            delete control.dataset.careflowOwnedErrorMessage;
+        }
+    });
+}
+
+function collectFormIssues() {
+    const issues = [];
+    const add = (issue) => issues.push(issue);
+    const sexMissing = !els.sexo || els.sexo.value === '___';
+    if (sexMissing) {
+        add({
+            id: 'app-patient-sex', stageId: 'patient', controlId: 'sexoSeg', type: 'missing',
+            message: 'Sexo del paciente', order: 0,
+            focus: () => {
+                document.getElementById('sexoSeg')?.querySelector('[role="radio"]')?.focus();
+                return true;
+            },
+        });
+    }
+    const dob = validateDOB();
+    if (!dob.valid) {
+        add({
+            id: 'app-patient-dob', stageId: 'patient', controlId: 'dobFecha',
+            type: els.dobFecha?.value?.trim() ? 'invalid' : 'missing',
+            message: 'Fecha de nacimiento válida', order: 1,
+            focus: (options = {}) => {
+                els.dobFecha?.focus();
+                if (options.report !== false) els.dobFecha?._notaDateControl?.reportValidity?.();
+                return true;
+            },
+        });
+    }
+
+    const clinicalByStage = new Map();
+    (window.NotaCampos?.getIssues?.() || []).forEach((issue) => {
+        const stageId = issue.stageId === 'faseA' ? 'patient' : issue.stageId;
+        const count = clinicalByStage.get(stageId) || 0;
+        clinicalByStage.set(stageId, count + 1);
+        const bucketOffset = issue.bucket === 'cierre' ? 70 : 10;
+        add({ ...issue, id: `clinical-${issue.id}`, stageId, order: bucketOffset + count });
+    });
+
+    activeSteps().forEach((step, index) => {
+        if (stepHasSelection(step.num)) return;
+        add({
+            id: `app-pae-step-${step.num}`,
+            stageId: 'fasePAE',
+            controlId: step.search?.()?.id || step.container?.()?.id || `step${step.num}`,
+            type: 'missing',
+            message: `${stepLabel(step)} (PAE, paso ${activePos(step.num)})`,
+            order: index,
+            focus: () => {
+                goToStepSection(step.num);
+                return true;
+            },
+        });
+    });
+
+    if (!els.metaLograda?.value) {
+        add({
+            id: 'app-fasef-meta', stageId: 'faseF', controlId: 'metaSeg', type: 'missing',
+            message: 'Estado de la meta (NOC) al cierre', order: 60,
+            focus: () => { focusMeta(); return true; },
+        });
+    }
+    const ordered = issues.sort((a, b) => {
+        const stageDiff = FLOW_STAGE_ORDER.indexOf(a.stageId) - FLOW_STAGE_ORDER.indexOf(b.stageId);
+        return stageDiff || (a.order ?? 0) - (b.order ?? 0);
+    });
+    interactionIssues?.replace('delivery-form', ordered);
+    syncIssueAccessibility(ordered);
+    return ordered;
 }
 
 function flowStageState(id) {
     const nc = window.NotaCampos;
-    const clinical = nc?.getMissing() || { faseA: [], faseB: [], faseC: [], faseD: [], evaluacion: [], cierre: [] };
-    let missing = [];
+    const missing = collectFormIssues().filter((issue) => issue.stageId === id).map((issue) => issue.message);
     let summary = '';
 
     if (id === 'patient') {
-        if (!els.sexo || els.sexo.value === '___') missing.push('Sexo del paciente');
-        if (!validateDOB().valid) missing.push('Fecha de nacimiento válida');
-        missing.push(...clinical.faseA);
         const s = nc?.state;
         summary = [s?.numHabitacion ? `Hab. ${s.numHabitacion}` : '', s?.servicio || ''].filter(Boolean).join(' · ');
     } else if (id === 'faseB' || id === 'faseC' || id === 'faseD') {
-        missing = [...(clinical[id] || [])];
         summary = nc?.phaseStatus()?.[id]?.summary || '';
     } else if (id === 'fasePAE') {
-        activeSteps().forEach((s) => {
-            if (!stepHasSelection(s.num)) missing.push(stepLabel(s));
-        });
         summary = selected.diagnosticoNombre || selected.areaNombre || '';
     } else if (id === 'faseF') {
-        missing = [...clinical.evaluacion];
-        if (!els.metaLograda?.value) missing.push('Estado de la meta (NOC) al cierre');
-        missing.push(...clinical.cierre);
         summary = nc?.state?.tendencia || '';
     }
 
@@ -193,6 +641,9 @@ function updateFlowNavigator() {
         const state = flowStageState(id);
         const locked = id !== 'patient' && !unlocked;
         btn.disabled = locked;
+        btn.setAttribute('aria-disabled', locked ? 'true' : 'false');
+        btn.setAttribute('aria-selected', id === activeFlowStage ? 'true' : 'false');
+        btn.tabIndex = !locked && id === flowNavRovingId ? 0 : -1;
         const stage = document.querySelector(`[data-flow-stage="${id}"]`);
         if (stage) stage.inert = locked;
         btn.classList.toggle('flow-nav-item--complete', state.complete);
@@ -207,17 +658,21 @@ function updateFlowNavigator() {
     });
 }
 
-function focusFlowStageEntry(id) {
-    requestAnimationFrame(() => {
-        if (id === 'patient') {
-            const target = document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
-            target?.focus();
-        } else if (id === 'fasePAE') {
-            focusStepEntry(currentStep);
-        } else {
-            window.NotaCampos?.focusPhase(id, 1);
-        }
-    });
+function focusFlowStageEntry(id, reason = 'advance') {
+    const issue = collectFormIssues().find((entry) => entry.stageId === id);
+    if (issue?.focus) {
+        issue.focus({ report: false });
+        return;
+    }
+    if (reason === 'correction' && restoreStageFocus(id)) return;
+    if (id === 'patient') {
+        const target = document.getElementById('sexoSeg')?.querySelector('[role="radio"]');
+        target?.focus();
+    } else if (id === 'fasePAE') {
+        focusStepEntry(currentStep);
+    } else {
+        window.NotaCampos?.focusPhase(id, 1);
+    }
 }
 
 function activateFlowStage(id, opts = {}) {
@@ -227,17 +682,27 @@ function activateFlowStage(id, opts = {}) {
         if (message) message.textContent = 'Complete los datos del paciente para habilitar las demás secciones.';
         return false;
     }
+    const previousStage = activeFlowStage;
     document.querySelectorAll('[data-flow-stage]').forEach((stage) => {
         stage.hidden = stage.dataset.flowStage !== id;
     });
     activeFlowStage = id;
+    if (previousStage !== id) {
+        interactionMetrics?.record('stage-transition', {
+            from: previousStage,
+            to: id,
+            modality: interactionOrigin?.current?.({ maxAge: 1500 }) || 'programmatic',
+        });
+    }
+    flowNavRovingId = id;
     if (id !== 'fasePAE') reversePanelContext = false;
     window.NotaCampos?.closeMenus?.();
     updateFlowNavigator();
     updateLayout();
     const stage = document.querySelector(`[data-flow-stage="${id}"]`);
     stage?.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'start' });
-    if (opts.focus !== false) focusFlowStageEntry(id);
+    requestAnimationFrame(() => syncVisibleOptionGrids(stage));
+    if (opts.focus !== false) focusFlowStageEntry(id, opts.reason || 'advance');
     return true;
 }
 
@@ -249,37 +714,78 @@ function focusPatientPending() {
         : !s?.numCama ? document.getElementById('numCama')
         : !s?.numHabitacion ? document.getElementById('numHabitacion')
         : !s?.servicio ? document.getElementById('servicio') : null;
+    if (target?.id === 'posicion' || target?.id === 'servicio') {
+        window.NotaCampos?.reportField?.(target.id);
+    }
     target?.focus();
     scrollSoft(target);
     return !!target;
 }
 
-function continueFlowStage(id) {
+function continueFlowStage(id, { focus = true } = {}) {
+    validatedStages.add(id);
+    window.NotaCampos?.commitDrafts?.(id);
     const state = flowStageState(id);
+    interactionMetrics?.record('validation', {
+        stageId: id,
+        outcome: state.complete ? 'passed' : 'blocked',
+        count: state.missing.length,
+    });
     const message = document.querySelector(`[data-flow-message="${id}"]`);
     if (!state.complete) {
         if (message) message.textContent = `Pendiente: ${state.missing[0]}`;
-        if (id === 'patient') focusPatientPending();
-        else if (id === 'faseF' && state.missing[0]?.startsWith('Estado de la meta')) {
-            focusMeta();
-        }
+        announceAction(`${state.missing.length} pendiente${state.missing.length === 1 ? '' : 's'}. Primero: ${state.missing[0]}.`);
+        const issue = interactionIssues?.first({ stageId: id })
+            || collectFormIssues().find((entry) => entry.stageId === id);
+        if (issue?.focus) issue.focus();
+        else if (id === 'patient') focusPatientPending();
         else window.NotaCampos?.focusFirstPending(id);
         return false;
     }
     if (message) message.textContent = '';
     const index = FLOW_STAGE_ORDER.indexOf(id);
     const next = FLOW_STAGE_ORDER[index + 1];
-    if (next) activateFlowStage(next, { focus: true });
+    if (next) activateFlowStage(next, { focus, reason: 'advance' });
     else if (id === 'faseF') toggleNote(true);
     return true;
 }
 
 function setupGlobalFlow() {
-    document.querySelectorAll('[data-flow-target]').forEach((btn) => {
-        btn.addEventListener('click', () => activateFlowStage(btn.dataset.flowTarget, { focus: true }));
+    const nav = document.getElementById('flowNav');
+    const buttons = [...document.querySelectorAll('[data-flow-target]')];
+    buttons.forEach((btn) => {
+        btn.addEventListener('click', (event) => activateFlowStage(btn.dataset.flowTarget, {
+            focus: shouldMoveFocusAfterActivation(event),
+            reason: 'correction',
+        }));
+    });
+    nav?.addEventListener('keydown', (event) => {
+        const current = event.target.closest('[data-flow-target]');
+        if (!current) return;
+        if (event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        const available = buttons.filter((button) => !button.disabled);
+        const index = available.indexOf(current);
+        let target = null;
+        if (event.key === 'ArrowRight' && index < available.length - 1) target = available[index + 1];
+        else if (event.key === 'ArrowLeft' && index > 0) target = available[index - 1];
+        else if (event.key === 'Home') target = available[0];
+        else if (event.key === 'End') target = available[available.length - 1];
+        else if (event.key === 'Enter' || event.key === ' ') {
+            event.preventDefault();
+            enterFromFlowNavigator(current);
+            return;
+        }
+        if (!target) return;
+        event.preventDefault();
+        flowNavRovingId = target.dataset.flowTarget;
+        buttons.forEach((button) => { button.tabIndex = button === target ? 0 : -1; });
+        target.focus();
+        target.scrollIntoView({ behavior: prefersReducedMotion() ? 'auto' : 'smooth', block: 'nearest', inline: 'nearest' });
     });
     document.querySelectorAll('[data-flow-continue]').forEach((btn) => {
-        btn.addEventListener('click', () => continueFlowStage(btn.dataset.flowContinue));
+        btn.addEventListener('click', (event) => continueFlowStage(btn.dataset.flowContinue, {
+            focus: shouldMoveFocusAfterActivation(event),
+        }));
     });
     activateFlowStage('patient', { focus: false });
 }
@@ -287,6 +793,25 @@ function setupGlobalFlow() {
 function isEditableElement(el) {
     const tag = el?.tagName;
     return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || !!el?.isContentEditable;
+}
+
+function activateOptionWithIntent(option, advance) {
+    if (!option) return;
+    const previous = optionActivationAdvances;
+    optionActivationAdvances = advance;
+    try { option.click(); }
+    finally { optionActivationAdvances = previous; }
+}
+
+function shouldAdvanceOption() {
+    return optionActivationAdvances !== false;
+}
+
+function shouldMoveFocusAfterActivation(event) {
+    if (optionActivationAdvances !== null) return true;
+    if (event?.detail === 0) return true;
+    const origin = interactionOrigin?.current?.({ maxAge: 1200 });
+    return !['mouse', 'touch', 'pen'].includes(origin);
 }
 
 /* ─── ¿El paso tiene selección válida? ─── */
@@ -366,6 +891,19 @@ function updateProgress() {
 
 /* ─── Activa un paso y marca como completados los anteriores con selección válida ───
    Oculta los pasos no presentes (p. ej. EP en diagnósticos "Riesgo de…"). */
+function syncStepHeaderAction(header, interactive) {
+    if (!header) return;
+    if (interactive) {
+        header.setAttribute('role', 'button');
+        header.setAttribute('tabindex', '0');
+        header.setAttribute('aria-expanded', 'false');
+    } else {
+        header.removeAttribute('role');
+        header.removeAttribute('tabindex');
+        header.removeAttribute('aria-expanded');
+    }
+}
+
 function activateStep(n, opts = {}) {
     STEPS.forEach((s) => {
         const stepEl = document.getElementById(`step${s.num}`);
@@ -376,6 +914,7 @@ function activateStep(n, opts = {}) {
         if (!s.present()) {
             stepEl.hidden = true;
             stepEl.classList.remove('active', 'completed');
+            syncStepHeaderAction(header, false);
             return;
         }
         stepEl.hidden = false;
@@ -391,14 +930,12 @@ function activateStep(n, opts = {}) {
 
         if (s.num < n && stepHasSelection(s.num)) {
             stepEl.classList.add('completed');
-            if (header) { header.setAttribute('aria-expanded', 'false'); header.setAttribute('tabindex', '0'); }
         } else if (s.num === n) {
             stepEl.classList.remove('completed');
-            if (header) { header.setAttribute('aria-expanded', 'true'); header.setAttribute('tabindex', '0'); }
         } else {
             if (!stepHasSelection(s.num)) stepEl.classList.remove('completed');
-            if (header) { header.setAttribute('aria-expanded', 'false'); header.setAttribute('tabindex', '-1'); }
         }
+        syncStepHeaderAction(header, stepEl.classList.contains('completed'));
     });
 
     const stepEl = document.getElementById(`step${n}`);
@@ -417,6 +954,9 @@ function activateStep(n, opts = {}) {
 
     syncNotePanelHeight();
     updateLayout();
+    // La estructura ARIA debe estar estable antes de entregar el foco. Mover una
+    // opción enfocada entre filas puede hacer que el navegador lo envíe a <body>.
+    syncVisibleOptionGrids(stepEl);
 
     if (opts.focus) {
         scrollSoft(stepEl, 'nearest');   // acompaña visualmente al usuario
@@ -492,11 +1032,9 @@ function onDobChange(dateValidation) {
     syncNotePanelHeight();
 }
 
-/* ─── Grupo segmentado genérico (radiogroup, fila horizontal) ───
-   ←/→ navegan entre opciones y en los extremos delegan al navegador espacial.
-   Como es una sola fila, ↑/↓ salen a la sección anterior/siguiente (onUp/onDown).
-   Enter selecciona y avanza (onConfirm). Shift+flechas → atajos globales. */
-function setupSegmentedGroup(group, hidden, { onChange, onConfirm, onUp, onDown } = {}) {
+/* ─── Grupo segmentado genérico (radiogroup) ───
+   ←/→ cambian la opción dentro del campo; los bordes no hacen wrap. */
+function setupSegmentedGroup(group, hidden, { onChange, onConfirm } = {}) {
     if (!group || !hidden) return;
     const btns = [...group.querySelectorAll('[role="radio"]')];
 
@@ -517,22 +1055,23 @@ function setupSegmentedGroup(group, hidden, { onChange, onConfirm, onUp, onDown 
     });
 
     group.addEventListener('keydown', (e) => {
-        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return; // atajos globales
+        if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey)) return;
         const idx = btns.indexOf(document.activeElement);
         if (e.key === 'ArrowRight') {
-            if (idx >= btns.length - 1) return;
             e.preventDefault();
-            const next = btns[Math.max(idx, 0) + 1];
-            select(next); next.focus();
+            const next = btns[Math.min(Math.max(idx, 0) + 1, btns.length - 1)];
+            if (next) { select(next); next.focus(); }
         } else if (e.key === 'ArrowLeft') {
-            if (idx <= 0) return;
             e.preventDefault();
-            const prev = btns[idx - 1];
-            select(prev); prev.focus();
-        } else if (e.key === 'ArrowUp') {
-            if (onUp) { e.preventDefault(); onUp(); }
-        } else if (e.key === 'ArrowDown') {
-            if (onDown) { e.preventDefault(); onDown(); }
+            const prev = btns[Math.max(idx - 1, 0)];
+            if (prev) { select(prev); prev.focus(); }
+        } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+            e.preventDefault();
+        } else if (e.key === 'Home' || e.key === 'End') {
+            e.preventDefault();
+            const edge = e.key === 'Home' ? btns[0] : btns.at(-1);
+            select(edge); edge.focus();
         } else if (e.key === ' ') {
             e.preventDefault();
             const cur = btns[idx] || btns[0];
@@ -547,25 +1086,22 @@ function setupSegmentedGroup(group, hidden, { onChange, onConfirm, onUp, onDown 
 }
 
 /* Sexo: respalda el valor en #sexo (hidden) conservando el centinela '___'.
-   Enter/↓ avanzan al campo de día de nacimiento (siguiente dentro de datos). */
+   Enter confirma y avanza al campo de fecha de nacimiento. */
 function setupSexoControl() {
     const toDate = () => { els.dobFecha?.focus(); };
     setupSegmentedGroup(document.getElementById('sexoSeg'), els.sexo, {
         onChange: updateNote,
         onConfirm: toDate,
-        onDown: toDate,
     });
 }
 
 /* Meta: respalda el valor en #metaLograda (hidden), '' = sin elegir.
-   Enter/↓ avanzan al criterio clínico; ↑ vuelve a la tendencia evolutiva. */
+   Enter confirma y avanza al criterio clínico. */
 function setupMetaControl() {
     const toCriterio = () => { const c = document.getElementById('criterioClinico'); c?.focus(); scrollSoft(c); };
     setupSegmentedGroup(document.getElementById('metaSeg'), els.metaLograda, {
         onChange: updateNote,
         onConfirm: toCriterio,
-        onDown: toCriterio,
-        onUp: () => { const t = document.getElementById('tendenciaEvolutiva'); t?.focus(); scrollSoft(t); },
     });
 }
 
@@ -619,7 +1155,7 @@ function updateLayout() {
         && !selected.diagnostico
         && reversePanelContext;
     if (els.dxLive) els.dxLive.hidden = !showDx;
-    if (els.noteSection) els.noteSection.hidden = !noteVisible;
+    if (els.noteSection && els.noteSection.tagName !== 'DIALOG') els.noteSection.hidden = !noteVisible;
     document.querySelector('.content')?.classList.toggle('has-aside', showDx);
     document.querySelector('.container')?.classList.toggle('container--with-aside', showDx);
     document.querySelector('.cf-page-head')?.classList.toggle('page-head--with-aside', showDx);
@@ -654,10 +1190,7 @@ function collapseStep5() {
     b6El.classList.add('completed');
     b6El.classList.remove('active');
     const header = b6El.querySelector('.step-header');
-    if (header) {
-        header.setAttribute('aria-expanded', 'false');
-        header.setAttribute('tabindex', '0');
-    }
+    syncStepHeaderAction(header, true);
     updateProgress();
     updateStepSummaries();
     syncNotePanelHeight();
@@ -671,16 +1204,18 @@ function enableStepNavigation() {
         const header = stepEl.querySelector('.step-header');
         if (!header) return;
 
-        const handleNav = () => {
+        const handleNav = (event) => {
             if (!stepEl.classList.contains('completed')) return;
-            goToStepSection(s.num, -1);
+            const moveFocus = !event || event.type === 'keydown' || shouldMoveFocusAfterActivation(event);
+            goToStepSection(s.num, -1, moveFocus);
         };
 
         header.addEventListener('click', handleNav);
         header.addEventListener('keydown', (e) => {
+            if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
             if (e.key === 'Enter' || e.key === ' ') {
                 e.preventDefault();
-                handleNav();
+                handleNav(e);
             }
         });
     });
@@ -711,33 +1246,60 @@ function updateEpConfirmBtn() {
 }
 
 /* ─── Toggle de visibilidad de la nota clínica ─── */
-function toggleNote(force) {
+function toggleNote(force, invoker = null) {
     const next = typeof force === 'boolean' ? force : !noteVisible;
+    if (next && blockOnOpenAppEditorDraft()) return;
+    if (next) window.NotaCampos?.commitDrafts?.();
     if (next && !isNoteComplete().complete) {
+        const issue = collectFormIssues()[0];
+        if (issue) {
+            validatedStages.add(issue.stageId);
+            collectFormIssues();
+            activateFlowStage(issue.stageId, { focus: false, reason: 'validation' });
+            issue.focus?.();
+            announceAction(`No se puede revisar. Primero: ${issue.message}.`);
+        }
         updateCopyBtnState();
         return;
     }
-    if (next === noteVisible && els.noteSection?.hidden === !next) return;
+    const nativeDialog = els.noteSection?.tagName === 'DIALOG' && typeof els.noteSection.showModal === 'function';
+    if (next === noteVisible && (nativeDialog ? els.noteSection?.open === next : els.noteSection?.hidden === !next)) return;
     noteVisible = next;
 
     if (noteVisible) {
         window.NotaCampos?.closeMenus?.();
-        previewReturnFocus = document.activeElement;
-        if (els.noteSection) els.noteSection.hidden = false;
-        if (els.noteDrawerScrim) els.noteDrawerScrim.hidden = false;
+        previewReturnFocus = invoker?.isConnected ? invoker : document.activeElement;
+        if (interactionOverlays && !interactionOverlays.get('note-review')) {
+            interactionOverlays.push({
+                id: 'note-review',
+                element: els.noteSection,
+                invoker: previewReturnFocus,
+                modal: true,
+                onClose: () => toggleNote(false),
+            });
+        }
+        if (nativeDialog) {
+            els.noteSection.removeAttribute('hidden');
+            if (!els.noteSection.open) els.noteSection.showModal();
+        } else if (els.noteSection) {
+            els.noteSection.hidden = false;
+        }
+        if (els.noteDrawerScrim) els.noteDrawerScrim.hidden = nativeDialog;
         els.noteContent.hidden = false;
         els.noteToggleBtn?.setAttribute('aria-expanded', 'true');
         document.body.classList.add('note-drawer-open');
         syncNotePanelHeight();
         requestAnimationFrame(() => els.noteDrawerClose?.focus());
     } else {
-        if (els.noteSection) els.noteSection.hidden = true;
+        if (nativeDialog && els.noteSection.open) els.noteSection.close();
+        else if (els.noteSection) els.noteSection.hidden = true;
+        interactionOverlays?.remove('note-review', { restoreFocus: false });
         if (els.noteDrawerScrim) els.noteDrawerScrim.hidden = true;
         els.noteToggleBtn?.setAttribute('aria-expanded', 'false');
         document.body.classList.remove('note-drawer-open');
         const target = previewReturnFocus?.isConnected ? previewReturnFocus : els.noteToggleBtn;
         previewReturnFocus = null;
-        target?.focus();
+        requestAnimationFrame(() => target?.focus());
     }
 }
 
@@ -753,10 +1315,7 @@ function updateStep1Lock() {
         if (step1El.classList.contains('active')) {
             step1El.classList.remove('active');
             const header = step1El.querySelector('.step-header');
-            if (header) {
-                header.setAttribute('aria-expanded', 'false');
-                header.setAttribute('tabindex', '-1');
-            }
+            syncStepHeaderAction(header, false);
         }
     } else {
         // Expandir paso 1 solo si el usuario aún no ha avanzado más allá
@@ -770,28 +1329,7 @@ function updateStep1Lock() {
    Los faltantes se acumulan en el ORDEN NARRATIVO de la nota, de modo que
    "Pendiente: X" siempre señale el primer hueco en orden de lectura. */
 function isNoteComplete() {
-    const missing = [];
-    const m = window.NotaCampos?.getMissing()
-        || { faseA: [], faseB: [], faseC: [], faseD: [], evaluacion: [], cierre: [] };
-
-    // Fase A — paciente y ubicación
-    if (!els.sexo || els.sexo.value === '___') missing.push('Sexo del paciente');
-    if (!validateDOB().valid)                  missing.push('Fecha de nacimiento válida');
-    missing.push(...m.faseA);
-
-    // Fases B, C y D — estado clínico, dispositivos, hallazgos
-    missing.push(...m.faseB, ...m.faseC, ...m.faseD);
-
-    // Fase E — PAE: cada paso activo debe tener selección.
-    activeSteps().forEach((s) => {
-        if (!stepHasSelection(s.num)) missing.push(`${stepLabel(s)} (PAE, paso ${activePos(s.num)})`);
-    });
-
-    // Fase F — evaluación y entrega
-    missing.push(...m.evaluacion);
-    if (!els.metaLograda?.value) missing.push('Estado de la meta (NOC) al cierre');
-    missing.push(...m.cierre);
-
+    const missing = collectFormIssues().map((issue) => issue.message);
     return { complete: missing.length === 0, missing };
 }
 
@@ -834,17 +1372,28 @@ function triggerBtnBurst(btn) {
 function updateCopyBtnState() {
     const { complete, missing } = isNoteComplete();
     if (!els.copyBtn || !els.noteStatus) return;
+    const changedAfterCopy = lastCopiedRevision > 0 && draftRevision !== lastCopiedRevision;
 
     if (complete) {
+        els.copyBtn.hidden = false;
         els.copyBtn.disabled = false;
         els.copyBtn.removeAttribute('aria-disabled');
+        els.copyBtn.textContent = 'Revisar nota';
         els.noteStatus.className = 'note-status complete';
-        els.noteStatus.textContent = '✓ Nota lista — puede copiar';
+        els.noteStatus.textContent = changedAfterCopy
+            ? 'La nota cambió desde la última copia; revise y copie nuevamente.'
+            : '✓ Nota lista para revisión final';
     } else {
+        const reviewHadFocus = document.activeElement === els.copyBtn || document.activeElement === els.noteToggleBtn;
+        els.copyBtn.hidden = true;
         els.copyBtn.disabled = true;
         els.copyBtn.setAttribute('aria-disabled', 'true');
+        els.copyBtn.textContent = 'Revisar nota';
         els.noteStatus.className = 'note-status incomplete';
         els.noteStatus.textContent = `Pendiente: ${missing[0]}`;
+        if (reviewHadFocus) {
+            requestAnimationFrame(() => collectFormIssues()[0]?.focus?.({ report: false }));
+        }
     }
 
     if (els.drawerCopyBtn) {
@@ -853,15 +1402,21 @@ function updateCopyBtnState() {
     }
     if (els.noteToggleBtn) {
         els.noteToggleBtn.hidden = !complete;
+        els.noteToggleBtn.disabled = !complete;
+        els.noteToggleBtn.setAttribute('aria-disabled', complete ? 'false' : 'true');
         if (!complete) els.noteToggleBtn.setAttribute('aria-expanded', 'false');
     }
     if (els.previewLaunchStatus) {
-        els.previewLaunchStatus.textContent = 'Nota lista para revisar';
+        els.previewLaunchStatus.textContent = complete
+            ? (changedAfterCopy ? 'Cambió desde la última copia' : 'Nota lista para revisar')
+            : `${missing.length} pendiente${missing.length === 1 ? '' : 's'}`;
     }
     if (els.previewStatus) {
         els.previewStatus.className = `note-drawer-status ${complete ? 'complete' : 'incomplete'}`;
         els.previewStatus.textContent = complete
-            ? 'La nota está completa y lista para revisión final.'
+            ? (changedAfterCopy
+                ? 'La nota cambió desde la última copia. Revísela y copie esta nueva versión.'
+                : 'La nota está completa y lista para revisión final.')
             : `${missing.length} campo${missing.length === 1 ? '' : 's'} pendiente${missing.length === 1 ? '' : 's'}. Primero: ${missing[0]}.`;
     }
     if (els.previewDraftState) {
@@ -879,7 +1434,7 @@ function createOption(title, desc, dataset = {}) {
     const div = document.createElement('div');
     div.className = 'option';
     Object.entries(dataset).forEach(([k, v]) => { div.dataset[k] = v; });
-    div.innerHTML = `<span class="check-mark">✓</span><h4>${title}</h4>${desc ? `<p>${desc}</p>` : ''}`;
+    div.innerHTML = `<span class="check-mark" aria-hidden="true">✓</span><h4>${title}</h4>${desc ? `<p>${desc}</p>` : ''}`;
     return div;
 }
 
@@ -921,19 +1476,114 @@ function focusOption(opt, container) {
     scrollSoft(opt, 'nearest');
 }
 
+function syncOptionSelectionState(container) {
+    if (!container) return;
+    container.querySelectorAll('.option').forEach((option) => {
+        const selectedNow = option.classList.contains('selected') || option.classList.contains('multi-selected');
+        option.setAttribute('aria-selected', selectedNow ? 'true' : 'false');
+    });
+}
+
+function unwrapOptionGridRows(container) {
+    if (!container) return;
+    [...container.querySelectorAll(':scope > .option-grid-row')].forEach((row) => {
+        while (row.firstChild) container.insertBefore(row.firstChild, row);
+        row.remove();
+    });
+}
+
 /* ─── Marca roles ARIA, ids e índice de orden tras cada render ───
    No toca el roving tabindex (eso lo hace primeRoving, solo en listas roving). */
 function markOptions(container) {
-    container.setAttribute('role', 'listbox');
+    unwrapOptionGridRows(container);
+    container.setAttribute('role', 'grid');
+    if (!container.hasAttribute('aria-label') && !container.hasAttribute('aria-labelledby')) {
+        const heading = container.closest('.step, .dx-live')?.querySelector('h3, h4');
+        container.setAttribute('aria-label', heading?.textContent?.trim() || 'Opciones disponibles');
+    }
+    if (container.dataset.selectionMode === 'multiple') container.setAttribute('aria-multiselectable', 'true');
+    else container.removeAttribute('aria-multiselectable');
     const opts = [...container.querySelectorAll('.option')];
     opts.forEach((o, i) => {
-        o.setAttribute('role', 'option');
+        o.setAttribute('role', 'gridcell');
         if (!o.id) o.id = `${container.id}-opt-${i}`;
         if (!o.hasAttribute('tabindex')) o.setAttribute('tabindex', '-1');
+        let cell = o.querySelector(':scope > .option-gridcell');
+        if (!cell) {
+            cell = document.createElement('div');
+            cell.className = 'option-gridcell';
+            while (o.firstChild) cell.appendChild(o.firstChild);
+            o.appendChild(cell);
+        }
+        cell.setAttribute('role', 'presentation');
         // Orden clínico original (data order), asignado solo la 1ª vez tras el render
         if (o.dataset.ord === undefined) o.dataset.ord = String(i);
-        const sel = o.classList.contains('selected') || o.classList.contains('multi-selected');
-        o.setAttribute('aria-selected', sel ? 'true' : 'false');
+    });
+    syncOptionSelectionState(container);
+    requestAnimationFrame(() => syncOptionGridMetadata(container));
+}
+
+function syncOptionGridMetadata(container) {
+    if (!container?.isConnected || container.closest('[hidden]')) return;
+    const items = visibleOptions(container);
+    if (!items.length) {
+        unwrapOptionGridRows(container);
+        container.setAttribute('aria-rowcount', '0');
+        container.setAttribute('aria-colcount', '0');
+        return;
+    }
+    const columns = Math.max(1, gridColumns(items));
+    container.setAttribute('aria-colcount', String(columns));
+    container.setAttribute('aria-rowcount', String(Math.ceil(items.length / columns)));
+
+    const rows = [...container.querySelectorAll(':scope > .option-grid-row')];
+    const structureMatches = rows.length === Math.ceil(items.length / columns)
+        && rows.every((row, rowIndex) => {
+            const expected = items.slice(rowIndex * columns, (rowIndex + 1) * columns);
+            const actual = [...row.children].filter((child) => child.classList.contains('option'));
+            return actual.length === expected.length && actual.every((item, index) => item === expected[index]);
+        });
+
+    if (structureMatches) {
+        rows.forEach((row, rowIndex) => {
+            row.setAttribute('aria-rowindex', String(rowIndex + 1));
+            [...row.children].forEach((item, column) => {
+                item.removeAttribute('aria-rowindex');
+                item.setAttribute('aria-colindex', String(column + 1));
+            });
+        });
+        return;
+    }
+
+    const focused = container.contains(document.activeElement) ? document.activeElement : null;
+    unwrapOptionGridRows(container);
+    items.forEach((item) => {
+        item.removeAttribute('aria-rowindex');
+        item.removeAttribute('aria-colindex');
+    });
+    for (let start = 0; start < items.length; start += columns) {
+        const rowItems = items.slice(start, start + columns);
+        const row = document.createElement('div');
+        row.className = 'option-grid-row';
+        row.setAttribute('role', 'row');
+        row.setAttribute('aria-rowindex', String(Math.floor(start / columns) + 1));
+        container.insertBefore(row, rowItems[0]);
+        rowItems.forEach((item, column) => {
+            item.setAttribute('aria-colindex', String(column + 1));
+            row.appendChild(item);
+        });
+    }
+    if (focused?.isConnected && focused.getClientRects().length) {
+        try { focused.focus({ preventScroll: true }); } catch (_) { focused.focus(); }
+    }
+}
+
+function syncVisibleOptionGrids(root = document) {
+    const grids = new Set();
+    if (root?.matches?.('.options[role="grid"]')) grids.add(root);
+    root?.querySelectorAll?.('.options[role="grid"]').forEach((grid) => grids.add(grid));
+    grids.forEach((grid) => {
+        if (grid.getClientRects().length) syncOptionGridMetadata(grid);
     });
 }
 
@@ -941,8 +1591,8 @@ function markOptions(container) {
 function primeRoving(container) {
     const opts = [...container.querySelectorAll('.option')];
     const visible = opts.filter((o) => o.style.display !== 'none');
-    if (!visible.length) return;
     opts.forEach((o) => o.setAttribute('tabindex', '-1'));
+    if (!visible.length) return;
     const sel = visible.find((o) => o.classList.contains('selected') || o.classList.contains('multi-selected'));
     (sel || visible[0]).setAttribute('tabindex', '0');
 }
@@ -1008,10 +1658,14 @@ function nearestOptionInDirection(current, items, direction) {
         .filter((item) => item !== current)
         .map((item) => ({ item, pos: optionCenter(item) }))
         .filter(({ pos }) => {
-            if (direction === 'right') return pos.x > origin.x + 2;
-            if (direction === 'left') return pos.x < origin.x - 2;
-            if (direction === 'down') return pos.y > origin.y + 2;
-            if (direction === 'up') return pos.y < origin.y - 2;
+            const verticalOverlap = Math.max(0, Math.min(origin.rect.bottom, pos.rect.bottom)
+                - Math.max(origin.rect.top, pos.rect.top));
+            const horizontalOverlap = Math.max(0, Math.min(origin.rect.right, pos.rect.right)
+                - Math.max(origin.rect.left, pos.rect.left));
+            if (direction === 'right') return pos.x > origin.x + 2 && verticalOverlap > 2;
+            if (direction === 'left') return pos.x < origin.x - 2 && verticalOverlap > 2;
+            if (direction === 'down') return pos.y > origin.y + 2 && horizontalOverlap > 2;
+            if (direction === 'up') return pos.y < origin.y - 2 && horizontalOverlap > 2;
             return false;
         })
         .map(({ item, pos }) => {
@@ -1068,20 +1722,6 @@ function focusLastOptionForStep(stepNum) {
     return true;
 }
 
-function setupConfirmButtonNavigation() {
-    [
-        [els.rcConfirmBtn, 3],
-        [els.epConfirmBtn, 4],
-        [els.nicConfirmBtn, 6],
-    ].forEach(([btn, stepNum]) => {
-        btn?.addEventListener('keydown', (e) => {
-            if (e.key !== 'ArrowUp' || e.shiftKey || e.ctrlKey || e.metaKey) return;
-            e.preventDefault();
-            focusLastOptionForStep(stepNum);
-        });
-    });
-}
-
 function selectedOptionIn(container) {
     return container?.querySelector('.option.selected, .option.multi-selected') || null;
 }
@@ -1108,21 +1748,17 @@ function focusStep1FromBelow() {
 /* ─── MODO NAVEGACIÓN: teclado sobre las opciones (foco en la opción, roving) ───
    Flechas grid-aware (↑/↓ por fila, ←/→ por columna); Enter selecciona/alterna;
    Shift+Enter avanza (multi). Escribir una letra → vuelve al buscador y filtra
-   (opts.searchInput); si no hay buscador, type-ahead. ↑ en la 1ª fila → buscador. */
+   (opts.searchInput); si no hay buscador, type-ahead. Los bordes conservan foco. */
 function enableOptionKeyboard(container, opts = {}) {
     if (!container || container.dataset.kbReady) return;
     container.dataset.kbReady = '1';
-    let typeBuf = '';
-    let typeTimer = null;
 
-    const toSearch = (ch) => {
+    const toSearch = () => {
         const s = opts.searchInput;
         if (!s) return false;
-        if (ch != null) s.value += ch;
         s.focus();
         const len = s.value.length;
         s.setSelectionRange?.(len, len);
-        if (ch != null) s.dispatchEvent(new Event('input', { bubbles: true }));
         return true;
     };
 
@@ -1130,67 +1766,44 @@ function enableOptionKeyboard(container, opts = {}) {
         // No interceptar mientras se escribe en un editor inline (opción personalizada)
         if (e.target.closest('.custom-form')) return;
         if (isEditableElement(e.target) || (e.target.tagName === 'BUTTON' && !e.target.classList.contains('option'))) return;
-        // Shift/Ctrl + flechas son atajos globales de salto entre secciones
-        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;
+        const isQuestionKey = e.key === '?' || (e.key === '/' && e.shiftKey);
+        if (isQuestionKey || (e.key === '/' && !e.shiftKey)) return;
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.altKey)) return;
+        // Shift + flechas pertenece exclusivamente al navegador espacial entre campos.
+        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey)) return;
         const items = visibleOptions(container);
         if (!items.length) return;
         const current = document.activeElement?.closest?.('.option');
         const idx = current ? items.indexOf(current) : -1;
-        const cols = gridColumns(items);
-        const atTopRow = idx >= 0 && idx < cols;
-        const atBottomRow = idx >= 0 && idx + cols >= items.length;
 
         switch (e.key) {
             case 'ArrowRight':
                 e.preventDefault();
-                if (opts.spatial && current) {
-                    if (opts.onRightEdge && isRightGridEdge(current, items) && opts.onRightEdge(current, items)) break;
+                if (current) {
                     const target = nearestOptionInDirection(current, items, 'right');
-                    if (target) { focusOption(target, container); break; }
-                } else if (current && opts.onRightEdge && isRightGridEdge(current, items) && opts.onRightEdge(current, items)) break;
-                focusOption(items[idx < 0 ? 0 : Math.min(idx + 1, items.length - 1)], container);
+                    if (target) focusOption(target, container);
+                } else focusOption(items[0], container);
                 break;
             case 'ArrowLeft':
                 e.preventDefault();
-                if (opts.spatial && current) {
+                if (current) {
                     const target = nearestOptionInDirection(current, items, 'left');
-                    if (target) { focusOption(target, container); break; }
-                    if (opts.onLeftEdge && isLeftGridEdge(current, items) && opts.onLeftEdge(current, items)) break;
-                } else if (current && opts.onLeftEdge && isLeftGridEdge(current, items) && opts.onLeftEdge(current, items)) break;
-                focusOption(items[idx <= 0 ? 0 : idx - 1], container);
+                    if (target) focusOption(target, container);
+                } else focusOption(items[0], container);
                 break;
             case 'ArrowDown':
                 e.preventDefault();
-                if (opts.spatial && current) {
+                if (current) {
                     const target = nearestOptionInDirection(current, items, 'down');
-                    if (target) { focusOption(target, container); break; }
+                    if (target) focusOption(target, container);
                 }
-                if (atBottomRow && opts.lockVerticalEdges) {
-                    focusOption(current || items[items.length - 1], container);
-                } else if (atBottomRow && opts.onBottomEdge && opts.onBottomEdge(current, items)) {
-                    break;
-                } else if (atBottomRow) {
-                    focusAdjacentSection(opts.stepNum, +1);   // borde inferior → sección inmediata siguiente
-                } else {
-                    focusOption(items[idx < 0 ? 0 : Math.min(idx + cols, items.length - 1)], container);
-                }
+                else focusOption(items[0], container);
                 break;
             case 'ArrowUp':
                 e.preventDefault();
-                if (opts.spatial && current) {
+                if (current) {
                     const target = nearestOptionInDirection(current, items, 'up');
-                    if (target) { focusOption(target, container); break; }
-                }
-                if (atTopRow && opts.lockVerticalEdges) {
-                    focusOption(current || items[0], container);
-                } else if (atTopRow && opts.searchInput) {
-                    toSearch(null);                           // tope de la sección → su buscador
-                } else if (atTopRow && opts.onTopEdge) {
-                    opts.onTopEdge();                         // borde superior personalizado (panel lateral)
-                } else if (atTopRow && opts.stepNum != null) {
-                    focusAdjacentSection(opts.stepNum, -1);   // tope sin buscador → sección anterior
-                } else {
-                    focusOption(items[Math.max(idx - cols, 0)], container);
+                    if (target) focusOption(target, container);
                 }
                 break;
             case 'Home':
@@ -1202,9 +1815,10 @@ function enableOptionKeyboard(container, opts = {}) {
                 focusOption(items[items.length - 1], container);
                 break;
             case ' ':
+                if (e.ctrlKey || e.metaKey || e.altKey) break;
                 if (current && !current.querySelector('.custom-form')) {
                     e.preventDefault();
-                    current.click();
+                    activateOptionWithIntent(current, false);
                 }
                 break;
             case 'Enter':
@@ -1212,81 +1826,80 @@ function enableOptionKeyboard(container, opts = {}) {
                     if (opts.multi && opts.onAdvance) {
                         e.preventDefault();
                         opts.onAdvance();
-                    } else if (current && !current.querySelector('.custom-form')) {
+                    } else {
                         e.preventDefault();
-                        current.click();            // single: selecciona+avanza igual que Enter
+                        e.stopPropagation();
+                        if (!advanceCurrentSectionByShortcut()) {
+                            announceAction('Seleccione y confirme una opción antes de continuar.');
+                        }
                     }
                     break;
                 }
                 if (current && !current.querySelector('.custom-form')) {
                     e.preventDefault();
-                    current.click();                // single: selecciona+avanza · multi: alterna
+                    activateOptionWithIntent(current, true);
+                }
+                break;
+            case 'Escape':
+                if (opts.searchInput) {
+                    e.preventDefault();
+                    toSearch();
                 }
                 break;
             case 'Backspace':
-                if (e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && opts.multi && current?.classList.contains('multi-selected')) {
+            case 'Delete':
+                if (opts.multi && current?.classList.contains('multi-selected')
+                    && !e.ctrlKey && !e.metaKey && !e.altKey) {
                     e.preventDefault();
-                    const removeButton = current.querySelector('.option-remove');
-                    if (removeButton) {
-                        removeButton.click();
-                        setTimeout(() => opts.searchInput?.focus(), 0);
-                    }
-                    else current.click();
+                    activateOptionWithIntent(current, false);
+                    focusOption(current, container);
                 }
                 break;
             default:
-                if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
-                    if (opts.searchInput) {         // escribir → modo búsqueda
-                        e.preventDefault();
-                        toSearch(e.key);
-                    } else {                        // sin buscador: type-ahead
-                        typeBuf += normalizeText(e.key);
-                        clearTimeout(typeTimer);
-                        typeTimer = setTimeout(() => { typeBuf = ''; }, SECTION_TYPEAHEAD_DELAY);
-                        const match = items.find((o) =>
-                            normalizeText(o.querySelector('h4')?.textContent || o.textContent).startsWith(typeBuf));
-                        if (match) { e.preventDefault(); focusOption(match, container); }
-                    }
-                }
+                // WritingTargetRegistry conserva el primer carácter y resuelve el
+                // destino de escritura de forma uniforme para todas las listas.
+                break;
         }
     });
 }
 
 /* ─── Lista con foco-en-opción (roving): NOC y B6. Llamar tras cada render. ─── */
-function setupOptionList(container, opts) {
+function setupOptionList(container, opts = {}) {
     if (!container) return;
+    container.dataset.selectionMode = opts.multi ? 'multiple' : 'single';
     markOptions(container);
     primeRoving(container);
     enableOptionKeyboard(container, opts);
 }
 
 /* ─── MODO BÚSQUEDA → NAVEGACIÓN: conecta un buscador con su lista ───
-   El buscador es el "tope" de la sección: Enter o ↓ entran a la 1ª opción (dentro
-   de la sección); ↑ sale a la sección anterior. Shift+flechas se manejan global. */
+   Enter o ↓ entran a la primera opción; las flechas simples nunca salen del campo. */
 function wireSearch(input, container, stepNum) {
     if (!input || !container) return;
+    ensureSearchResultsStatus(input, container);
     input.addEventListener('input', () => filterOptions(container, input.value));
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            const confirmBtn = confirmButtonForStep(stepNum);
-            const selectedOption = confirmBtn ? [...container.querySelectorAll('.option.multi-selected')].at(-1) : null;
-            if (selectedOption) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.altKey)) return;
+        if ((e.key === 'Backspace' || e.key === 'Delete') && !input.value
+            && !e.ctrlKey && !e.metaKey && !e.altKey) {
+            const selectedOptions = visibleOptions(container).filter((option) => option.classList.contains('multi-selected'));
+            const last = selectedOptions.at(-1);
+            if (last) {
                 e.preventDefault();
-                const removeButton = selectedOption.querySelector('.option-remove');
-                if (removeButton) {
-                    removeButton.click();
-                    setTimeout(() => input.focus(), 0);
-                }
-                else selectedOption.click();
+                focusOption(last, container);
+                announceAction('Elemento seleccionado enfocado. Presione otra vez para quitarlo.');
+                return;
             }
-            return;
         }
-        if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return; // atajos globales
         if (e.key === 'Enter') {
             const confirmBtn = confirmButtonForStep(stepNum);
-            if (e.shiftKey && confirmBtn && !confirmBtn.disabled) {
+            if (e.shiftKey) {
                 e.preventDefault();
-                confirmBtn.click();
+                e.stopPropagation();
+                if (confirmBtn && !confirmBtn.disabled) confirmBtn.click();
+                else if (!advanceCurrentSectionByShortcut()) {
+                    announceAction('Seleccione y confirme una opción antes de continuar.');
+                }
                 return;
             }
             const selectable = visibleSelectableOptions(container);
@@ -1302,10 +1915,6 @@ function wireSearch(input, container, stepNum) {
             const items = visibleOptions(container);
             const first = visibleSelectableOptions(container)[0] || items[0];
             if (first) { e.preventDefault(); focusOption(first, container); }
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (stepNum === 1) focusRouteSwitch();
-            else focusAdjacentSection(stepNum, -1);   // ↑ en el tope → sección anterior
         }
     });
 }
@@ -1387,7 +1996,6 @@ function runSectionTypeahead(key, sectionId = activeLogicalSectionId()) {
 }
 
 function focusRouteSearch(mode = reverse.mode) {
-    if (mode === 'reverse' && focusFindingKindFilter()) return true;
     const box = mode === 'reverse' ? els.searchFindings : els.searchAreas;
     if (!box) return false;
     box.focus();
@@ -1421,7 +2029,7 @@ function sendDeleteToSectionSearch(key, box) {
 /* ─── Enfoca el punto de entrada natural de un paso (buscador o 1ª opción) ───
    Síncrono: se invoca tras activar el paso, cuando su contenido ya es visible. */
 function focusStepEntry(n) {
-    if (n === 1 && focusRouteSwitch()) return;
+    if (n === 1 && focusRouteSearch()) return;
     const st = stepByNum(n);
     const searchBox = st && st.search && st.search();
     if (searchBox) { searchBox.focus(); return; }
@@ -1448,9 +2056,10 @@ function focusContainerTabbable(container, searchBox = null) {
 
 /* ─── Activa un paso y aterriza en él: en la opción ya elegida (revisar/corregir)
    o, si aún no hay selección, en su punto de entrada (buscador o 1ª opción). ─── */
-function goToStepSection(n, dir = 0) {
+function goToStepSection(n, dir = 0, focus = true) {
     activateStep(n);
     scrollSoft(document.getElementById(`step${n}`), 'nearest');
+    if (!focus) return;
     if (n === 1) {
         if (dir < 0 && focusStep1FromBelow()) return;
         focusStepEntry(n);
@@ -1487,27 +2096,32 @@ function sectionList() {
         ...steps,
         phase('faseF'),
         { id: 'obs',  has: () => isPatientGateUnlocked(), focus: () => { els.otrosComentarios?.focus(); scrollSoft(els.otrosComentarios); } },
-        { id: 'note', has: () => !!els.noteToggleBtn && !els.noteToggleBtn.hidden, focus: () => { els.noteToggleBtn?.focus(); scrollSoft(els.noteToggleBtn); } },
-        { id: 'copy', has: () => !els.copyBtn?.disabled, focus: () => { els.copyBtn?.focus(); scrollSoft(els.copyBtn); } },
+        { id: 'note', has: () => !els.copyBtn?.disabled, focus: () => { els.copyBtn?.focus(); scrollSoft(els.copyBtn); } },
+        { id: 'copy', has: () => noteVisible && !els.drawerCopyBtn?.disabled, focus: () => { els.drawerCopyBtn?.focus(); scrollSoft(els.drawerCopyBtn); } },
     ];
 }
 
 /* ─── Identifica en qué sección está el foco actualmente ───
    Cualquier elemento dentro de un .step pertenece a ese paso (cubre buscadores,
    opciones, filtros y barras de confirmación, en ambas rutas). */
-function currentSectionId() {
-    const a = document.activeElement;
+function resolveLogicalSection(a = document.activeElement) {
     if (!a) return null;
+    // Los puntos de salida viven dentro de contenedores más amplios; deben ganar
+    // antes que .phase para no quedar absorbidos por faseF.
+    if (a === els.otrosComentarios) return 'obs';
+    if (a === els.noteToggleBtn || a === els.copyBtn) return 'note';
+    if (a === els.drawerCopyBtn) return 'copy';
     if (a.closest?.('.patient-block')) return 'patient';
     if (a.closest?.('#dxLive')) return 1;
     const stepEl = a.closest?.('.step');
     if (stepEl && stepEl.dataset.step) return Number(stepEl.dataset.step);
     const phaseEl = a.closest?.('.phase');
     if (phaseEl && phaseEl.dataset.section) return phaseEl.dataset.section;
-    if (a === els.otrosComentarios) return 'obs';
-    if (a === els.noteToggleBtn) return 'note';
-    if (a === els.copyBtn) return 'copy';
     return null;
+}
+
+function currentSectionId() {
+    return resolveLogicalSection(document.activeElement);
 }
 
 /* ─── Mueve el foco a la sección adyacente disponible (delta: +1 sig., -1 ant.) ─── */
@@ -1526,87 +2140,8 @@ function focusAdjacentSection(fromId, delta, allowStageChange = false) {
     return true;
 }
 
-const SPATIAL_FOCUS_SELECTOR = [
-    'button:not([disabled])',
-    'input:not([disabled]):not([type="hidden"])',
-    'textarea:not([disabled])',
-    'select:not([disabled])',
-    '[role="option"][tabindex="0"]',
-    '[role="radio"][tabindex="0"]',
-    '[tabindex="0"]',
-].join(',');
-
-function spatialStageScope() {
-    return document.querySelector(`[data-flow-stage="${activeFlowStage}"]:not([hidden])`);
-}
-
-function isSpatiallyVisible(el) {
-    if (!el || el.tabIndex < 0 || el.closest('[hidden], [aria-hidden="true"]')) return false;
-    const rect = el.getBoundingClientRect();
-    const style = getComputedStyle(el);
-    return rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none';
-}
-
-function editableAtDirectionalEdge(el, key) {
-    if (el.matches('input[type="number"]')) return key === 'ArrowUp' || key === 'ArrowDown';
-    if (el.matches('input[type="date"], input[type="range"]')) return false;
-    if (el.tagName === 'SELECT') {
-        if (key === 'ArrowUp' || key === 'ArrowLeft') return el.selectedIndex <= 0;
-        return el.selectedIndex >= el.options.length - 1;
-    }
-    if (el.tagName !== 'INPUT' && el.tagName !== 'TEXTAREA') return true;
-    if (el.getAttribute('aria-expanded') === 'true') return false;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    if (start == null || end == null || start !== end) return false;
-    if (key === 'ArrowLeft') return start === 0;
-    if (key === 'ArrowRight') return end === el.value.length;
-    if (el.tagName === 'INPUT') return true;
-    if (key === 'ArrowUp') return !el.value.slice(0, start).includes('\n');
-    return !el.value.slice(end).includes('\n');
-}
-
-function nearestSpatialControl(source, key, scope) {
-    const from = source.getBoundingClientRect();
-    const sx = from.left + from.width / 2;
-    const sy = from.top + from.height / 2;
-    const horizontal = key === 'ArrowLeft' || key === 'ArrowRight';
-    const positive = key === 'ArrowRight' || key === 'ArrowDown';
-    let best = null;
-    let bestScore = Infinity;
-
-    [...new Set(scope.querySelectorAll(SPATIAL_FOCUS_SELECTOR))].forEach((candidate) => {
-        if (candidate === source || !isSpatiallyVisible(candidate)) return;
-        const rect = candidate.getBoundingClientRect();
-        const cx = rect.left + rect.width / 2;
-        const cy = rect.top + rect.height / 2;
-        const primary = horizontal ? cx - sx : cy - sy;
-        if ((positive && primary <= 2) || (!positive && primary >= -2)) return;
-        const secondary = horizontal ? Math.abs(cy - sy) : Math.abs(cx - sx);
-        const overlap = horizontal
-            ? Math.max(0, Math.min(from.bottom, rect.bottom) - Math.max(from.top, rect.top))
-            : Math.max(0, Math.min(from.right, rect.right) - Math.max(from.left, rect.left));
-        const score = Math.abs(primary) + secondary * (overlap > 0 ? 0.35 : 1.8);
-        if (score < bestScore) { best = candidate; bestScore = score; }
-    });
-    return best;
-}
-
-function handleSpatialArrow(e) {
-    if (e.defaultPrevented || !e.key.startsWith('Arrow') || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-    const source = document.activeElement;
-    const scope = spatialStageScope();
-    if (!scope?.contains(source) || source?.closest('.custom-form')) return;
-    if (!editableAtDirectionalEdge(source, e.key)) return;
-    const target = nearestSpatialControl(source, e.key, scope);
-    if (!target) return;
-    e.preventDefault();
-    target.focus();
-    target.select?.();
-    scrollSoft(target, 'nearest');
-}
-
 function advanceCurrentSectionByShortcut() {
+    if (blockOnOpenAppEditorDraft()) return true;
     const id = currentSectionId();
     if (id == null) return false;
 
@@ -1635,30 +2170,906 @@ function advanceCurrentSectionByShortcut() {
         return false;
     }
     if (id === 'obs') {
-        if (els.noteToggleBtn && !els.noteToggleBtn.hidden) {
-            els.noteToggleBtn.focus();
-            scrollSoft(els.noteToggleBtn);
-            return true;
-        }
-        if (!els.copyBtn?.disabled) {
-            els.copyBtn.focus();
-            scrollSoft(els.copyBtn);
-            return true;
-        }
-        return false;
+        if (!isNoteComplete().complete) return false;
+        toggleNote(true);
+        return true;
     }
     if (id === 'note') {
-        if (els.copyBtn?.disabled) return false;
-        els.copyBtn.focus();
-        scrollSoft(els.copyBtn);
+        if (els.drawerCopyBtn?.disabled) return false;
+        if (!noteVisible) {
+            toggleNote(true);
+            requestAnimationFrame(() => {
+                els.drawerCopyBtn?.focus();
+                scrollSoft(els.drawerCopyBtn);
+            });
+        } else {
+            els.drawerCopyBtn.focus();
+            scrollSoft(els.drawerCopyBtn);
+        }
         return true;
     }
     if (id === 'copy') {
-        if (els.copyBtn?.disabled) return false;
-        els.copyBtn.click();
+        if (els.drawerCopyBtn?.disabled) return false;
+        els.drawerCopyBtn.click();
         return true;
     }
     return false;
+}
+
+function formSurfaceContains(target) {
+    if (target?.closest?.('[data-keyboard-surface="delivery"], #noteToggleBtn')) return true;
+    return activeFlowStage === 'fasePAE' && !!target?.closest?.('#dxLive') && isInteractionElementVisible(els.dxLive);
+}
+
+function isInteractionElementVisible(element) {
+    if (!element?.isConnected || element.disabled || element.getAttribute?.('aria-disabled') === 'true') return false;
+    if (element.closest?.('[hidden], [inert], [aria-hidden="true"]')) return false;
+    return element.getClientRects?.().length > 0;
+}
+
+function isWritingElement(element) {
+    if (!isInteractionElementVisible(element) || element.readOnly) return false;
+    if (element.isContentEditable) return true;
+    if (element.tagName === 'TEXTAREA') return true;
+    if (element.tagName !== 'INPUT') return false;
+    return !['button', 'checkbox', 'color', 'file', 'hidden', 'image', 'radio', 'range', 'reset', 'submit']
+        .includes((element.type || 'text').toLowerCase());
+}
+
+function writingScopeId(origin = document.activeElement) {
+    const completedHeader = origin?.closest?.('.step.completed > .step-header[role="button"]');
+    if (completedHeader) return Number(completedHeader.closest('.step')?.dataset.step);
+    if (activeFlowStage === 'fasePAE') return currentStep;
+    return activeFlowStage;
+}
+
+function writingTargetsForScope(scopeId) {
+    if (typeof scopeId === 'string') {
+        const adapted = window.NotaCampos?.writingTargets?.(scopeId);
+        if (adapted?.length) return adapted.filter(isWritingElement);
+    }
+    let root = null;
+    if (typeof scopeId === 'number') root = document.getElementById(`step${scopeId}`);
+    else root = document.querySelector(`[data-flow-stage="${scopeId}"]:not([hidden])`);
+    if (!root) return [];
+    return [...root.querySelectorAll('input:not([type="hidden"]), textarea, [contenteditable="true"]')]
+        .filter(isWritingElement);
+}
+
+function primaryWritingTarget(scopeId, origin) {
+    if (typeof scopeId === 'number') return stepByNum(scopeId)?.search?.() || null;
+    if (typeof scopeId === 'string' && scopeId.startsWith('fase')) {
+        return window.NotaCampos?.searchForPhase?.(scopeId, origin) || null;
+    }
+    if (scopeId === 'patient') return window.NotaCampos?.searchForPhase?.('patient', origin) || null;
+    return null;
+}
+
+function issueWritingTarget(scopeId, targets) {
+    const stageId = typeof scopeId === 'number' ? 'fasePAE' : scopeId;
+    const issues = collectFormIssues().filter((issue) => (
+        issue.stageId === stageId
+        && (typeof scopeId !== 'number' || issue.id === `app-pae-step-${scopeId}`)
+    ));
+    for (const issue of issues) {
+        const control = document.getElementById(issue.controlId);
+        const target = isWritingElement(control)
+            ? control
+            : [...(control?.querySelectorAll?.('input:not([type="hidden"]), textarea, [contenteditable="true"]') || [])]
+                .find(isWritingElement);
+        if (target && targets.includes(target)) return target;
+    }
+    return null;
+}
+
+function activateCompletedStepForWriting(origin) {
+    const header = origin?.closest?.('.step.completed > .step-header[role="button"]');
+    const step = Number(header?.closest('.step')?.dataset.step);
+    if (!header || !step) return null;
+    goToStepSection(step, 0, false);
+    return step;
+}
+
+function isDirectWritingEvent(event) {
+    if (!event || event.defaultPrevented || event.isComposing || event.keyCode === 229) return false;
+    if (event.key === 'Dead') {
+        const altGraph = event.getModifierState?.('AltGraph') === true;
+        return !event.metaKey && (!event.ctrlKey || altGraph) && (!event.altKey || altGraph);
+    }
+    if (!event.key || Array.from(event.key).length !== 1 || !event.key.trim()) return false;
+    if (event.key === '/' || event.key === '?') return false;
+    const altGraph = event.getModifierState?.('AltGraph') === true;
+    if (event.metaKey || (event.ctrlKey && !altGraph) || (event.altKey && !altGraph)) return false;
+    return true;
+}
+
+function writingTargetAccepts(target, character) {
+    if (!target) return false;
+    if (character === 'Dead') return true;
+    if (target._notaDateControl) return /^\d$/u.test(character);
+    if (target.tagName === 'INPUT' && (target.type || '').toLowerCase() === 'number') {
+        return /^[\d.,+-]$/u.test(character);
+    }
+    return true;
+}
+
+function runRadioTypeahead(character, origin) {
+    const group = origin?.closest?.('[role="radiogroup"]');
+    if (!group || group === els.routeSwitch || group === els.findingKindFilters) return false;
+    const items = [...group.querySelectorAll('[role="radio"]')].filter(isInteractionElementVisible);
+    if (!items.length) return false;
+    sectionTypeaheadBuffer += normalizeText(character);
+    clearTimeout(sectionTypeaheadTimer);
+    sectionTypeaheadTimer = setTimeout(resetSectionTypeahead, SECTION_TYPEAHEAD_DELAY);
+    const match = items.find((item) => normalizeText(item.textContent).trim().startsWith(sectionTypeaheadBuffer));
+    if (!match) return false;
+    match.focus();
+    return true;
+}
+
+function routeDirectWriting(event, origin = event.target) {
+    const activatedStep = activateCompletedStepForWriting(origin);
+    const scopeId = activatedStep ?? writingScopeId(origin);
+    if (scopeId == null || (typeof scopeId === 'string' && scopeId !== activeFlowStage)) return false;
+
+    if (event.key !== 'Dead' && runRadioTypeahead(event.key, origin)) return true;
+
+    const targets = writingTargetsForScope(scopeId);
+    const contextual = formSurfaceContains(origin) ? primaryWritingTarget(scopeId, origin) : null;
+    if (contextual && targets.includes(contextual)) writingTargetRegistry?.remember(scopeId, contextual);
+    const pending = issueWritingTarget(scopeId, targets);
+    const primary = primaryWritingTarget(scopeId, origin);
+    let target = writingTargetRegistry?.resolve({ scopeId, targets, pending, primary }) || pending || primary;
+    if (!writingTargetAccepts(target, event.key)) {
+        target = [pending, primary, ...targets].find((candidate) => writingTargetAccepts(candidate, event.key)) || null;
+    }
+
+    if (target && isWritingElement(target)) {
+        writingTargetRegistry?.remember(scopeId, target);
+        if (event.key === 'Dead') {
+            target.focus();
+            scrollSoft(target, 'nearest');
+            return { handled: true, preventDefault: false, stopPropagation: false };
+        }
+        resetSectionTypeahead();
+        const inserted = writingTargetRegistry?.insert(target, event.key);
+        if (inserted) scrollSoft(target, 'nearest');
+        return !!inserted;
+    }
+    if (event.key === 'Dead') return false;
+    return runSectionTypeahead(event.key, scopeId);
+}
+
+function spatialScopeRoot() {
+    return document.querySelector(`[data-flow-stage="${activeFlowStage}"]:not([hidden])`);
+}
+
+function focusSpatialUnit(element, { caret = 'end' } = {}) {
+    if (!element) return;
+    const option = element.closest?.('.option');
+    if (option) focusOption(option, option.closest('.options'));
+    else element.focus?.();
+    if ((element.tagName === 'INPUT' || element.tagName === 'TEXTAREA')
+        && caret === 'end' && typeof element.setSelectionRange === 'function') {
+        const end = String(element.value ?? '').length;
+        try { element.setSelectionRange(end, end); } catch (_) { /* tipo de input sin selección */ }
+    }
+    try { element.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' }); }
+    catch (_) { scrollSoft(element, 'nearest'); }
+}
+
+function genericFieldToken(root, target = document.activeElement) {
+    if (!root || !target || !root.contains(target)) return null;
+    const token = {
+        focusId: stableFocusId(target),
+        optionId: target.closest?.('.option')?.id || '',
+        popupOpen: target.getAttribute?.('aria-expanded') === 'true',
+    };
+    if (typeof target.selectionStart === 'number' && typeof target.selectionEnd === 'number') {
+        token.selectionStart = target.selectionStart;
+        token.selectionEnd = target.selectionEnd;
+    }
+    return token;
+}
+
+function resolveFieldToken(root, token) {
+    if (!root || !token) return null;
+    const candidates = [token.optionId, token.focusId].filter(Boolean);
+    for (const id of candidates) {
+        const target = document.getElementById(id)
+            || document.querySelector(`[data-focus-id="${CSS.escape(id)}"]`);
+        if (target && root.contains(target) && isInteractionElementVisible(target)) return target;
+    }
+    return null;
+}
+
+function fieldRadioEntry(root) {
+    return root?.querySelector?.('[role="radio"][aria-checked="true"]')
+        || root?.querySelector?.('[role="radio"][tabindex="0"]')
+        || root?.querySelector?.('[role="radio"]');
+}
+
+function genericFieldEntry(definition, context = {}) {
+    const root = typeof definition.root === 'function' ? definition.root() : definition.root;
+    if (!root) return false;
+    const adapter = window.NotaCampos?.fieldAdapter?.(definition.adapterTarget?.() || definition.anchor?.() || root);
+    if (adapter) {
+        const target = context.reason === 'tab-return'
+            ? adapter.restoreFocus?.(context.token, context)
+            : adapter.enter?.(context);
+        if (target) focusSpatialUnit(target, { caret: context.reason === 'tab-return' ? 'preserve' : 'end' });
+        return !!target;
+    }
+    let target = context.reason === 'tab-return' ? resolveFieldToken(root, context.token) : null;
+    target = target || fieldRadioEntry(root);
+    target = target || (typeof definition.anchor === 'function' ? definition.anchor() : definition.anchor);
+    target = target || root.querySelector?.([
+        'input:not([type="hidden"]):not([disabled])', 'textarea:not([disabled])', 'select:not([disabled])',
+        'button:not([disabled])', '[role="option"]', '[contenteditable="true"]',
+    ].join(','));
+    if (!target || !isInteractionElementVisible(target)) return false;
+    focusSpatialUnit(target, { caret: context.reason === 'tab-return' ? 'preserve' : 'end' });
+    if (context.reason === 'tab-return' && typeof target.setSelectionRange === 'function'
+        && Number.isFinite(context.token?.selectionStart) && Number.isFinite(context.token?.selectionEnd)) {
+        try { target.setSelectionRange(context.token.selectionStart, context.token.selectionEnd); } catch (_) { /* control no seleccionable */ }
+    }
+    return true;
+}
+
+function selectedPaeOptions(container) {
+    return visibleOptions(container).filter((option) => (
+        option.classList.contains('selected') || option.classList.contains('multi-selected')
+        || option.getAttribute('aria-selected') === 'true'
+    ));
+}
+
+function closestSelectedToOrigin(options, originRect) {
+    if (!options.length || !originRect) return options[0] || null;
+    const originY = originRect.top + originRect.height / 2;
+    return options.reduce((best, option) => {
+        const rect = option.getBoundingClientRect();
+        const distance = Math.abs(rect.top + rect.height / 2 - originY);
+        return !best || distance < best.distance ? { option, distance } : best;
+    }, null)?.option || options[0];
+}
+
+function enterPaeStep(stepNum, context = {}) {
+    const step = stepByNum(stepNum);
+    if (!step || !step.present()) return false;
+    activateStep(stepNum, { focus: false });
+    const root = document.getElementById(`step${stepNum}`);
+    const restored = context.reason === 'tab-return' ? resolveFieldToken(root, context.token) : null;
+    if (restored) {
+        focusSpatialUnit(restored, { caret: 'preserve' });
+        return true;
+    }
+    const container = step.container?.();
+    let selectedOptions = selectedPaeOptions(container);
+    if (!selectedOptions.length && stepHasSelection(stepNum) && step.search?.()?.value) {
+        step.search().value = '';
+        step.search().dispatchEvent(new Event('input', { bubbles: true }));
+        selectedOptions = selectedPaeOptions(container);
+    }
+    let target = null;
+    if (selectedOptions.length === 1) target = selectedOptions[0];
+    else if (selectedOptions.length > 1) {
+        if (context.direction === 'up') target = selectedOptions.at(-1);
+        else if (context.direction === 'left' || context.direction === 'right') {
+            target = closestSelectedToOrigin(selectedOptions, context.originRect);
+        } else target = selectedOptions[0];
+    }
+    if (target) {
+        focusOption(target, container);
+        return true;
+    }
+    const search = step.search?.();
+    if (search && isInteractionElementVisible(search)) {
+        search.focus();
+        focusSpatialUnit(search);
+        return true;
+    }
+    if (stepNum === 7) {
+        const scale = document.getElementById('b6ScaleSelect');
+        if (scale && isInteractionElementVisible(scale)) {
+            focusSpatialUnit(scale);
+            return true;
+        }
+    }
+    const first = visibleOptions(container)[0];
+    if (first) {
+        focusOption(first, container);
+        return true;
+    }
+    return false;
+}
+
+function fieldDefinition({ id, stageId, root, anchor, kind = 'field', enabled, enter, contains, adapterTarget }) {
+    const rootFn = typeof root === 'function' ? root : () => document.querySelector(root);
+    const anchorFn = typeof anchor === 'function' ? anchor : () => (anchor ? document.querySelector(anchor) : rootFn());
+    const definition = {
+        id, stageId, kind, root: rootFn, anchor: anchorFn, enabled,
+        contains: contains || ((target) => !!rootFn()?.contains(target)),
+        captureFocus: (target) => {
+            const adapter = window.NotaCampos?.fieldAdapter?.(adapterTarget?.() || anchorFn());
+            return adapter?.captureFocus?.() || genericFieldToken(rootFn(), target);
+        },
+        enter: (context = {}) => (enter ? enter(context) : genericFieldEntry(definition, context)),
+        restoreFocus: (token, context = {}) => (enter
+            ? enter({ ...context, token, reason: 'tab-return' })
+            : genericFieldEntry(definition, { ...context, token, reason: 'tab-return' })),
+        commitDraft: (options = {}) => window.NotaCampos?.fieldAdapter?.(adapterTarget?.() || anchorFn())?.commitDraft?.(options) ?? true,
+        closePopup: () => window.NotaCampos?.fieldAdapter?.(adapterTarget?.() || anchorFn())?.closePopup?.({ preserveQuery: true }),
+        adapterTarget,
+    };
+    return definition;
+}
+
+function registerNavigationField(config) {
+    const definition = fieldDefinition(config);
+    const unregister = fieldNavigationRegistry.register(definition);
+    const mark = () => {
+        const root = definition.root();
+        if (root) root.dataset.fieldId = definition.id;
+    };
+    mark();
+    return { definition, unregister, mark };
+}
+
+function internalFieldControls(root, origin) {
+    if (!root) return [];
+    const raw = [...root.querySelectorAll([
+        'input:not([type="hidden"]):not([disabled])', 'textarea:not([disabled])', 'select:not([disabled])',
+        'button:not([disabled])', '[role="option"]', '[contenteditable="true"]',
+    ].join(','))];
+    const units = [];
+    const seen = new Set();
+    raw.forEach((element) => {
+        if (!isInteractionElementVisible(element)) return;
+        let unit = element;
+        const group = element.closest('[role="radiogroup"]');
+        if (group) unit = group.contains(origin)
+            ? origin.closest?.('[role="radio"]')
+            : fieldRadioEntry(group);
+        if (!unit || seen.has(unit)) return;
+        seen.add(unit);
+        units.push(unit);
+    });
+    return units;
+}
+
+function setupInternalFieldNavigation(root) {
+    if (!root || root.dataset.internalFieldNavigation === 'true') return;
+    root.dataset.internalFieldNavigation = 'true';
+    root.addEventListener('keydown', (event) => {
+        if (event.defaultPrevented || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (!event.key.startsWith('Arrow')) return;
+        if (event.target.closest('[role="radiogroup"], .cbx-list, .options')) return;
+        const direction = event.key.slice(5).toLowerCase();
+        if (isEditableElement(event.target) && !editorCanLeaveWithArrow(event.target, direction)) return;
+        const candidates = internalFieldControls(root, event.target).filter((control) => control !== event.target);
+        if (!candidates.length) return;
+        const moved = spatialNavigator?.move({ origin: event.target, direction, candidates, scopeId: activeFlowStage });
+        if (moved) event.preventDefault();
+    });
+}
+
+function setupFieldNavigationRegistry() {
+    const fields = [
+        ['patient-sex', 'patient', '#sexoSeg', '#sexoSeg'],
+        ['patient-dob', 'patient', () => document.getElementById('dobFecha')?.closest('.field-group'), '#dobFecha'],
+        ['patient-position', 'patient', '[data-cbx="posicion"]', '#posicion'],
+        ['patient-bed', 'patient', '#numCama', '#numCama'],
+        ['patient-room', 'patient', '#numHabitacion', '#numHabitacion'],
+        ['patient-service', 'patient', '[data-cbx="servicio"]', '#servicio'],
+        ['clinical-neuro', 'faseB', '[data-estado="estadoNeurologico"]', '#estadoNeurologico'],
+        ['clinical-hemo', 'faseB', '[data-estado="estadoHemodinamico"]', '#estadoHemodinamico'],
+        ['clinical-resp', 'faseB', '[data-estado="estadoRespiratorio"]', '#estadoRespiratorio'],
+        ['clinical-scales', 'faseB', '#escalasBlock', '#escalasPicker .multi-add-input'],
+        ['diagnosis-medical', 'faseC', '#diagnosticoMedico', '#diagnosticoMedico'],
+        ['diagnosis-isolation', 'faseC', '[data-cbx="aislamiento"]', '#aislamiento'],
+        ['diagnosis-dental', 'faseC', '[data-cbx="estadoDental"]', '#estadoDental'],
+        ['diagnosis-devices', 'faseC', '#dispositivosBlock', '#dispositivosPicker .multi-add-input'],
+        ['findings-regions', 'faseD', '#regionesBlock', '#regionesPicker .multi-add-input'],
+        ['findings-education', 'faseD', '#educacionBlock', '#educacionPicker .multi-add-input, #eduQuick button'],
+        ['delivery-response', 'faseF', '#respuestaIntervenciones', '#respuestaIntervenciones'],
+        ['delivery-trend', 'faseF', '[data-cbx="tendenciaEvolutiva"]', '#tendenciaEvolutiva'],
+        ['delivery-meta', 'faseF', '#metaSeg', '#metaSeg'],
+        ['delivery-criterion', 'faseF', '#criterioClinico', '#criterioClinico'],
+        ['delivery-pending', 'faseF', '#pendientes', '#pendientes'],
+        ['delivery-observations', 'faseF', '#otrosComentarios', '#otrosComentarios'],
+    ];
+    fields.forEach(([id, stageId, root, anchor]) => {
+        const record = registerNavigationField({ id, stageId, root, anchor });
+        if (['patient-dob', 'clinical-scales', 'diagnosis-devices', 'findings-regions', 'findings-education'].includes(id)) {
+            setupInternalFieldNavigation(record.definition.root());
+        }
+    });
+
+    registerNavigationField({
+        id: 'pae-route', stageId: 'fasePAE', root: '#routeSwitch', anchor: '#routeSwitch',
+        enabled: () => !document.getElementById('step1')?.classList.contains('step--locked'),
+    });
+    STEPS.forEach((step) => registerNavigationField({
+        id: `pae-step-${step.num}`,
+        stageId: 'fasePAE',
+        root: () => document.getElementById(`step${step.num}`),
+        anchor: () => {
+            const root = document.getElementById(`step${step.num}`);
+            if (!root) return null;
+            if (!root.classList.contains('active')) return root.querySelector('.step-header') || root;
+            if (step.num === 1) return root.querySelector(`[data-route="${inReverse() ? 'reverse' : 'main'}"]`) || root;
+            return root.querySelector('.step-content') || root;
+        },
+        contains: (target) => {
+            const root = document.getElementById(`step${step.num}`);
+            if (!root?.contains(target)) return false;
+            return step.num !== 1 || !els.routeSwitch?.contains(target);
+        },
+        enabled: () => step.present() && (step.num === currentStep || stepHasSelection(step.num) || maxReachedStep >= step.num),
+        enter: (context) => enterPaeStep(step.num, context),
+    }));
+    document.querySelectorAll('#step1 [data-route]').forEach((routeBody) => { routeBody.dataset.fieldId = 'pae-step-1'; });
+    registerNavigationField({
+        id: 'pae-reverse-diagnoses', stageId: 'fasePAE', root: '#dxLive', anchor: '#dxLive',
+        enabled: () => inReverse() && isInteractionElementVisible(els.dxLive) && visibleOptions(els.reverseResults).length > 0,
+        enter: (context = {}) => {
+            const options = selectedPaeOptions(els.reverseResults);
+            const target = options.length
+                ? (context.direction === 'up' ? options.at(-1) : closestSelectedToOrigin(options, context.originRect))
+                : visibleOptions(els.reverseResults)[0];
+            if (!target) return false;
+            focusOption(target, els.reverseResults);
+            return true;
+        },
+    });
+
+    FLOW_STAGE_ORDER.forEach((stageId) => {
+        const primarySelector = stageId === 'faseF' ? '#copyBtn' : `[data-flow-continue="${stageId}"]`;
+        const primary = document.querySelector(primarySelector);
+        if (primary) registerNavigationField({
+            id: `${stageId}-primary-action`, stageId, kind: 'action', root: primarySelector, anchor: primarySelector,
+            enabled: () => isInteractionElementVisible(primary) && !primary.disabled,
+        });
+        const resetSelector = `[data-reset-section="${stageId}"]`;
+        if (document.querySelector(resetSelector)) registerNavigationField({
+            id: `${stageId}-reset-action`, stageId, kind: 'action', root: resetSelector, anchor: resetSelector,
+        });
+    });
+}
+
+function currentNavigationField(origin = document.activeElement) {
+    return fieldNavigationRegistry?.find(origin, { stageId: activeFlowStage }) || null;
+}
+
+function moveSpatialFocus(origin, direction) {
+    const field = currentNavigationField(origin);
+    if (!field || !spatialNavigator) return false;
+    const finish = (moved) => {
+        if (!moved) return false;
+        try { field.commitDraft?.({ report: false }); } catch (_) { /* el issue conserva el borrador */ }
+        try { field.closePopup?.(); } catch (_) { /* el foco ya está en el destino */ }
+        return true;
+    };
+    const originRect = origin?.getBoundingClientRect?.() || fieldNavigationRegistry.anchor(field)?.getBoundingClientRect?.();
+    if (activeFlowStage === 'fasePAE' && inReverse()) {
+        const bridgeId = field.id === 'pae-step-1' && direction === 'right'
+            ? 'pae-reverse-diagnoses'
+            : field.id === 'pae-reverse-diagnoses' && direction === 'left'
+                ? 'pae-step-1'
+                : '';
+        const bridge = bridgeId ? fieldNavigationRegistry.get(bridgeId) : null;
+        if (bridge && fieldNavigationRegistry.available(bridge)) {
+            return finish(bridge.enter({ direction, reason: 'spatial', origin, originRect }) !== false);
+        }
+    }
+    const candidates = fieldNavigationRegistry.values({ stageId: activeFlowStage });
+    let filtered = candidates.filter((candidate) => candidate.id !== field.id);
+    if (field.kind === 'field' && direction === 'down') {
+        const fields = filtered.filter((candidate) => candidate.kind === 'field');
+        const actions = filtered.filter((candidate) => candidate.kind === 'action');
+        if (actions.length && !fields.some((candidate) => {
+            const originRect = fieldNavigationRegistry.anchor(field)?.getBoundingClientRect();
+            const rect = fieldNavigationRegistry.anchor(candidate)?.getBoundingClientRect();
+            return originRect && rect && rect.top > originRect.top;
+        })) {
+            const safe = actions.find((candidate) => candidate.id.endsWith('primary-action')) || actions[0];
+            filtered = safe ? [safe] : actions.slice(0, 1);
+        }
+    }
+    return finish(!!spatialNavigator.move({
+        origin: field,
+        direction,
+        scopeId: activeFlowStage,
+        candidates: filtered,
+    }));
+}
+
+function moveScaleScoreSpatial(origin, direction) {
+    if (!origin?.matches?.('.escala-puntaje') || !spatialNavigator) return false;
+    const scores = [...document.querySelectorAll('#escalasList .escala-puntaje')]
+        .filter((input) => input !== origin && isInteractionElementVisible(input));
+    return !!spatialNavigator.move({
+        origin,
+        direction,
+        scopeId: 'faseB',
+        candidates: scores,
+    });
+}
+
+function focusFlowNavigator(stageId = activeFlowStage) {
+    const tab = document.querySelector(`[data-flow-target="${stageId}"]:not([disabled])`)
+        || document.querySelector(`[data-flow-target="${activeFlowStage}"]:not([disabled])`);
+    if (!tab) return false;
+    flowNavRovingId = tab.dataset.flowTarget;
+    updateFlowNavigator();
+    tab.focus();
+    tab.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+    return true;
+}
+
+function enterFromFlowNavigator(tab) {
+    const stageId = tab?.dataset?.flowTarget;
+    if (!stageId || tab.disabled) return false;
+    const sameStage = stageId === activeFlowStage;
+    flowNavRovingId = stageId;
+    if (!sameStage) {
+        if (!activateFlowStage(stageId, { focus: false, reason: 'correction' })) return false;
+        if (flowStageState(stageId).complete && tabLevelController?.restore(stageId)) return true;
+        focusFlowStageEntry(stageId, 'correction');
+        return true;
+    }
+    if (tabLevelController?.restore(stageId)) return true;
+    focusFlowStageEntry(stageId, 'correction');
+    return true;
+}
+
+function handleTabLevel(event, target = event.target) {
+    if (!isAgileNavigation()) return false;
+    if (event.key !== 'Tab' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return false;
+    const navTab = target.closest?.('#flowNav [role="tab"]');
+    if (navTab) return enterFromFlowNavigator(navTab);
+    const field = currentNavigationField(target);
+    if (!field || field.kind !== 'field') return false;
+    tabLevelController?.leaveField(field, target);
+    return focusFlowNavigator(activeFlowStage);
+}
+
+function textareaCaretLine(textarea, index) {
+    const style = getComputedStyle(textarea);
+    const mirror = document.createElement('div');
+    const properties = [
+        'boxSizing', 'width', 'paddingTop', 'paddingRight', 'paddingBottom', 'paddingLeft',
+        'borderTopWidth', 'borderRightWidth', 'borderBottomWidth', 'borderLeftWidth',
+        'fontFamily', 'fontSize', 'fontWeight', 'fontStyle', 'letterSpacing', 'lineHeight',
+        'textTransform', 'textIndent', 'wordSpacing', 'tabSize',
+    ];
+    properties.forEach((property) => { mirror.style[property] = style[property]; });
+    Object.assign(mirror.style, {
+        position: 'fixed', left: '-10000px', top: '0', visibility: 'hidden',
+        whiteSpace: 'pre-wrap', overflowWrap: 'break-word', overflow: 'hidden',
+    });
+    mirror.textContent = String(textarea.value || '').slice(0, index);
+    const marker = document.createElement('span');
+    marker.textContent = '\u200b';
+    mirror.appendChild(marker);
+    document.body.appendChild(mirror);
+    const top = marker.offsetTop;
+    mirror.remove();
+    return top;
+}
+
+function editorCanLeaveWithArrow(target, direction) {
+    if (!['left', 'right', 'up', 'down'].includes(direction)) return false;
+    if (target.tagName === 'SELECT' || target.isContentEditable) return false;
+    const type = (target.type || '').toLowerCase();
+    if (target.tagName === 'INPUT' && ['number', 'range', 'date', 'time', 'datetime-local', 'month', 'week'].includes(type)) return false;
+    const start = target.selectionStart;
+    const end = target.selectionEnd;
+    if (!Number.isFinite(start) || start !== end) return false;
+    const length = String(target.value ?? '').length;
+    if (direction === 'left') return start === 0;
+    if (direction === 'right') return end === length;
+    if (target.tagName !== 'TEXTAREA') return true;
+    const caretTop = textareaCaretLine(target, start);
+    const edgeTop = textareaCaretLine(target, direction === 'up' ? 0 : length);
+    return Math.abs(caretTop - edgeTop) < 2;
+}
+
+function metricStageId(target) {
+    return target?.closest?.('[data-flow-stage]')?.dataset.flowStage
+        || String(resolveLogicalSection(target) ?? activeFlowStage ?? '');
+}
+
+function metricKeyAction(event) {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) return 'review';
+    if (event.key === 'Enter' && event.shiftKey) return 'continue';
+    if (event.key === '?' || (event.key === '/' && event.shiftKey)) return 'shortcuts';
+    if (event.key === '/' && !event.shiftKey) return 'search';
+    const named = {
+        Tab: 'tab', Enter: 'confirm', ' ': 'toggle', Escape: 'cancel',
+        Backspace: 'backspace', Delete: 'delete', Home: 'first', End: 'last',
+        ArrowLeft: 'arrow', ArrowRight: 'arrow', ArrowUp: 'arrow', ArrowDown: 'arrow',
+    };
+    return named[event.key] || null;
+}
+
+function handleShiftContinue() {
+    if (blockOnOpenAppEditorDraft()) return true;
+    const sectionId = currentSectionId();
+    if (sectionId == null) return false;
+    if (sectionId === 'obs' || sectionId === 'note' || sectionId === 'copy') {
+        if (!advanceCurrentSectionByShortcut()) {
+            const first = isNoteComplete().missing[0];
+            if (first) announceAction(`No se puede continuar. Primero: ${first}.`);
+        }
+        return true;
+    }
+    if (activeFlowStage !== 'fasePAE') {
+        continueFlowStage(activeFlowStage);
+        return true;
+    }
+    validatedStages.add('fasePAE');
+    collectFormIssues();
+    if (!advanceCurrentSectionByShortcut()) {
+        const step = stepByNum(currentStep);
+        announceAction(`Complete ${step ? stepLabel(step) : 'el paso actual'} antes de continuar.`);
+        focusStepEntry(currentStep);
+    }
+    return true;
+}
+
+function openShortcutsDialog(source) {
+    if (!els.shortcutsDialog || els.shortcutsDialog.open) return false;
+    const eventInvoker = source?.currentTarget;
+    const directInvoker = source?.nodeType === Node.ELEMENT_NODE ? source : null;
+    const invoker = eventInvoker || directInvoker || document.activeElement;
+    if (interactionOverlays && !interactionOverlays.get('shortcuts')) {
+        interactionOverlays.push({
+            id: 'shortcuts',
+            element: els.shortcutsDialog,
+            invoker,
+            modal: true,
+            onClose: () => {
+                if (els.shortcutsDialog.open) els.shortcutsDialog.close();
+            },
+        });
+    }
+    els.shortcutsDialog.showModal();
+    requestAnimationFrame(() => els.shortcutsClose?.focus());
+    return true;
+}
+
+function closeShortcutsDialog() {
+    if (!els.shortcutsDialog?.open) return;
+    els.shortcutsDialog.close();
+}
+
+function keepTabInsideDialog(event, dialog) {
+    if (event.key !== 'Tab' || !dialog) return false;
+    const controls = [...dialog.querySelectorAll([
+        'a[href]',
+        'button:not([disabled])',
+        'input:not([disabled]):not([type="hidden"])',
+        'select:not([disabled])',
+        'textarea:not([disabled])',
+        '[tabindex]:not([tabindex="-1"])',
+    ].join(','))].filter((control) => !control.closest('[hidden], [inert], [aria-hidden="true"]'));
+    if (!controls.length) return false;
+    const currentIndex = controls.indexOf(document.activeElement);
+    const nextIndex = currentIndex < 0
+        ? (event.shiftKey ? controls.length - 1 : 0)
+        : (currentIndex + (event.shiftKey ? -1 : 1) + controls.length) % controls.length;
+    controls[nextIndex].focus();
+    return true;
+}
+
+function moveDialogActionFocus(dialog, origin, direction) {
+    if (!dialog || !['left', 'right', 'up', 'down'].includes(direction)) return false;
+    const button = origin?.closest?.('[data-dialog-actions] button');
+    const group = button?.closest?.('[data-dialog-actions]');
+    if (!button || !group || !dialog.contains(group)) return false;
+    const buttons = [...group.querySelectorAll('button:not([disabled])')]
+        .filter((candidate) => isInteractionElementVisible(candidate));
+    if (buttons.length < 2 || !buttons.includes(button)) return false;
+
+    const centers = buttons.map((candidate) => {
+        const rect = candidate.getBoundingClientRect();
+        return { candidate, x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
+    });
+    const current = centers.find(({ candidate }) => candidate === button);
+    const horizontal = direction === 'left' || direction === 'right';
+    const sign = direction === 'right' || direction === 'down' ? 1 : -1;
+    const next = centers
+        .filter(({ candidate }) => candidate !== button)
+        .map((entry) => {
+            const mainDelta = ((horizontal ? entry.x : entry.y) - (horizontal ? current.x : current.y)) * sign;
+            if (mainDelta <= 2) return null;
+            const crossDelta = Math.abs((horizontal ? entry.y : entry.x) - (horizontal ? current.y : current.x));
+            return { ...entry, score: mainDelta + crossDelta * 2 };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.score - b.score)[0]?.candidate;
+    if (next) next.focus({ preventScroll: true });
+    return true;
+}
+
+function setupDialogActionNavigation(dialog) {
+    if (!dialog || dialog.dataset.actionNavigation === 'true') return;
+    dialog.dataset.actionNavigation = 'true';
+    dialog.addEventListener('keydown', (event) => {
+        if (event.defaultPrevented || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+        if (!event.key.startsWith('Arrow')) return;
+        const direction = event.key.slice(5).toLowerCase();
+        if (!moveDialogActionFocus(dialog, event.target, direction)) return;
+        event.preventDefault();
+        event.stopPropagation();
+    });
+}
+
+function setupInteractionCore() {
+    const core = window.CareFlowInteraction;
+    const surface = document.querySelector('[data-keyboard-surface="delivery"]');
+    if (!core || !surface) {
+        console.error('[CareFlow] No fue posible iniciar el núcleo de interacción.');
+        return;
+    }
+
+    interactionRegistry = new core.InteractionRegistry();
+    FLOW_STAGE_ORDER.forEach((id) => {
+        interactionRegistry.register({
+            id,
+            root: () => document.querySelector(`[data-flow-stage="${id}"]`),
+            commitDrafts: () => window.NotaCampos?.commitDrafts?.(id),
+            getIssues: () => window.NotaCampos?.getIssues?.(id) || [],
+            focusEntry: ({ reason = 'advance' } = {}) => focusFlowStageEntry(id, reason),
+            focusIssue: () => window.NotaCampos?.focusFirstPending?.(id),
+            continue: () => continueFlowStage(id),
+            search: (origin) => window.NotaCampos?.searchForPhase?.(id, origin),
+            restoreFocus: () => restoreStageFocus(id),
+            writingTargets: () => writingTargetsForScope(id === 'fasePAE' ? currentStep : id),
+            activateForWriting: (origin) => {
+                const scopeId = id === 'fasePAE' ? currentStep : id;
+                return primaryWritingTarget(scopeId, origin) || writingTargetsForScope(scopeId)[0] || null;
+            },
+            fallbackTypeahead: (character) => id === 'fasePAE' && runSectionTypeahead(character, currentStep),
+        });
+    });
+    interactionRegistry.register({ id: 'obs', root: () => els.otrosComentarios, priority: 20 });
+    interactionRegistry.register({ id: 'note', root: () => els.copyBtn, priority: 20 });
+    interactionRegistry.register({ id: 'copy', root: () => els.drawerCopyBtn, priority: 20 });
+
+    interactionFocus = new core.FocusManager({ registry: interactionRegistry, root: document });
+    interactionFocus.startTracking(document);
+    interactionIssues = new core.IssueRegistry({
+        focusManager: interactionFocus,
+        stageOrder: FLOW_STAGE_ORDER,
+    });
+    interactionAnnouncer = new core.ActionAnnouncer({ region: els.actionAnnouncer, dedupeMs: 650 });
+    interactionOverlays = new core.OverlayManager({ focusManager: interactionFocus });
+    interactionOrigin = new core.InteractionOrigin({ target: document }).start();
+    interactionChanges = new core.ChangeTransaction();
+    interactionMetrics = new core.InteractionMetrics({ limit: 3000 });
+    writingTargetRegistry = new core.WritingTargetRegistry({
+        isAvailable: (element) => isWritingElement(element),
+    });
+    fieldNavigationRegistry = new core.FieldNavigationRegistry({
+        isAvailable: (field, anchor) => !!anchor && isInteractionElementVisible(anchor),
+    });
+    tabLevelController = new core.TabLevelController({ registry: fieldNavigationRegistry });
+    setupFieldNavigationRegistry();
+    spatialNavigator = new core.SpatialNavigator({
+        isAvailable: (element) => isInteractionElementVisible(element),
+        focus: (element) => focusSpatialUnit(element),
+    });
+    window.CareFlowMetrics = Object.freeze({
+        snapshot: () => interactionMetrics.snapshot(),
+        reset: () => interactionMetrics.reset(),
+    });
+
+    const showKeyboardCoach = () => {
+        document.documentElement.dataset.inputModality = 'keyboard';
+        if (els.keyboardCoach) els.keyboardCoach.hidden = false;
+    };
+    document.addEventListener('keydown', (event) => {
+        showKeyboardCoach();
+        const insideOverlay = interactionOverlays?.contains?.(event.target);
+        if (!formSurfaceContains(event.target) && !insideOverlay) return;
+        const action = metricKeyAction(event);
+        if (!action) return;
+        interactionMetrics.record('keyboard-action', {
+            action,
+            targetId: stableFocusId(event.target),
+            stageId: metricStageId(event.target),
+            modality: 'keyboard',
+        });
+    }, true);
+    document.addEventListener('pointerdown', (event) => {
+        document.documentElement.dataset.inputModality = 'pointer';
+        if (!formSurfaceContains(event.target)) return;
+        interactionMetrics.record('pointer-action', {
+            action: 'activate',
+            targetId: stableFocusId(event.target),
+            stageId: metricStageId(event.target),
+            modality: event.pointerType || 'pointer',
+        });
+    }, true);
+
+    const openReview = () => {
+        toggleNote(true);
+        return true;
+    };
+
+    keyboardController = new core.KeyboardController({
+        target: document,
+        capture: false,
+        surface: ({ target, event }) => formSurfaceContains(target) || isDirectWritingEvent(event),
+        registry: interactionRegistry,
+        overlays: interactionOverlays,
+        origin: interactionOrigin,
+        handlers: {
+            overlay: ({ event, key, overlay, target }) => {
+                showKeyboardCoach();
+                if (overlay?.modal !== false && keepTabInsideDialog(event, overlay?.element)) return true;
+                if (key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
+                    if (overlay?.id === 'note-review') els.drawerCopyBtn?.focus();
+                    return true;
+                }
+                if (overlay?.id !== 'note-review') return false;
+                if (key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    if (target === els.drawerCopyBtn) els.drawerCopyBtn.click();
+                    else els.drawerCopyBtn?.focus();
+                    return true;
+                }
+                return false;
+            },
+            editor: ({ event, key, target }) => {
+                showKeyboardCoach();
+                const direction = key.startsWith('Arrow') ? key.slice(5).toLowerCase() : null;
+                if (isAgileNavigation() && direction && event.shiftKey
+                    && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    if (target.matches('.escala-puntaje')) {
+                        moveScaleScoreSpatial(target, direction);
+                        return true;
+                    }
+                    moveSpatialFocus(target, direction);
+                    return true;
+                }
+                if (target.closest('.custom-form')) return false;
+                if (handleTabLevel(event, target)) return true;
+                if (key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) return openReview();
+                if (key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    return handleShiftContinue();
+                }
+                return false;
+            },
+            global: ({ event, key, target }) => {
+                showKeyboardCoach();
+                if (handleTabLevel(event, target)) return true;
+                if (key === 'Enter' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    return handleShiftContinue();
+                }
+                if (key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) return openReview();
+                if (core.isEditableTarget(target)) return false;
+                const direction = key.startsWith('Arrow') ? key.slice(5).toLowerCase() : null;
+                if (isAgileNavigation() && direction && event.shiftKey
+                    && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    moveSpatialFocus(target, direction);
+                    return true;
+                }
+                const isQuestionKey = key === '?' || (key === '/' && event.shiftKey);
+                if (isQuestionKey && !event.ctrlKey && !event.metaKey && !event.altKey) return openShortcutsDialog();
+                if (key === '/' && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    const box = searchForActiveSection(target);
+                    if (!box) return false;
+                    box.focus();
+                    box.select?.();
+                    return true;
+                }
+                if (!isDirectWritingEvent(event)) return false;
+                return routeDirectWriting(event, target);
+            },
+        },
+    }).start();
 }
 
 /* ─── Puntúa la relevancia de una opción frente al texto buscado ─── */
@@ -1675,6 +3086,9 @@ function scoreOption(opt, q) {
    clínico original (data-ord). Las tarjetas "+ agregar"/personalizadas van al final. */
 function filterOptions(container, query) {
     const q = normalizeText(query.trim());
+    const focusedOption = container.contains(document.activeElement)
+        ? document.activeElement.closest?.('.option')
+        : null;
     const all = [...container.querySelectorAll('.option')];
     const isSpecial = (o) => o.classList.contains('option--add') || o.classList.contains('option--custom');
     const special = all.filter(isSpecial);
@@ -1694,9 +3108,50 @@ function filterOptions(container, query) {
     regular.forEach((o) => container.appendChild(o));   // appendChild mueve el nodo existente
     special.sort((a, b) => ord(a) - ord(b)).forEach((o) => container.appendChild(o));
 
+    const visibleCount = regular.filter((o) => o.style.display !== 'none').length;
+    updateSearchResultsStatus(container, q, visibleCount);
+
     // Re-preparar roles y roving tabindex sobre las opciones que quedaron visibles
     markOptions(container);
     primeRoving(container);
+    if (focusedOption?.isConnected && focusedOption.style.display !== 'none') {
+        focusOption(focusedOption, container);
+    }
+}
+
+function ensureSearchResultsStatus(input, container) {
+    if (!input || !container) return null;
+    if (!container.id) container.id = `${input.id || 'search'}Results`;
+    const id = `${container.id}Status`;
+    let status = document.getElementById(id);
+    if (!status) {
+        status = document.createElement('p');
+        status.id = id;
+        status.className = 'search-results-status';
+        container.before(status);
+    }
+    input.setAttribute('aria-controls', container.id);
+    const describedBy = new Set((input.getAttribute('aria-describedby') || '').split(/\s+/).filter(Boolean));
+    describedBy.add(id);
+    input.setAttribute('aria-describedby', [...describedBy].join(' '));
+    container.setAttribute('aria-label', `Resultados de ${input.getAttribute('aria-label') || 'la búsqueda'}`);
+    container.dataset.resultsStatus = id;
+    return status;
+}
+
+function updateSearchResultsStatus(container, query, count) {
+    const status = document.getElementById(container?.dataset.resultsStatus || '');
+    if (!status) return;
+    if (!query) {
+        status.textContent = '';
+        status.classList.remove('search-results-status--empty');
+        return;
+    }
+    status.textContent = count
+        ? `${count} resultado${count === 1 ? '' : 's'}.`
+        : 'Sin coincidencias en la lista.';
+    status.classList.toggle('search-results-status--empty', count === 0);
+    announceAction(status.textContent);
 }
 
 /* ─── (Obsoleto) El preview lateral de transversales se retiró; las transversales
@@ -1714,6 +3169,31 @@ function applyAreaSelection(key, opts = {}) {
     if (!isPatientGateUnlocked()) return false;
     if (!datosProPai[key]) return false;
 
+    if (selected.area === key) {
+        els.areas.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o.dataset.area === key));
+        syncOptionSelectionState(els.areas);
+        if (opts.advancePae !== false) {
+            activateFlowStage('fasePAE', { focus: false });
+            activateStep(2, { focus: opts.focus !== false });
+        } else activateStep(1);
+        announceAction('Condición clínica confirmada. La información posterior se conservó.');
+        return true;
+    }
+
+    const hasDownstream = !!selected.diagnostico
+        || selected.rc.length > 0 || selected.ep.length > 0 || selected.nics.length > 0
+        || selected.noc !== null || selected.b6Puntuacion !== null;
+    if (selected.area && hasDownstream && !opts.confirmed) {
+        runDependentChange({
+            title: '¿Cambiar la condición clínica?',
+            description: 'Se reiniciarán el diagnóstico de enfermería, los factores relacionados, los signos, el resultado NOC, las intervenciones NIC y la evaluación B6. Los demás datos de la nota se conservarán.',
+            confirmLabel: 'Cambiar condición',
+            trigger: opts.trigger || document.activeElement,
+            onConfirm: () => applyAreaSelection(key, { ...opts, confirmed: true }),
+        });
+        return false;
+    }
+
     selected.area = key;
     selected.areaNombre = areaLabel(key);
     selected.diagnostico = null; selected.diagnosticoNombre = null;
@@ -1724,6 +3204,7 @@ function applyAreaSelection(key, opts = {}) {
     selected.b6Puntuacion = null; selected.b6Descripcion = null;
 
     els.areas.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o.dataset.area === key));
+    syncOptionSelectionState(els.areas);
 
     [2, 3, 4, 5, 6, 7].forEach(n => document.getElementById(`step${n}`)?.classList.remove('completed'));
     maxReachedStep = 1;   // el avance posterior ya no es válido: se eligió otra área
@@ -1731,9 +3212,12 @@ function applyAreaSelection(key, opts = {}) {
 
     els.searchDiag.value = '';
     loadDiagnosticos(key);
-    activateStep(2, { focus: opts.advancePae !== false && opts.focus !== false });
-    if (opts.advancePae !== false) activateFlowStage('fasePAE', { focus: opts.focus !== false });
+    if (opts.advancePae !== false) {
+        activateStep(2, { focus: opts.focus !== false });
+        activateFlowStage('fasePAE', { focus: opts.focus !== false });
+    } else activateStep(1);
     renderTransversales(null);
+    markDraftRevision();
     updateNote();
     return true;
 }
@@ -1752,7 +3236,12 @@ function loadAreas() {
     els.areas.onclick = (e) => {
         const option = e.target.closest('.option');
         if (!option) return;
-        applyAreaSelection(option.dataset.area, { focus: true, advancePae: true });
+        const advance = shouldAdvanceOption();
+        applyAreaSelection(option.dataset.area, {
+            focus: advance && shouldMoveFocusAfterActivation(e),
+            advancePae: advance,
+            trigger: option,
+        });
     };
 }
 
@@ -1768,14 +3257,36 @@ function loadDiagnosticos(area) {
     });
     setupOptionList(els.diagnosticos, { searchInput: els.searchDiag, stepNum: 2 });
 
-    els.diagnosticos.onclick = (e) => {
-        const option = e.target.closest('.option');
+    const applyDiagnosis = (option, confirmed = false, advance = shouldAdvanceOption(), moveFocus = true) => {
         if (!option || option.style.display === 'none') return;
+        const nextDiagnosis = option.dataset.diagnostico;
+
+        if (selected.diagnostico === nextDiagnosis) {
+            els.diagnosticos.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o === option));
+            syncOptionSelectionState(els.diagnosticos);
+            if (advance) proceedAfterDiag(selected.datosDiag, { advance: true, focus: moveFocus });
+            announceAction('Diagnóstico confirmado. La información posterior se conservó.');
+            return;
+        }
+
+        const hasDownstream = selected.rc.length > 0 || selected.ep.length > 0
+            || selected.nics.length > 0 || selected.noc !== null || selected.b6Puntuacion !== null;
+        if (selected.diagnostico && hasDownstream && !confirmed) {
+            runDependentChange({
+                title: '¿Cambiar el diagnóstico de enfermería?',
+                description: 'Se reiniciarán los factores relacionados, los signos, el resultado NOC, las intervenciones NIC y la evaluación B6.',
+                confirmLabel: 'Cambiar diagnóstico',
+                trigger: option,
+                onConfirm: () => applyDiagnosis(option, true, advance, moveFocus),
+            });
+            return;
+        }
 
         els.diagnosticos.querySelectorAll('.option').forEach((o) => o.classList.remove('selected'));
         option.classList.add('selected');
+        syncOptionSelectionState(els.diagnosticos);
 
-        selected.diagnostico = option.dataset.diagnostico;
+        selected.diagnostico = nextDiagnosis;
         selected.diagnosticoNombre = selected.diagnostico;
         selected.datosDiag = diagnosticos[selected.diagnostico];
         selected.rc = []; selected.ep = [];
@@ -1789,22 +3300,29 @@ function loadDiagnosticos(area) {
         showMetaBlock(false);
 
         renderTransversales(selected.datosDiag);
-        proceedAfterDiag(selected.datosDiag);
+        proceedAfterDiag(selected.datosDiag, { advance, focus: moveFocus });
+        markDraftRevision();
         updateNote();
+    };
+
+    els.diagnosticos.onclick = (e) => {
+        const option = e.target.closest('.option');
+        applyDiagnosis(option, false, shouldAdvanceOption(), shouldMoveFocusAfterActivation(e));
     };
 }
 
 /* ─── Pasos comunes tras elegir diagnóstico: carga RC/EP y entra a "Relacionado con".
    RC siempre existe; EP solo en diagnósticos no-riesgo (si falta, ese paso se oculta). */
-function proceedAfterDiag(datos) {
+function proceedAfterDiag(datos, { advance = true, focus = true } = {}) {
     els.searchRc.value = ''; els.searchEp.value = ''; els.searchNic.value = '';
     loadRc(datos);
     loadEp(datos);
+    if (!advance) return;
     if ((datos.rc || []).length) {
-        activateStep(3, { focus: true });          // → Relacionado con
+        activateStep(3, { focus });          // → Relacionado con
     } else {                                        // defensivo: sin RC, ir directo a NOC
         loadNocs(datos);
-        activateStep(5, { focus: true });
+        activateStep(5, { focus });
     }
 }
 
@@ -1812,7 +3330,7 @@ function proceedAfterDiag(datos) {
 function loadMultiPicker({ container, items, selArr, searchInput, stepNum, onAdvance, updateBtn }) {
     container.innerHTML = '';
     items.forEach((txt, i) => {
-        const opt = createOption(txt, 'Clic para seleccionar / deseleccionar', { idx: String(i) });
+        const opt = createOption(txt, 'Seleccione para marcar o desmarcar', { idx: String(i) });
         if (selArr.includes(txt)) opt.classList.add('multi-selected');
         container.appendChild(opt);
     });
@@ -1831,14 +3349,24 @@ function loadMultiPicker({ container, items, selArr, searchInput, stepNum, onAdv
         const txt = items[Number(option.dataset.idx)];
         if (option.classList.contains('multi-selected')) {
             option.classList.remove('multi-selected');
-            option.setAttribute('aria-selected', 'false');
             const i = selArr.indexOf(txt); if (i >= 0) selArr.splice(i, 1);
+            offerUndo('Se quitó una selección', () => {
+                if (!selArr.includes(txt)) selArr.splice(Math.min(Math.max(i, 0), selArr.length), 0, txt);
+                option.classList.add('multi-selected');
+                syncOptionSelectionState(container);
+                updateBtn();
+                updateNote();
+            });
         } else {
             option.classList.add('multi-selected');
-            option.setAttribute('aria-selected', 'true');
             selArr.push(txt);
         }
+        syncOptionSelectionState(container);
         updateBtn();
+        if (searchInput) {
+            searchInput.value = '';
+            filterOptions(container, '');
+        }
         updateNote();
     };
 }
@@ -1862,21 +3390,21 @@ function loadEp(datos) {
 }
 
 /* ─── Confirmación de RC → EP (si existe) o NOC ─── */
-function proceedAfterRc() {
+function proceedAfterRc({ focus = true } = {}) {
     if (selected.rc.length === 0) return;
     if ((selected.datosDiag?.ep || []).length) {
-        activateStep(4, { focus: true });          // → Evidenciado por
+        activateStep(4, { focus });          // → Evidenciado por
     } else {
         loadNocs(selected.datosDiag);
-        activateStep(5, { focus: true });          // → NOC
+        activateStep(5, { focus });          // → NOC
     }
 }
 
 /* ─── Confirmación de EP → NOC ─── */
-function proceedAfterEp() {
+function proceedAfterEp({ focus = true } = {}) {
     if (selected.ep.length === 0) return;
     loadNocs(selected.datosDiag);
-    activateStep(5, { focus: true });              // → NOC
+    activateStep(5, { focus });              // → NOC
 }
 
 /* ─── Escapa texto del usuario para insertarlo de forma segura en innerHTML ─── */
@@ -1919,6 +3447,7 @@ function buildCustomForm({ placeholder, value = '', onCommit, onCancel }) {
     input.placeholder = placeholder;
     input.maxLength = 160;
     input.value = value || '';
+    input.dataset.initialValue = value || '';
     input.setAttribute('aria-label', placeholder);
 
     const actions = document.createElement('div');
@@ -1935,15 +3464,30 @@ function buildCustomForm({ placeholder, value = '', onCommit, onCancel }) {
     actions.append(addBtn, cancelBtn);
     form.append(input, actions);
 
-    const commit = () => { const v = input.value.trim(); if (v) onCommit(v); };
+    const commit = () => {
+        const v = input.value.trim();
+        if (v) {
+            input.setAttribute('aria-invalid', 'false');
+            onCommit(v);
+            return;
+        }
+        input.setAttribute('aria-invalid', 'true');
+        input.focus();
+        announceAction('Escriba un valor antes de confirmar.');
+    };
+    input.addEventListener('input', () => input.setAttribute('aria-invalid', 'false'));
     addBtn.addEventListener('click', commit);
     cancelBtn.addEventListener('click', () => onCancel && onCancel());
     input.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.altKey)) {
             e.preventDefault();
-            onCancel && onCancel();
+            e.stopPropagation();
+            announceAction('Confirme o cancele el editor personalizado antes de revisar la nota.');
+        } else if (e.key === 'Enter') {
+            e.preventDefault();
+            e.stopPropagation();
+            commit();
         }
-        else if (e.key === 'Enter') { e.preventDefault(); commit(); }
         else if (e.key === 'Escape') { e.preventDefault(); onCancel && onCancel(); }
     });
     // Los clics dentro del editor no deben propagarse al onclick del contenedor
@@ -1977,7 +3521,7 @@ function renderB6NocRef(nocNombre) {
 }
 
 /* ─── Pasos comunes tras definir el NOC (predefinido o personalizado) ─── */
-function proceedAfterNoc(datos) {
+function proceedAfterNoc(datos, { advance = true, focus = true } = {}) {
     selected.nics = [];
     selected.customNics = [];
     selected.b6Escala = null;
@@ -1985,12 +3529,16 @@ function proceedAfterNoc(datos) {
     selected.b6CustomNiveles = [];
     selected.b6Puntuacion = null;
     selected.b6Descripcion = null;
+    const b6Picker = document.getElementById('b6ScalePicker');
+    const b6Custom = document.getElementById('b6CustomScale');
+    if (b6Picker) b6Picker.hidden = true;
+    if (b6Custom) { b6Custom.hidden = true; b6Custom.innerHTML = ''; }
     [6, 7].forEach((n) => document.getElementById(`step${n}`)?.classList.remove('completed'));
     maxReachedStep = 5;   // el avance posterior ya no es válido: se eligió otro NOC
     showMetaBlock(false);
     els.searchNic.value = '';
     loadIntervenciones(datos);
-    activateStep(6, { focus: true });
+    if (advance) activateStep(6, { focus });
     updateNote();
 }
 
@@ -2005,27 +3553,9 @@ function clearB6IfNoNics() {
     }
 }
 
-/* ─── Tarjeta de una NIC personalizada ya agregada (con botón de quitar) ─── */
-function buildCustomNicCard(nic) {
-    const card = document.createElement('div');
-    card.className = 'option option--custom multi-selected';
-    const h = document.createElement('h4');
-    h.textContent = nic;
-    const p = document.createElement('p');
-    p.textContent = 'Intervención personalizada';
-    const rm = document.createElement('button');
-    rm.type = 'button';
-    rm.className = 'option-remove';
-    rm.dataset.nic = nic;
-    rm.setAttribute('aria-label', 'Quitar intervención');
-    rm.textContent = '✕';
-    card.append(h, p, rm);
-    return card;
-}
-
 /* ─── Abre el editor inline para agregar una NIC personalizada ─── */
 function openNicCustomForm(datos) {
-    const add = els.intervenciones.querySelector('.option--add');
+    const add = document.querySelector('#nicCustomControls .nic-custom-add');
     if (!add) return;
     const form = buildCustomForm({
         placeholder: 'Escriba la intervención NIC…',
@@ -2045,11 +3575,67 @@ function openNicCustomForm(datos) {
 
 /* ─── Quita una NIC personalizada ─── */
 function removeNicCustom(datos, nic) {
+    const index = selected.customNics.indexOf(nic);
+    const selectedIndex = selected.nics.indexOf(nic);
+    const b6Snapshot = {
+        b6Escala: selected.b6Escala,
+        b6EscalaId: selected.b6EscalaId,
+        b6CustomNiveles: [...selected.b6CustomNiveles],
+        b6Puntuacion: selected.b6Puntuacion,
+        b6Descripcion: selected.b6Descripcion,
+    };
     selected.customNics = selected.customNics.filter((n) => n !== nic);
     selected.nics = selected.nics.filter((n) => n !== nic);
     clearB6IfNoNics();
     loadIntervenciones(datos);
     updateNote();
+    requestAnimationFrame(() => {
+        const chips = [...document.querySelectorAll('#nicCustomControls [data-nic-custom]')];
+        const target = chips[Math.min(Math.max(index, 0), chips.length - 1)]
+            || document.querySelector('#nicCustomControls .nic-custom-add')
+            || els.searchNic;
+        target?.focus();
+    });
+    offerUndo('Intervención personalizada eliminada', () => {
+        if (!selected.customNics.includes(nic)) selected.customNics.splice(Math.max(0, index), 0, nic);
+        if (!selected.nics.includes(nic)) selected.nics.splice(Math.max(0, selectedIndex), 0, nic);
+        Object.assign(selected, b6Snapshot);
+        loadIntervenciones(datos);
+        if (b6Snapshot.b6Puntuacion != null) loadEvaluaciones(selected.datosDiag, selected.nocNombre);
+        updateNote();
+        document.querySelector(`#nicCustomControls [data-nic-custom="${CSS.escape(nic)}"]`)?.focus();
+    });
+}
+
+function renderNicCustomControls(datos) {
+    document.getElementById('nicCustomControls')?.remove();
+    const controls = document.createElement('div');
+    controls.id = 'nicCustomControls';
+    controls.className = 'custom-selection-controls';
+    controls.setAttribute('aria-label', 'Intervenciones personalizadas');
+    selected.customNics.forEach((nic) => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'custom-selection-chip';
+        chip.dataset.nicCustom = nic;
+        chip.setAttribute('aria-label', `Quitar intervención personalizada: ${nic}`);
+        chip.setAttribute('aria-keyshortcuts', 'Delete Backspace Shift+Backspace');
+        chip.textContent = `${nic} ×`;
+        chip.addEventListener('click', () => removeNicCustom(datos, nic));
+        chip.addEventListener('keydown', (event) => {
+            if (!['Delete', 'Backspace'].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey) return;
+            event.preventDefault();
+            removeNicCustom(datos, nic);
+        });
+        controls.appendChild(chip);
+    });
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'nic-custom-add custom-selection-add';
+    add.textContent = '+ Otra intervención personalizada';
+    add.addEventListener('click', () => openNicCustomForm(datos));
+    controls.appendChild(add);
+    els.intervenciones.after(controls);
 }
 
 /* ─── Carga intervenciones NIC (multi-select con botón de confirmación) ─── */
@@ -2058,16 +3644,12 @@ function loadIntervenciones(datos) {
     const nics = datos.nic || [];
 
     nics.forEach((nic, i) => {
-        const opt = createOption(nic, 'Clic para seleccionar / deseleccionar', { nic: String(i) });
+        const opt = createOption(nic, 'Seleccione para marcar o desmarcar', { nic: String(i) });
         if (selected.nics.includes(nic)) opt.classList.add('multi-selected');
         els.intervenciones.appendChild(opt);
     });
 
-    // NICs personalizadas ya agregadas
-    selected.customNics.forEach((nic) => els.intervenciones.appendChild(buildCustomNicCard(nic)));
-
-    // Tarjeta para agregar una intervención personalizada
-    els.intervenciones.appendChild(buildAddCard('Otra intervención (personalizada)'));
+    renderNicCustomControls(datos);
     // Modo navegación (multi): Enter alterna la NIC enfocada; Shift+Enter o el botón
     // Continuar avanzan (sin avances accidentales). El buscador entrega aquí con Enter/↓.
     setupOptionList(els.intervenciones, {
@@ -2083,61 +3665,130 @@ function loadIntervenciones(datos) {
     els.intervenciones.onclick = (e) => {
         if (e.target.closest('.custom-form')) return;            // clics dentro del editor
 
-        const rm = e.target.closest('.option-remove');
-        if (rm) { e.stopPropagation(); removeNicCustom(datos, rm.dataset.nic); return; }
-
         const option = e.target.closest('.option');
         if (!option || option.style.display === 'none') return;
-
-        if (option.classList.contains('option--add'))    { openNicCustomForm(datos); return; }
-        if (option.classList.contains('option--custom'))  return;  // se quita con el ✕
 
         // NIC predefinida: alternar selección
         const nicText = nics[Number(option.dataset.nic)];
         if (option.classList.contains('multi-selected')) {
             option.classList.remove('multi-selected');
-            option.setAttribute('aria-selected', 'false');
+            const removedIndex = selected.nics.indexOf(nicText);
+            const b6Snapshot = {
+                b6Escala: selected.b6Escala,
+                b6EscalaId: selected.b6EscalaId,
+                b6CustomNiveles: [...selected.b6CustomNiveles],
+                b6Puntuacion: selected.b6Puntuacion,
+                b6Descripcion: selected.b6Descripcion,
+            };
             selected.nics = selected.nics.filter((n) => n !== nicText);
+            offerUndo('Se quitó una intervención NIC', () => {
+                if (!selected.nics.includes(nicText)) {
+                    selected.nics.splice(Math.min(Math.max(removedIndex, 0), selected.nics.length), 0, nicText);
+                }
+                Object.assign(selected, b6Snapshot);
+                option.classList.add('multi-selected');
+                syncOptionSelectionState(els.intervenciones);
+                if (b6Snapshot.b6Puntuacion != null) loadEvaluaciones(selected.datosDiag, selected.nocNombre);
+                updateNicConfirmBtn();
+                updateNote();
+            });
         } else {
             option.classList.add('multi-selected');
-            option.setAttribute('aria-selected', 'true');
             selected.nics.push(nicText);
         }
+        syncOptionSelectionState(els.intervenciones);
+        els.searchNic.value = '';
+        filterOptions(els.intervenciones, '');
         clearB6IfNoNics();
         updateNicConfirmBtn();
         updateNote();
     };
 }
 
-/* ─── Tarjeta del NOC personalizado ya elegido (clic para editar) ─── */
-function buildCustomNocCard() {
-    const card = document.createElement('div');
-    card.className = 'option option--custom selected';
-    const h = document.createElement('h4');
-    h.textContent = selected.nocNombre;
-    const p = document.createElement('p');
-    p.textContent = 'Resultado personalizado · clic para editar';
-    card.append(h, p);
-    return card;
+function commitNocSelection(datos, { id, name, custom, confirmed = false, trigger, advance = shouldAdvanceOption(), focus = true } = {}) {
+    const sameSelection = selected.noc === id && selected.nocNombre === name;
+    if (sameSelection) {
+        loadNocs(datos);
+        if (advance) {
+            loadIntervenciones(datos);
+            activateStep(6, { focus });
+        } else {
+            requestAnimationFrame(() => {
+                const chosen = els.nocs.querySelector('.option.selected') || visibleOptions(els.nocs)[0];
+                if (chosen) focusOption(chosen, els.nocs);
+            });
+        }
+        announceAction('Resultado NOC confirmado. Las intervenciones y la evaluación se conservaron.');
+        return;
+    }
+
+    const hasDownstream = selected.nics.length > 0 || selected.b6Puntuacion !== null;
+    if (selected.noc !== null && hasDownstream && !confirmed) {
+        runDependentChange({
+            title: '¿Cambiar el resultado NOC?',
+            description: 'Se reiniciarán las intervenciones NIC seleccionadas y la evaluación B6.',
+            confirmLabel: 'Cambiar resultado',
+            trigger: trigger || document.activeElement,
+            onConfirm: () => commitNocSelection(datos, { id, name, custom, confirmed: true, trigger, advance, focus }),
+        });
+        return;
+    }
+
+    // Cualquier deshacer pendiente pertenece al contexto del NOC anterior.
+    // Invalidarlo antes de cambiar evita restaurar NIC/B6 bajo otro resultado.
+    cancelPendingUndo();
+    selected.noc = id;
+    selected.nocNombre = name;
+    selected.nocCustom = !!custom;
+    markDraftRevision();
+    loadNocs(datos);
+    proceedAfterNoc(datos, { advance, focus });
+    if (!advance) {
+        requestAnimationFrame(() => {
+            const chosen = els.nocs.querySelector('.option.selected') || visibleOptions(els.nocs)[0];
+            if (chosen) focusOption(chosen, els.nocs);
+        });
+    }
 }
 
 /* ─── Abre el editor inline para definir un NOC personalizado ─── */
 function openNocCustomForm(datos, prefill) {
-    const slot = els.nocs.querySelector('.option--add, .option--custom');
+    const slot = document.querySelector('#nocCustomControls .noc-custom-action');
     if (!slot) return;
     const form = buildCustomForm({
         placeholder: 'Escriba el resultado esperado (NOC)…',
         value: prefill || '',
         onCommit: (v) => {
-            selected.noc = 'custom';
-            selected.nocNombre = v;
-            selected.nocCustom = true;
-            loadNocs(datos);          // refresca: deselecciona predefinidos, muestra el custom
-            proceedAfterNoc(datos);
+            commitNocSelection(datos, {
+                id: 'custom',
+                name: v,
+                custom: true,
+                trigger: document.activeElement,
+            });
         },
         onCancel: () => loadNocs(datos),
     });
     slot.replaceWith(form);
+}
+
+function renderNocCustomControls(datos) {
+    document.getElementById('nocCustomControls')?.remove();
+    const controls = document.createElement('div');
+    controls.id = 'nocCustomControls';
+    controls.className = 'custom-selection-controls';
+    const action = document.createElement('button');
+    action.type = 'button';
+    action.className = 'noc-custom-action custom-selection-add';
+    if (selected.nocCustom && selected.nocNombre) {
+        action.classList.add('custom-selection-add--selected');
+        action.textContent = `Resultado personalizado: ${selected.nocNombre} · Editar`;
+        action.setAttribute('aria-label', `Editar resultado personalizado: ${selected.nocNombre}`);
+    } else {
+        action.textContent = '+ Otro resultado personalizado';
+    }
+    action.addEventListener('click', () => openNocCustomForm(datos, selected.nocCustom ? selected.nocNombre : ''));
+    controls.appendChild(action);
+    els.nocs.after(controls);
 }
 
 /* ─── Carga resultados NOC ─── */
@@ -2156,28 +3807,23 @@ function loadNocs(datos) {
         els.nocs.querySelectorAll('.option')[selected.noc]?.classList.add('selected');
     }
 
-    // Slot personalizado: tarjeta del NOC custom elegido, o el "+ Otro resultado"
-    els.nocs.appendChild(
-        selected.nocCustom && selected.nocNombre
-            ? buildCustomNocCard()
-            : buildAddCard('Otro resultado (personalizado)')
-    );
     setupOptionList(els.nocs, { stepNum: 5 });
+    renderNocCustomControls(datos);
 
     els.nocs.onclick = (e) => {
         if (e.target.closest('.custom-form')) return;           // clics dentro del editor
         const option = e.target.closest('.option');
         if (!option) return;
 
-        if (option.classList.contains('option--add'))    { openNocCustomForm(datos, ''); return; }
-        if (option.classList.contains('option--custom'))  { openNocCustomForm(datos, selected.nocNombre); return; }
-
         // NOC predefinido
-        selected.noc = Number(option.dataset.noc);
-        selected.nocNombre = nocs[selected.noc];
-        selected.nocCustom = false;
-        loadNocs(datos);          // refresca: marca el predefinido y restaura "+ Otro resultado"
-        proceedAfterNoc(datos);
+        const nextNoc = Number(option.dataset.noc);
+        commitNocSelection(datos, {
+            id: nextNoc,
+            name: nocs[nextNoc],
+            custom: false,
+            trigger: option,
+            focus: shouldMoveFocusAfterActivation(e),
+        });
     };
 }
 
@@ -2207,16 +3853,19 @@ function renderB6Levels(escala) {
 
         els.evaluaciones.querySelectorAll('.option').forEach((o) => o.classList.remove('selected'));
         option.classList.add('selected');
+        syncOptionSelectionState(els.evaluaciones);
 
         const parsed = parseB6(escala[Number(option.dataset.nivel)]);
         selected.b6Puntuacion = parsed.puntuacion;
         selected.b6Descripcion = parsed.descripcion;
 
-        collapseStep5();
         showMetaBlock(true);
         updateNote();
-        // Continuar en la etapa global de Evaluación y entrega.
-        activateFlowStage('faseF', { focus: true });
+        if (shouldAdvanceOption()) {
+            collapseStep5();
+            // Continuar en la etapa global de Evaluación y entrega.
+            activateFlowStage('faseF', { focus: shouldMoveFocusAfterActivation(e) });
+        }
     };
 }
 
@@ -2344,7 +3993,6 @@ function renderCustomScaleEditor() {
 
     const feedback = document.createElement('div');
     feedback.className = 'b6-cs-feedback';
-    feedback.setAttribute('aria-live', 'polite');
     wrap.appendChild(feedback);
 
     addBtn.addEventListener('click', () => {
@@ -2371,31 +4019,12 @@ function renderCustomScaleEditor() {
     });
     list.addEventListener('keydown', (e) => {
         if (!e.target.classList.contains('b6-cs-input')) return;
-        if (e.key === 'Backspace' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
-            e.preventDefault();
-            removeScaleRow(e.target.closest('.b6-cs-row'));
-            return;
-        }
-        if ((e.key !== 'Enter' && e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || e.shiftKey || e.ctrlKey || e.metaKey) return;
+        if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
         const inputs = [...list.querySelectorAll('.b6-cs-input')];
         const idx = inputs.indexOf(e.target);
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            if (idx > 0) inputs[idx - 1].focus();
-            else document.getElementById('b6ScaleSelect')?.focus();
-            return;
-        }
         e.preventDefault();
         if (idx < inputs.length - 1) inputs[idx + 1].focus();
         else useBtn.focus();
-    });
-    [addBtn, useBtn].forEach((btn) => {
-        btn.addEventListener('keydown', (e) => {
-            if (e.key !== 'ArrowUp' || e.shiftKey || e.ctrlKey || e.metaKey) return;
-            e.preventDefault();
-            const inputs = list.querySelectorAll('.b6-cs-input');
-            inputs[inputs.length - 1]?.focus();
-        });
     });
     useBtn.addEventListener('click', () => {
         const niv = [...list.querySelectorAll('.b6-cs-input')].map((i) => i.value.trim()).filter(Boolean);
@@ -2467,6 +4096,7 @@ function getMetaLograda() {
    Sigue párrafo a párrafo la plantilla oficial de NOTA DE ENTREGA DE TURNO
    (NOTA_FINAL_ENTREGA.docx). Los campos vacíos se muestran como "___". */
 function updateNote() {
+    markDraftRevision();
     const nc = window.NotaCampos;
     const s = nc?.state;
     const hasData = (els.sexo && els.sexo.value !== '___')
@@ -2648,36 +4278,64 @@ function noteToPlainText(el) {
         .trim();
 }
 
-/* ─── Copia la nota (solo si está completa) ─── */
-function copyNote() {
+async function writeClipboardText(text) {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+        try {
+            await navigator.clipboard.writeText(text);
+            return true;
+        } catch (_) {
+            // Algunos contextos institucionales bloquean la API moderna; probar fallback verificable.
+        }
+    }
+    const previousFocus = document.activeElement;
+    const ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('aria-hidden', 'true');
+    ta.style.cssText = 'position:fixed;inset:auto auto 0 -9999px;opacity:0;';
+    (els.noteSection?.open ? els.noteSection : document.body).appendChild(ta);
+    ta.focus();
+    ta.select();
+    let copied = false;
+    try { copied = document.execCommand('copy') === true; } catch (_) { copied = false; }
+    ta.remove();
+    previousFocus?.focus?.();
+    return copied;
+}
+
+/* ─── Copia la nota (solo si está completa y dentro de revisión) ─── */
+async function copyNote() {
     const { complete } = isNoteComplete();
     if (!complete) { updateCopyBtnState(); return; }
 
     const text = noteToPlainText(els.noteContent);
     const showCopied = () => {
-        [els.copyBtn, els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
+        [els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
             btn.textContent = '✓ ¡Copiado!';
             btn.classList.add('copied');
         });
         setTimeout(() => {
-            [els.copyBtn, els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
+            [els.drawerCopyBtn].filter(Boolean).forEach((btn) => {
                 btn.textContent = 'Copiar nota';
                 btn.classList.remove('copied');
             });
         }, 2000);
     };
 
-    navigator.clipboard.writeText(text).then(() => {
+    const copied = await writeClipboardText(text);
+    if (copied) {
+        interactionMetrics?.record('copy', { outcome: 'success', stageId: 'note' });
+        lastCopiedRevision = draftRevision;
         showCopied();
-    }).catch(() => {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        showCopied();
-    });
+        updateCopyBtnState();
+        announceAction('Nota copiada correctamente.');
+        return;
+    }
+    interactionMetrics?.record('copy', { outcome: 'failure', stageId: 'note' });
+    if (els.previewStatus) {
+        els.previewStatus.className = 'note-drawer-status incomplete';
+        els.previewStatus.textContent = 'No fue posible copiar la nota. Revise los permisos del portapapeles e intente nuevamente.';
+    }
+    announceAction('No fue posible copiar la nota.');
 }
 
 /* ─── Reinicia el flujo completo ─── */
@@ -2690,6 +4348,8 @@ const RESET_SECTION_LABELS = {
     faseF: 'Evaluación y entrega',
 };
 let pendingResetSection = null;
+let pendingResetInvoker = null;
+let pendingResetRestoreFocus = true;
 
 function resetSegmentedValue(groupId, hidden, emptyValue = '') {
     if (hidden) hidden.value = emptyValue;
@@ -2726,7 +4386,9 @@ function resetPaeSection() {
 }
 
 function resetCurrentSection(sectionId) {
+    cancelPendingUndo();
     toggleNote(false);
+    validatedStages.delete(sectionId);
     if (sectionId === 'patient') {
         window.NotaCampos?.resetPhase('patient');
         resetSegmentedValue('sexoSeg', els.sexo, '___');
@@ -2749,22 +4411,37 @@ function resetCurrentSection(sectionId) {
     focusFlowStageEntry(sectionId);
 }
 
-function openResetDialog(sectionId) {
+function openResetDialog(sectionId, invoker = document.activeElement) {
     const label = RESET_SECTION_LABELS[sectionId];
     if (!label || !els.resetDialog) return;
     pendingResetSection = sectionId;
+    pendingResetInvoker = invoker?.isConnected ? invoker : document.activeElement;
+    pendingResetRestoreFocus = true;
     if (els.resetDialogSectionName) els.resetDialogSectionName.textContent = label;
     if (els.resetSectionBtn) els.resetSectionBtn.textContent = `Reiniciar solo ${label}`;
+    if (interactionOverlays && !interactionOverlays.get('reset')) {
+        interactionOverlays.push({
+            id: 'reset',
+            element: els.resetDialog,
+            invoker: pendingResetInvoker,
+            modal: true,
+            onClose: () => { if (els.resetDialog.open) els.resetDialog.close(); },
+        });
+    }
     els.resetDialog.showModal();
-    els.resetCancelBtn?.focus();
+    requestAnimationFrame(() => els.resetCancelBtn?.focus());
 }
 
 function resetWorkflow({ confirmed = false } = {}) {
     if (!confirmed && !window.confirm('¿Reiniciar toda la nota?\n\nEsta acción limpiará toda la información ingresada y permitirá comenzar nuevamente. No se puede deshacer.')) return;
 
+    cancelPendingUndo();
+    suppressRevisionTracking = true;
     currentStep = 1;
     maxReachedStep = 1;
-    patientGateUnlocked = false;
+    patientGateEverUnlocked = false;
+    validatedStages.clear();
+    stageFocusMemory.clear();
     noteVisible = false;
     lastLogicalSectionId = 'patient';
     resetSectionTypeahead();
@@ -2792,6 +4469,7 @@ function resetWorkflow({ confirmed = false } = {}) {
     window.NotaCampos?.reset();
 
     document.querySelectorAll('.option').forEach((o) => o.classList.remove('selected', 'multi-selected'));
+    document.querySelectorAll('[role="listbox"], [role="grid"]').forEach(syncOptionSelectionState);
 
     STEPS.forEach((s) => {
         const stepEl = document.getElementById(`step${s.num}`);
@@ -2800,10 +4478,7 @@ function resetWorkflow({ confirmed = false } = {}) {
         const summaryEl = stepEl.querySelector('.step-summary');
         if (summaryEl) summaryEl.textContent = '';
         const header = stepEl.querySelector('.step-header');
-        if (header) {
-            header.setAttribute('aria-expanded', 'false');
-            header.setAttribute('tabindex', '-1');
-        }
+        syncStepHeaderAction(header, false);
     });
 
     if (els.searchAreas) els.searchAreas.value = '';
@@ -2854,6 +4529,9 @@ function resetWorkflow({ confirmed = false } = {}) {
     updateCopyBtnState();
     updateLayout();
     syncNotePanelHeight();
+    draftRevision = 0;
+    lastCopiedRevision = 0;
+    suppressRevisionTracking = false;
     // Listo para el siguiente paciente: foco en Sexo (inicio del flujo)
     focusSexo();
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
@@ -2947,7 +4625,7 @@ function createSelectedFindingChip(f) {
     chip.className = `reverse-selected-chip reverse-selected-chip--${f.kinds.has('rc') && f.kinds.has('ep') ? 'both' : f.kinds.has('rc') ? 'rc' : 'ep'}`;
     chip.dataset.findingKey = f.key;
     chip.setAttribute('aria-label', `Quitar ${f.text}`);
-    chip.setAttribute('aria-keyshortcuts', 'Enter Shift+Backspace');
+    chip.setAttribute('aria-keyshortcuts', 'Enter Delete Backspace Shift+Backspace');
 
     const kind = document.createElement('span');
     kind.className = 'reverse-selected-kind';
@@ -2981,6 +4659,7 @@ function renderSelectedFindings() {
 /* Lista de hallazgos: solo coincidencias al escribir; los elegidos siempre visibles */
 function renderFindings() {
     const q = normalizeText(els.searchFindings?.value?.trim() || '');
+    ensureSearchResultsStatus(els.searchFindings, els.findingsList);
     const chosenSet = selectedFindingSet();
     const chosen = reverse.findingKeys.map((key) => FINDINGS_BY_KEY.get(key)).filter(Boolean);
     let list;
@@ -3002,7 +4681,11 @@ function renderFindings() {
     els.findingsList.innerHTML = '';
     if (!list.length) {
         const filtered = reverse.kindFilter === 'rc' ? 'factores RC' : reverse.kindFilter === 'ep' ? 'signos EP' : 'hallazgos';
-        els.findingsList.innerHTML = `<p class="empty-state">${q ? `Sin coincidencias en ${filtered}.` : `Escriba para buscar ${filtered}.`}</p>`;
+        els.findingsList.setAttribute('role', 'group');
+        els.findingsList.removeAttribute('aria-multiselectable');
+        els.findingsList.removeAttribute('aria-rowcount');
+        els.findingsList.removeAttribute('aria-colcount');
+        els.findingsList.innerHTML = `<p class="empty-state" aria-hidden="true">${q ? `Sin coincidencias en ${filtered}.` : `Escriba para buscar ${filtered}.`}</p>`;
     } else {
         list.forEach((f) => {
             const opt = createFindingOption(f);
@@ -3015,15 +4698,16 @@ function renderFindings() {
             spatial: true,
             stepNum: 1,
             onAdvance: confirmFindings,
-            onRightEdge: (current) => {
-                if (!els.dxLive || els.dxLive.hidden || !visibleOptions(els.reverseResults).length) return false;
-                const currentRect = current.getBoundingClientRect();
-                const panelRect = els.dxLive.getBoundingClientRect();
-                if (panelRect.left <= currentRect.right) return false;
-                return focusClosestOptionByVertical(current, els.reverseResults);
+            onRightEdge: (source) => {
+                if (!isInteractionElementVisible(els.dxLive)) return false;
+                const target = closestRightOptionByVertical(source, els.reverseResults);
+                if (!target || target.getBoundingClientRect().left < source.getBoundingClientRect().right - 2) return false;
+                focusOption(target, els.reverseResults);
+                return true;
             },
         });
     }
+    updateSearchResultsStatus(els.findingsList, q, list.length);
     renderSelectedFindings();
 }
 
@@ -3037,12 +4721,21 @@ function confirmFindings() {
 
 function toggleReverseFinding(key) {
     const idx = reverse.findingKeys.indexOf(key);
-    if (idx >= 0) reverse.findingKeys.splice(idx, 1);
+    const removed = idx >= 0;
+    if (removed) reverse.findingKeys.splice(idx, 1);
     else reverse.findingKeys.push(key);
+    if (els.searchFindings) els.searchFindings.value = '';
     renderFindings();
     renderReverseResults();   // el panel lateral se actualiza en vivo
     const restored = [...els.findingsList.querySelectorAll('.option')].find((o) => o.dataset.findingKey === key);
     if (restored) focusOption(restored, els.findingsList);
+    if (removed) {
+        offerUndo('Se quitó el hallazgo seleccionado', () => {
+            if (!reverse.findingKeys.includes(key)) reverse.findingKeys.splice(Math.min(idx, reverse.findingKeys.length), 0, key);
+            renderFindings();
+            renderReverseResults();
+        });
+    }
 }
 
 function getReverseMatchesForDiagnosis(area, diag) {
@@ -3091,7 +4784,7 @@ function createReverseDiagnosisOption(result, selectedCount) {
     opt.className = 'option reverse-result-option';
     opt.dataset.area = result.area;
     opt.dataset.diag = result.diag;
-    opt.innerHTML = '<span class="check-mark">✓</span>';
+    opt.innerHTML = '<span class="check-mark" aria-hidden="true">✓</span>';
 
     const title = document.createElement('h4');
     title.textContent = result.diag;
@@ -3145,13 +4838,18 @@ function renderReverseResults() {
         return;
     }
 
-    // Panel lateral (no es un paso): ↑/↓ recorre diagnósticos; ← vuelve a hallazgos
+    // Panel lateral (no es un paso): conserva su rejilla y permite volver con
+    // Shift + ← a los hallazgos cuando ambas colecciones están lado a lado.
     results.slice(0, 40).forEach((r) => els.reverseResults.appendChild(createReverseDiagnosisOption(r, selectedCount)));
     setupOptionList(els.reverseResults, {
         multi: false,
         lockVerticalEdges: true,
-        onLeftEdge: (current) => focusClosestRightOptionByVertical(current, els.findingsList),
-        onRightEdge: (current) => { focusOption(current, els.reverseResults); return true; },
+        onLeftEdge: (source) => {
+            const target = closestOptionByVertical(source, els.findingsList);
+            if (!target || target.getBoundingClientRect().right > source.getBoundingClientRect().left + 2) return false;
+            focusOption(target, els.findingsList);
+            return true;
+        },
     });
 }
 
@@ -3162,9 +4860,10 @@ function nextStepAfterReversePick(datos) {
 }
 
 /* Elige un diagnóstico posible → pasa al flujo normal con RC/EP pre-rellenados */
-function pickReverseDiagnosis(area, diag) {
+function pickReverseDiagnosis(area, diag, { advance = true, focus = true } = {}) {
     const datos = datosProPai[area]?.[diag];
     if (!datos) return;
+    cancelPendingUndo();
     selected.area = area; selected.areaNombre = areaLabel(area);
     selected.diagnostico = diag; selected.diagnosticoNombre = diag; selected.datosDiag = datos;
 
@@ -3180,9 +4879,11 @@ function pickReverseDiagnosis(area, diag) {
 
     // Reconstruir las listas del flujo normal con las selecciones marcadas
     els.areas.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o.dataset.area === area));
+    syncOptionSelectionState(els.areas);
     els.searchDiag.value = '';
     loadDiagnosticos(area);
     els.diagnosticos.querySelectorAll('.option').forEach((o) => o.classList.toggle('selected', o.dataset.diagnostico === diag));
+    syncOptionSelectionState(els.diagnosticos);
     renderTransversales(datos);
     els.searchRc.value = ''; els.searchEp.value = ''; els.searchNic.value = '';
     loadRc(datos); loadEp(datos); loadNocs(datos);
@@ -3190,8 +4891,16 @@ function pickReverseDiagnosis(area, diag) {
     showMetaBlock(false);
 
     const nextStep = nextStepAfterReversePick(datos);
-    maxReachedStep = Math.max(2, nextStep - 1);
-    activateStep(nextStep, { focus: true });
+    maxReachedStep = advance ? Math.max(2, nextStep - 1) : 2;
+    if (advance) activateStep(nextStep, { focus });
+    else {
+        activateStep(2);
+        requestAnimationFrame(() => {
+            const chosen = [...els.diagnosticos.querySelectorAll('.option')]
+                .find((option) => option.dataset.diagnostico === diag);
+            if (chosen) focusOption(chosen, els.diagnosticos);
+        });
+    }
     updateNote();
 }
 
@@ -3221,6 +4930,7 @@ function setMode(mode) {
 /* Limpia la identificación del diagnóstico (área/diag/RC/EP/downstream + hallazgos),
    conservando los datos del paciente. Usado al cambiar de ruta. */
 function clearIdentification() {
+    cancelPendingUndo();
     selected.area = null; selected.areaNombre = null;
     selected.diagnostico = null; selected.diagnosticoNombre = null; selected.datosDiag = null;
     selected.rc = []; selected.ep = [];
@@ -3231,6 +4941,7 @@ function clearIdentification() {
     reverse.findingKeys = [];
     reverse.kindFilter = 'all';
     els.areas?.querySelectorAll('.option').forEach((o) => o.classList.remove('selected'));
+    syncOptionSelectionState(els.areas);
     if (els.searchAreas) els.searchAreas.value = '';
     els.searchDiag.value = '';
     if (els.searchFindings) els.searchFindings.value = '';
@@ -3243,6 +4954,12 @@ function clearIdentification() {
     if (els.epList) els.epList.innerHTML = '';
     els.nocs.innerHTML = '';
     els.evaluaciones.innerHTML = '';
+    document.getElementById('nocCustomControls')?.remove();
+    document.getElementById('nicCustomControls')?.remove();
+    const b6Picker = document.getElementById('b6ScalePicker');
+    const b6Custom = document.getElementById('b6CustomScale');
+    if (b6Picker) b6Picker.hidden = true;
+    if (b6Custom) { b6Custom.hidden = true; b6Custom.innerHTML = ''; }
     [2, 3, 4, 5, 6, 7].forEach((n) => document.getElementById(`step${n}`)?.classList.remove('completed'));
     maxReachedStep = 1;
     showMetaBlock(false);
@@ -3250,13 +4967,27 @@ function clearIdentification() {
     updateNote();
 }
 
-/* Cambia de ruta desde la UI: resetea la identificación y reactiva el paso 1. */
-function switchRoute(mode) {
+/* Cambia de ruta desde la UI sin descartar silenciosamente el PAE existente. */
+function switchRoute(mode, opts = {}) {
     const target = (mode === 'reverse') ? 'reverse' : 'forward';
     if (reverse.mode === target) return;
+    const hasIdentification = !!selected.area || !!selected.diagnostico
+        || selected.rc.length > 0 || selected.ep.length > 0 || selected.nics.length > 0
+        || selected.noc !== null || selected.b6Puntuacion !== null || reverse.findingKeys.length > 0;
+    if (hasIdentification && !opts.confirmed) {
+        runDependentChange({
+            title: '¿Cambiar la ruta de identificación?',
+            description: 'Se reiniciarán la identificación del PAE, el diagnóstico, los factores, los signos, el resultado NOC, las intervenciones NIC y la evaluación B6. Los demás datos de la nota se conservarán.',
+            confirmLabel: 'Cambiar ruta',
+            trigger: opts.trigger || document.activeElement,
+            onConfirm: () => switchRoute(target, { ...opts, confirmed: true }),
+        });
+        return;
+    }
+    markDraftRevision();
     clearIdentification();
     setMode(target);
-    activateStep(1, { focus: true });
+    activateStep(1, { focus: opts.focus !== false });
 }
 
 /* Configura el control de ruta (teclado + clic), el filtro y el buscador de hallazgos */
@@ -3266,30 +4997,45 @@ function setupRouteSwitch() {
         const btns = [...group.querySelectorAll('[role="radio"]')];
         group.addEventListener('click', (e) => {
             const b = e.target.closest('[role="radio"]');
-            if (b) switchRoute(b.dataset.mode);
+            if (b) switchRoute(b.dataset.mode, {
+                trigger: b,
+                focus: shouldMoveFocusAfterActivation(e),
+            });
         });
         group.addEventListener('keydown', (e) => {
             const current = document.activeElement?.closest?.('[role="radio"]');
             if (!current) return;
-            if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+            if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+            if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
                 const idx = btns.indexOf(current);
-                const nextIndex = idx + (e.key === 'ArrowRight' ? 1 : -1);
-                if (nextIndex < 0 || nextIndex >= btns.length) return;
                 e.preventDefault();
-                const next = btns[nextIndex];
-                switchRoute(next.dataset.mode);
+                const delta = e.key === 'ArrowRight' ? 1 : -1;
+                const next = btns[idx + delta];
+                if (!next) return;
+                switchRoute(next.dataset.mode, { trigger: current, focus: true });
                 next.focus();
                 return;
             }
-            if (e.key === 'Enter' || e.key === 'ArrowDown') {
+            if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
                 e.preventDefault();
-                switchRoute(current.dataset.mode);
+                return;
+            }
+            if (e.key === 'Home' || e.key === 'End') {
+                e.preventDefault();
+                const next = e.key === 'Home' ? btns[0] : btns.at(-1);
+                switchRoute(next.dataset.mode, { trigger: current, focus: true });
+                next.focus();
+                return;
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                switchRoute(current.dataset.mode, { trigger: current, focus: true });
                 focusRouteSearch(current.dataset.mode);
                 return;
             }
             if (e.key === ' ') {
                 e.preventDefault();
-                switchRoute(current.dataset.mode);
+                switchRoute(current.dataset.mode, { trigger: current, focus: true });
             }
         });
     }
@@ -3302,16 +5048,28 @@ function setupRouteSwitch() {
         const filterBtns = [...els.findingKindFilters.querySelectorAll('[role="radio"]')];
         const current = document.activeElement?.closest?.('[role="radio"]');
         const idx = filterBtns.indexOf(current);
-        if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
-            const nextIndex = idx + (e.key === 'ArrowRight' ? 1 : -1);
-            if (nextIndex < 0 || nextIndex >= filterBtns.length) return;
+        if (e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (['ArrowLeft', 'ArrowRight'].includes(e.key)) {
             e.preventDefault();
-            const next = filterBtns[nextIndex];
+            const delta = e.key === 'ArrowRight' ? 1 : -1;
+            const next = filterBtns[idx + delta];
+            if (!next) return;
             setFindingKindFilter(next.dataset.filter);
             next.focus();
             return;
         }
-        if ((e.key === 'Enter' || e.key === 'ArrowDown') && current) {
+        if ((e.key === 'ArrowUp' || e.key === 'ArrowDown') && current) {
+            e.preventDefault();
+            return;
+        }
+        if (e.key === 'Home' || e.key === 'End') {
+            e.preventDefault();
+            const next = e.key === 'Home' ? filterBtns[0] : filterBtns.at(-1);
+            setFindingKindFilter(next.dataset.filter);
+            next.focus();
+            return;
+        }
+        if (e.key === 'Enter' && current) {
             e.preventDefault();
             setFindingKindFilter(current.dataset.filter);
             els.searchFindings?.focus();
@@ -3325,24 +5083,18 @@ function setupRouteSwitch() {
             }
             return;
         }
-        if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            focusRouteSwitch();
-        }
     });
 
     els.searchFindings?.addEventListener('input', renderFindings);
     els.searchFindings?.addEventListener('keydown', (e) => {
-        if (e.key === 'Backspace' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && reverse.findingKeys.length) {
-            e.preventDefault();
-            toggleReverseFinding(reverse.findingKeys[reverse.findingKeys.length - 1]);
-            return;
-        }
         if (e.key.startsWith('Arrow') && (e.shiftKey || e.ctrlKey || e.metaKey)) return;  // atajos globales
+        if (e.key === 'Enter' && (e.ctrlKey || e.metaKey || e.altKey)) return;
         if (e.key === 'Enter') {
-            if (e.shiftKey && reverse.findingKeys.length) {
+            if (e.shiftKey) {
                 e.preventDefault();
-                confirmFindings();
+                e.stopPropagation();
+                if (reverse.findingKeys.length) confirmFindings();
+                else announceAction('Seleccione al menos un hallazgo antes de continuar.');
                 return;
             }
             const selectable = visibleSelectableOptions(els.findingsList);
@@ -3356,9 +5108,6 @@ function setupRouteSwitch() {
         } else if (e.key === 'ArrowDown') {
             const first = visibleSelectableOptions(els.findingsList)[0] || visibleOptions(els.findingsList)[0];
             if (first) { e.preventDefault(); focusOption(first, els.findingsList); }
-        } else if (e.key === 'ArrowUp') {
-            e.preventDefault();
-            focusFindingKindFilter();
         }
     });
     els.findingsList?.addEventListener('click', (e) => {
@@ -3374,7 +5123,7 @@ function setupRouteSwitch() {
     });
     els.selectedFindings?.addEventListener('keydown', (e) => {
         const chip = e.target.closest('[data-finding-key]');
-        if (!chip || e.key !== 'Backspace' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+        if (!chip || !['Backspace', 'Delete'].includes(e.key) || e.ctrlKey || e.metaKey || e.altKey) return;
         e.preventDefault();
         toggleReverseFinding(chip.dataset.findingKey);
         els.searchFindings?.focus();
@@ -3382,13 +5131,18 @@ function setupRouteSwitch() {
     const pickReverseResultFromEvent = (e) => {
         const option = e.target.closest('.option');
         if (!option || option.style.display === 'none' || !option.dataset.diag) return;
-        pickReverseDiagnosis(option.dataset.area, option.dataset.diag);
+        pickReverseDiagnosis(option.dataset.area, option.dataset.diag, {
+            advance: shouldAdvanceOption(),
+            focus: shouldMoveFocusAfterActivation(e),
+        });
     };
     els.reverseResults?.addEventListener('click', pickReverseResultFromEvent);
 }
 
 /* ─── Inicializa la app ─── */
 function init() {
+    applyKeyboardNavigationMode(readKeyboardNavigationMode());
+
     // Verificación de integridad: cada área del catálogo debe existir en datosProPai
     NOTA_AREAS.forEach((a) => {
         if (!datosProPai[a.key]) console.warn(`[CareFlow] Condición clínica sin datos PAE: "${a.key}"`);
@@ -3410,11 +5164,10 @@ function init() {
     updateStep1Lock();
     enableStepNavigation();
     setupRouteSwitch();   // control de ruta (paso 1) + filtro y buscador de hallazgos
-    setupConfirmButtonNavigation();
     setMode('forward');   // estado inicial coherente de los cuerpos de ruta
 
-    // Buscadores: escribir filtra; Enter o ↓ entran a la lista; ↑ sale a la sección
-    // anterior. Shift+flechas (saltos) se manejan en el handler global.
+    // Buscadores: escribir filtra; Enter o ↓ entran a la lista. Las flechas simples
+    // permanecen dentro del campo y Shift + flechas cambia de campo.
     wireSearch(els.searchAreas, els.areas, 1);
     wireSearch(els.searchDiag,  els.diagnosticos, 2);
     wireSearch(els.searchRc,    els.rcList, 3);
@@ -3439,9 +5192,8 @@ function init() {
         scrollSoft(els.otrosComentarios, 'nearest');
     });
 
-    // Observaciones: Shift+Enter revisa la nota aunque el campo opcional esté vacío;
-    // Ctrl/⌘+Enter conserva el acceso rápido a Copiar nota.
-    // ↑ en la 1ª línea vuelve a Estado de la meta (corregirla sin usar el mouse)
+    // Observaciones: Enter conserva su comportamiento nativo. Shift+Enter continúa
+    // y Ctrl/⌘+Enter abre revisión mediante el dispatcher único.
     els.otrosComentarios?.addEventListener('input', updateNote);
     els.otrosComentarios?.addEventListener('keydown', (e) => {
         if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -3450,47 +5202,42 @@ function init() {
             continueFlowStage('faseF');
         } else if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
             e.preventDefault();
-            if (!els.copyBtn?.disabled) { els.copyBtn.focus(); scrollSoft(els.copyBtn); }
-        } else if (e.key === 'ArrowUp' && !e.shiftKey) {
-            const ta = els.otrosComentarios;
-            const beforeCursor = ta.value.slice(0, ta.selectionStart);
-            if (!beforeCursor.includes('\n')) {
-                e.preventDefault();
-                scrollSoft(els.metaBlock);
-                focusMeta();
-            }
+            e.stopPropagation();
+            toggleNote(true);
         }
     });
 
     // Botones confirmar de RC y EP
-    els.rcConfirmBtn?.addEventListener('click', proceedAfterRc);
-    els.epConfirmBtn?.addEventListener('click', proceedAfterEp);
+    els.rcConfirmBtn?.addEventListener('click', (event) => proceedAfterRc({ focus: shouldMoveFocusAfterActivation(event) }));
+    els.epConfirmBtn?.addEventListener('click', (event) => proceedAfterEp({ focus: shouldMoveFocusAfterActivation(event) }));
 
     // Botón confirmar NICs → carga B6 y avanza
-    els.nicConfirmBtn?.addEventListener('click', () => {
+    els.nicConfirmBtn?.addEventListener('click', (event) => {
         if (selected.nics.length === 0) return;
         loadEvaluaciones(selected.datosDiag, selected.nocNombre);
-        activateStep(7, { focus: true });
+        activateStep(7, { focus: shouldMoveFocusAfterActivation(event) });
     });
 
-    // Toggle nota
-    els.noteToggleBtn?.addEventListener('click', toggleNote);
+    // Revisión de la nota
+    els.noteToggleBtn?.addEventListener('click', (event) => toggleNote(undefined, event.currentTarget));
     els.noteDrawerClose?.addEventListener('click', () => toggleNote(false));
     els.noteDrawerScrim?.addEventListener('click', () => toggleNote(false));
 
     // Botones de acción
-    document.getElementById('copyBtn')?.addEventListener('click', copyNote);
+    els.copyBtn?.addEventListener('click', (event) => toggleNote(true, event.currentTarget));
     els.drawerCopyBtn?.addEventListener('click', copyNote);
     document.querySelectorAll('[data-reset-section]').forEach((button) => {
-        button.addEventListener('click', () => openResetDialog(button.dataset.resetSection));
+        button.addEventListener('click', (event) => openResetDialog(button.dataset.resetSection, event.currentTarget));
     });
     els.resetCancelBtn?.addEventListener('click', () => els.resetDialog?.close());
     els.resetSectionBtn?.addEventListener('click', () => {
         const sectionId = pendingResetSection;
+        pendingResetRestoreFocus = false;
         els.resetDialog?.close();
         if (sectionId) resetCurrentSection(sectionId);
     });
     els.resetAllBtn?.addEventListener('click', () => {
+        pendingResetRestoreFocus = false;
         els.resetDialog?.close();
         resetWorkflow({ confirmed: true });
     });
@@ -3500,11 +5247,58 @@ function init() {
         const inside = e.clientX >= rect.left && e.clientX <= rect.right && e.clientY >= rect.top && e.clientY <= rect.bottom;
         if (!inside) els.resetDialog.close();
     });
-    els.resetDialog?.addEventListener('close', () => { pendingResetSection = null; });
+    els.resetDialog?.addEventListener('close', () => {
+        const invoker = pendingResetInvoker;
+        const restoreFocus = pendingResetRestoreFocus;
+        pendingResetSection = null;
+        pendingResetInvoker = null;
+        pendingResetRestoreFocus = true;
+        interactionOverlays?.remove('reset', { restoreFocus: false });
+        if (restoreFocus) requestAnimationFrame(() => {
+            if (!invoker?.isConnected) return;
+            invoker.focus?.({ preventScroll: true });
+            invoker.scrollIntoView?.({ block: 'nearest', inline: 'nearest', behavior: 'auto' });
+        });
+    });
+    els.resetDialog?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        els.resetDialog.close();
+    });
+    setupDialogActionNavigation(els.resetDialog);
+
+    els.noteSection?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        toggleNote(false);
+    });
+    els.noteSection?.addEventListener('close', () => {
+        if (noteVisible) toggleNote(false);
+    });
+    els.shortcutsBtn?.addEventListener('click', openShortcutsDialog);
+    els.shortcutsClose?.addEventListener('click', closeShortcutsDialog);
+    els.shortcutsDialog?.addEventListener('cancel', (event) => {
+        event.preventDefault();
+        closeShortcutsDialog();
+    });
+    els.shortcutsDialog?.addEventListener('close', () => {
+        interactionOverlays?.remove('shortcuts', { restoreFocus: true });
+    });
+    els.keyboardNavigationMode?.addEventListener('click', (event) => {
+        applyKeyboardNavigationMode(isAgileNavigation() ? 'standard' : 'agile', { persist: true, announce: true });
+        event.currentTarget.focus({ preventScroll: true });
+    });
 
     document.addEventListener('focusin', (e) => {
         const id = currentSectionId();
         if (id != null) rememberLogicalSection(id);
+        rememberStageFocus(e.target);
+        const navigationField = currentNavigationField(e.target);
+        if (navigationField?.kind === 'field') tabLevelController?.remember(navigationField, e.target);
+        if (isWritingElement(e.target)) writingTargetRegistry?.remember(writingScopeId(e.target), e.target);
+        interactionMetrics?.record('focus-transition', {
+            targetId: stableFocusId(e.target),
+            stageId: metricStageId(e.target),
+            modality: interactionOrigin?.current?.({ maxAge: 1500 }) || 'programmatic',
+        });
         const inReverseFields = e.target?.closest?.('#step1 [data-route="reverse"]');
         const inDiagnosisPanel = e.target?.closest?.('#dxLive');
         const nextContext = !!(inReverseFields || inDiagnosisPanel);
@@ -3514,89 +5308,20 @@ function init() {
         }
     });
 
-    // Shift+Enter: continuar desde la sección actual de forma consistente.
-    document.addEventListener('keydown', (e) => {
-        if (e.defaultPrevented || e.key !== 'Enter' || !e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
-        if (document.activeElement?.closest?.('.custom-form')) return;
-        if (activeFlowStage !== 'fasePAE') {
-            if (continueFlowStage(activeFlowStage)) {
-                e.preventDefault();
-                e.stopPropagation();
-            }
-            return;
-        }
-        if (advanceCurrentSectionByShortcut()) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-    });
-
-    // Las flechas relacionan controles por su posición visual dentro de la etapa visible.
-    document.addEventListener('keydown', handleSpatialArrow);
-
-    document.addEventListener('keydown', (e) => {
-        if (e.key === 'Escape' && noteVisible) {
-            e.preventDefault();
-            toggleNote(false);
-            return;
-        }
-        if (e.key !== 'Tab' || !noteVisible || !els.noteSection) return;
-        const focusable = [...els.noteSection.querySelectorAll('button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])')]
-            .filter((el) => el.offsetParent !== null);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
-        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
-    });
-
-    // Escritura directa: desde cualquier control de una sección, texto/borrado entra al buscador de esa sección.
-    document.addEventListener('keydown', (e) => {
-        if (e.defaultPrevented || e.ctrlKey || e.metaKey || e.altKey) return;
-        const isDeleteKey = e.key === 'Backspace' || e.key === 'Delete';
-        const isSearchChar = e.key !== '/' && e.key.length === 1 && !!e.key.trim();
-        if (isDeleteKey && e.shiftKey) return;       // reservado para eliminación contextual
-        if (!isSearchChar && !isDeleteKey) return;
-        const active = document.activeElement;
-        if (isEditableElement(active)) return;
-        if (active?.closest?.('.custom-form')) return;
-        const sectionId = activeLogicalSectionId();
-        const box = searchForActiveSection(active);
-        if (box) {
-            if (isDeleteKey && !box.value) return;
-            e.preventDefault();
-            e.stopPropagation();
-            if (isDeleteKey) sendDeleteToSectionSearch(e.key, box);
-            else {
-                resetSectionTypeahead();
-                sendCharToSectionSearch(e.key, box);
-            }
-            return;
-        }
-        if (isSearchChar && runSectionTypeahead(e.key, sectionId)) {
-            e.preventDefault();
-            e.stopPropagation();
-        }
-    }, true);
-
-    // Atajo "/": enfoca el buscador del paso activo (sin interrumpir escritura)
-    document.addEventListener('keydown', (e) => {
-        if (e.key !== '/' || e.ctrlKey || e.metaKey || e.altKey) return;
-        if (isEditableElement(document.activeElement)) return;
-        const box = reverse.mode === 'reverse'
-            ? els.searchFindings
-            : { 1: els.searchAreas, 2: els.searchDiag, 3: els.searchRc, 4: els.searchEp, 6: els.searchNic }[currentStep];
-        if (box) { e.preventDefault(); box.focus(); box.select?.(); }
-    });
+    setupInteractionCore();
+    setupExitGuard();
 
     // Recalcular techo del panel al redimensionar la ventana
     window.addEventListener('resize', () => {
         syncNotePanelHeight();
         syncDxLiveOffset();
+        syncVisibleOptionGrids();
     });
 
-    // Listo para empezar: enfocar el primer chip de Sexo
-    document.getElementById('sexoSeg')?.querySelector('[role="radio"]')?.focus();
+    revisionTrackingEnabled = true;
+
+    // La sesión comienza directamente en el primer dato clínico pendiente.
+    focusFlowStageEntry('patient', 'initial');
 }
 
 init();

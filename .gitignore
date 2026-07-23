@@ -38,3 +38,6 @@ npm-debug.log*
 # Temporal
 .cache/
 *.tmp
+test-results/
+playwright-report/
+blob-report/

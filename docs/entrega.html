@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/tokens.css">
     <!-- Estilos del note app (lógica intacta; solo tokens de color actualizados) -->
-    <link rel="stylesheet" href="styles.css?v=14">
+    <link rel="stylesheet" href="styles.css?v=18">
     <!-- Shell + capa de integración (carga después para envolver el note app) -->
     <link rel="stylesheet" href="css/careflow.css?v=3">
     <script src="js/auth.js"></script>
@@ -111,73 +111,118 @@
                         </aside>
 
                         <div class="note-drawer-scrim" id="noteDrawerScrim" hidden></div>
-                        <aside class="note-section note-drawer" id="noteSection" hidden role="dialog" aria-modal="true" aria-labelledby="noteDrawerTitle">
+                        <dialog class="note-section note-drawer" id="noteSection" aria-labelledby="noteDrawerTitle">
                             <div class="note-panel-header">
                                 <div>
                                     <span class="note-draft-kicker" id="previewDraftState">Borrador</span>
-                                    <h3 id="noteDrawerTitle">Nota de entrega</h3>
+                                    <h2 id="noteDrawerTitle">Nota de entrega</h2>
                                 </div>
                                 <div class="note-panel-header-actions">
                                     <button type="button" class="note-drawer-close" id="noteDrawerClose" aria-label="Cerrar vista previa">&#10005;</button>
                                 </div>
                             </div>
                             <div class="note-panel-body">
-                                <p class="note-drawer-status" id="previewStatus" aria-live="polite"></p>
-                                <div class="note-content" id="noteContent" role="document" aria-live="polite"></div>
+                                <p class="note-drawer-status" id="previewStatus"></p>
+                                <div class="note-content" id="noteContent" role="document"></div>
                             </div>
                             <div class="note-drawer-footer">
                                 <button type="button" class="copy-btn" id="drawerCopyBtn" disabled aria-disabled="true">Copiar nota</button>
                             </div>
-                        </aside>
+                        </dialog>
 
                         <dialog class="reset-dialog" id="resetDialog" aria-labelledby="resetDialogTitle" aria-describedby="resetDialogDescription">
                             <div class="reset-dialog-icon" aria-hidden="true">↺</div>
                             <h2 id="resetDialogTitle">¿Qué deseas reiniciar?</h2>
                             <p id="resetDialogDescription">Puedes limpiar solo la sección <strong id="resetDialogSectionName">actual</strong> y conservar el resto de la nota, o reiniciar toda la nota y comenzar de nuevo. Esta acción no se puede deshacer.</p>
-                            <div class="reset-dialog-actions">
+                            <div class="reset-dialog-actions" data-dialog-actions>
                                 <button type="button" class="reset-dialog-cancel" id="resetCancelBtn">Cancelar</button>
                                 <button type="button" class="reset-dialog-section" id="resetSectionBtn">Reiniciar solo esta sección</button>
                                 <button type="button" class="reset-dialog-all" id="resetAllBtn">Reiniciar toda la nota</button>
                             </div>
                         </dialog>
 
-                        <section class="workflow" aria-label="Flujo de trabajo">
+                        <dialog class="shortcuts-dialog" id="shortcutsDialog" aria-labelledby="shortcutsDialogTitle" aria-describedby="shortcutsDialogDescription">
+                            <div class="shortcuts-dialog-header">
+                                <div>
+                                    <span class="note-draft-kicker">Ayuda de teclado</span>
+                                    <h2 id="shortcutsDialogTitle">Atajos de Nota de entrega</h2>
+                                </div>
+                                <button type="button" class="note-drawer-close" id="shortcutsClose" aria-label="Cerrar ayuda de atajos">&#10005;</button>
+                            </div>
+                            <p id="shortcutsDialogDescription" class="shortcuts-dialog-intro">La navegación Estándar conserva el recorrido habitual del navegador y todos los controles accesibles.</p>
+                            <div class="keyboard-mode-setting">
+                                <div class="keyboard-mode-setting-header">
+                                    <span id="keyboardNavigationModeLabel">Modo de navegación</span>
+                                    <strong id="keyboardNavigationModeCurrent">Estándar activo</strong>
+                                </div>
+                                <div class="keyboard-mode-toggle">
+                                    <span class="keyboard-mode-option is-active" data-navigation-mode-label="standard">Estándar</span>
+                                    <button type="button" class="navigation-mode-switch" id="keyboardNavigationMode"
+                                            role="switch" aria-checked="false"
+                                            aria-labelledby="keyboardNavigationModeLabel keyboardNavigationModeCurrent"
+                                            aria-describedby="keyboardNavigationModeDescription">
+                                        <span class="navigation-mode-switch-track" aria-hidden="true">
+                                            <span class="navigation-mode-switch-thumb"></span>
+                                        </span>
+                                    </button>
+                                    <span class="keyboard-mode-option" data-navigation-mode-label="agile">Ágil</span>
+                                </div>
+                                <p id="keyboardNavigationModeDescription">Tab avanza secuencialmente y Shift + flechas conserva su comportamiento nativo.</p>
+                            </div>
+                            <dl class="shortcuts-list">
+                                <div><dt><kbd>Tab</kbd></dt><dd id="shortcutsTabDescription">Avanzar mediante el recorrido estándar.</dd></div>
+                                <div><dt><kbd>Shift</kbd> + <kbd>Tab</kbd></dt><dd>Retroceder mediante el recorrido estándar.</dd></div>
+                                <div><dt><kbd>Enter</kbd></dt><dd>Elegir o confirmar la opción actual.</dd></div>
+                                <div><dt><kbd>Shift</kbd> + <kbd>Enter</kbd></dt><dd>Validar y continuar la unidad actual.</dd></div>
+                                <div><dt><kbd>Esc</kbd></dt><dd>Restaurar, cancelar o cerrar el elemento abierto.</dd></div>
+                                <div><dt><kbd>Flechas</kbd> · <kbd>Inicio</kbd> · <kbd>Fin</kbd></dt><dd>Recorrer únicamente las opciones del campo actual.</dd></div>
+                                <div id="shortcutsSpatialRow" hidden><dt><kbd>Shift</kbd> + <kbd>flechas</kbd></dt><dd>Cambiar al campo situado en esa dirección.</dd></div>
+                                <div><dt><kbd>/</kbd></dt><dd>Ir al buscador de la sección activa.</dd></div>
+                                <div><dt><kbd>Ctrl</kbd>/<kbd>&#8984;</kbd> + <kbd>Enter</kbd></dt><dd>Abrir la revisión de la nota.</dd></div>
+                            </dl>
+                        </dialog>
 
-                            <nav class="flow-nav" aria-label="Etapas de la nota" id="flowNav">
-                                <button type="button" class="flow-nav-item" data-flow-target="patient" aria-current="step">
+                        <section class="workflow" id="deliveryWorkflow" data-keyboard-surface="delivery" aria-labelledby="deliveryWorkflowTitle">
+                            <h2 class="sr-only" id="deliveryWorkflowTitle">Flujo de Nota de entrega</h2>
+
+                            <nav class="flow-nav" aria-label="Etapas de la nota" id="flowNav" role="tablist" aria-orientation="horizontal">
+                                <button type="button" class="flow-nav-item" id="flowTabPatient" data-flow-target="patient" role="tab" aria-controls="patientBlock" aria-selected="true" aria-disabled="false" aria-current="step" tabindex="0">
                                     <span class="flow-nav-index">1</span><span class="flow-nav-copy"><strong>Paciente</strong><small data-flow-summary="patient">En curso</small></span>
                                 </button>
-                                <button type="button" class="flow-nav-item" data-flow-target="faseB">
+                                <button type="button" class="flow-nav-item" id="flowTabFaseB" data-flow-target="faseB" role="tab" aria-controls="faseB" aria-selected="false" aria-disabled="true" tabindex="-1" disabled>
                                     <span class="flow-nav-index">2</span><span class="flow-nav-copy"><strong>Estado clínico</strong><small data-flow-summary="faseB">Pendiente</small></span>
                                 </button>
-                                <button type="button" class="flow-nav-item" data-flow-target="faseC">
+                                <button type="button" class="flow-nav-item" id="flowTabFaseC" data-flow-target="faseC" role="tab" aria-controls="faseC" aria-selected="false" aria-disabled="true" tabindex="-1" disabled>
                                     <span class="flow-nav-index">3</span><span class="flow-nav-copy"><strong>Diagnóstico</strong><small data-flow-summary="faseC">Pendiente</small></span>
                                 </button>
-                                <button type="button" class="flow-nav-item" data-flow-target="faseD">
+                                <button type="button" class="flow-nav-item" id="flowTabFaseD" data-flow-target="faseD" role="tab" aria-controls="faseD" aria-selected="false" aria-disabled="true" tabindex="-1" disabled>
                                     <span class="flow-nav-index">4</span><span class="flow-nav-copy"><strong>Hallazgos</strong><small data-flow-summary="faseD">Pendiente</small></span>
                                 </button>
-                                <button type="button" class="flow-nav-item" data-flow-target="fasePAE">
+                                <button type="button" class="flow-nav-item" id="flowTabFasePAE" data-flow-target="fasePAE" role="tab" aria-controls="fasePAE" aria-selected="false" aria-disabled="true" tabindex="-1" disabled>
                                     <span class="flow-nav-index">5</span><span class="flow-nav-copy"><strong>PAE</strong><small data-flow-summary="fasePAE">Bloqueado</small></span>
                                 </button>
-                                <button type="button" class="flow-nav-item" data-flow-target="faseF">
+                                <button type="button" class="flow-nav-item" id="flowTabFaseF" data-flow-target="faseF" role="tab" aria-controls="faseF" aria-selected="false" aria-disabled="true" tabindex="-1" disabled>
                                     <span class="flow-nav-index">6</span><span class="flow-nav-copy"><strong>Entrega</strong><small data-flow-summary="faseF">Pendiente</small></span>
                                 </button>
                             </nav>
 
-                            <section class="patient-block flow-stage" id="patientBlock" data-flow-stage="patient" aria-label="Datos del paciente">
+                            <div class="keyboard-support-row">
+                                <p class="keyboard-coach" id="keyboardCoach"><kbd>Tab</kbd> siguiente · <kbd>Shift</kbd> + <kbd>Tab</kbd> anterior · <kbd>Flechas</kbd> dentro del campo · <kbd>Shift</kbd> + <kbd>Enter</kbd> continuar</p>
+                                <button type="button" class="shortcuts-btn" id="shortcutsBtn" aria-haspopup="dialog" aria-controls="shortcutsDialog">Atajos</button>
+                            </div>
+
+                            <section class="patient-block flow-stage" id="patientBlock" data-flow-stage="patient" role="tabpanel" aria-labelledby="flowTabPatient patientBlockTitle">
                                 <div class="patient-block-header">
-                                    <h3>Datos del paciente</h3>
+                                    <h3 id="patientBlockTitle">Datos del paciente</h3>
                                     <div class="patient-header-right">
                                         <span class="required-note">* Obligatorios</span>
-                                        <button type="button" class="reset-icon-btn" data-reset-section="patient"
-                                                title="Reiniciar información" aria-label="Opciones para reiniciar Datos del paciente">↺</button>
                                     </div>
                                 </div>
                                 <div class="patient-block-body">
                                     <div class="patient-field-row">
                                         <div class="field-group">
                                             <label id="sexoLabel">Sexo <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <div class="seg-control" role="radiogroup" aria-labelledby="sexoLabel" id="sexoSeg">
+                                            <div class="seg-control" role="radiogroup" aria-orientation="horizontal" aria-labelledby="sexoLabel" aria-required="true" id="sexoSeg">
                                                 <button type="button" class="seg-btn" role="radio" aria-checked="false" data-value="Femenino" tabindex="0">Femenino</button>
                                                 <button type="button" class="seg-btn" role="radio" aria-checked="false" data-value="Masculino" tabindex="-1">Masculino</button>
                                             </div>
@@ -187,15 +232,15 @@
                                             <label for="dobFecha">Fecha de nacimiento <span class="required-star" aria-label="obligatorio">*</span></label>
                                             <input type="text" id="dobFecha" class="clinical-date-input"
                                                    inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA"
-                                                   aria-label="Fecha de nacimiento, formato día, mes y año" autocomplete="off">
-                                            <div class="dob-feedback" id="dobFeedback" aria-live="polite"></div>
+                                                   aria-label="Fecha de nacimiento, formato día, mes y año" aria-required="true" aria-describedby="dobFeedback" autocomplete="off">
+                                            <div class="dob-feedback" id="dobFeedback"></div>
                                         </div>
                                         <div class="field-group">
                                             <label for="posicion">Posición <span class="required-star" aria-label="obligatorio">*</span></label>
                                             <div class="cbx" data-cbx="posicion">
                                                 <input type="text" id="posicion" class="cbx-input" placeholder="Buscar posición…"
                                                        role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                                       aria-label="Posición del paciente">
+                                                       aria-label="Posición del paciente" aria-required="true">
                                                 <div class="cbx-list" role="listbox" hidden></div>
                                             </div>
                                         </div>
@@ -203,36 +248,36 @@
                                     <div class="patient-field-row patient-field-row--loc">
                                         <div class="field-group field-group--num">
                                             <label for="numCama">N.º de cama <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <input type="text" inputmode="numeric" id="numCama" placeholder="Ej: 12" autocomplete="off" aria-label="Número de cama">
+                                            <input type="text" inputmode="numeric" id="numCama" placeholder="Ej: 12" autocomplete="off" aria-label="Número de cama" aria-required="true">
                                         </div>
                                         <div class="field-group field-group--num">
                                             <label for="numHabitacion">N.º de habitación <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <input type="text" inputmode="numeric" id="numHabitacion" placeholder="Ej: 304" autocomplete="off" aria-label="Número de habitación">
+                                            <input type="text" inputmode="numeric" id="numHabitacion" placeholder="Ej: 304" autocomplete="off" aria-label="Número de habitación" aria-required="true">
                                         </div>
                                         <div class="field-group field-group--wide">
                                             <label for="servicio">Servicio / Unidad <span class="required-star" aria-label="obligatorio">*</span></label>
                                             <div class="cbx" data-cbx="servicio">
                                                 <input type="text" id="servicio" class="cbx-input" placeholder="Buscar servicio…"
                                                        role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                                       aria-label="Servicio o unidad">
+                                                       aria-label="Servicio o unidad" aria-required="true">
                                                 <div class="cbx-list" role="listbox" hidden></div>
                                             </div>
                                         </div>
                                     </div>
                                 </div>
                                 <div class="flow-stage-footer">
-                                    <span class="flow-stage-message" data-flow-message="patient" aria-live="polite"></span>
+                                    <span class="flow-stage-message" data-flow-message="patient"></span>
                                     <button type="button" class="flow-continue" data-flow-continue="patient">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                    <button type="button" class="reset-icon-btn reset-icon-btn--secondary" data-reset-section="patient"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Datos del paciente">↺</button>
                                 </div>
                             </section>
 
                             <!-- ===== FASE B: Estado clínico ===== -->
-                            <section class="phase flow-stage" id="faseB" data-section="faseB" data-flow-stage="faseB" aria-labelledby="faseBTitle" hidden>
+                            <section class="phase flow-stage" id="faseB" data-section="faseB" data-flow-stage="faseB" role="tabpanel" aria-labelledby="flowTabFaseB faseBTitle" hidden>
                                 <div class="phase-header">
                                     <h3 id="faseBTitle">Estado clínico</h3>
-                                    <span class="phase-badge" data-phase-badge="faseB" aria-live="polite"></span>
-                                    <button type="button" class="reset-icon-btn" data-reset-section="faseB"
-                                            title="Reiniciar información" aria-label="Opciones para reiniciar Estado clínico">↺</button>
+                                    <span class="phase-badge" data-phase-badge="faseB"></span>
                                 </div>
                                 <div class="phase-body">
                                     <div class="estado-group" data-estado="estadoNeurologico" data-label="Estado neurológico"></div>
@@ -251,24 +296,24 @@
                                     </div>
                                 </div>
                                 <div class="flow-stage-footer">
-                                    <span class="flow-stage-message" data-flow-message="faseB" aria-live="polite"></span>
+                                    <span class="flow-stage-message" data-flow-message="faseB"></span>
                                     <button type="button" class="flow-continue" data-flow-continue="faseB">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                    <button type="button" class="reset-icon-btn reset-icon-btn--secondary" data-reset-section="faseB"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Estado clínico">↺</button>
                                 </div>
                             </section>
 
                             <!-- ===== FASE C: Diagnóstico y dispositivos ===== -->
-                            <section class="phase flow-stage" id="faseC" data-section="faseC" data-flow-stage="faseC" aria-labelledby="faseCTitle" hidden>
+                            <section class="phase flow-stage" id="faseC" data-section="faseC" data-flow-stage="faseC" role="tabpanel" aria-labelledby="flowTabFaseC faseCTitle" hidden>
                                 <div class="phase-header">
                                     <h3 id="faseCTitle">Diagnóstico médico y dispositivos</h3>
-                                    <span class="phase-badge" data-phase-badge="faseC" aria-live="polite"></span>
-                                    <button type="button" class="reset-icon-btn" data-reset-section="faseC"
-                                            title="Reiniciar información" aria-label="Opciones para reiniciar Diagnóstico y dispositivos">↺</button>
+                                    <span class="phase-badge" data-phase-badge="faseC"></span>
                                 </div>
                                 <div class="phase-body">
                                     <div class="phase-field-row">
                                         <div class="field-group field-group--wide">
                                             <label for="diagnosticoMedico">Diagnóstico médico <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <input type="text" id="diagnosticoMedico" placeholder="Diagnóstico principal (puede incluir CIE-10)" autocomplete="off" aria-label="Diagnóstico médico">
+                                            <input type="text" id="diagnosticoMedico" placeholder="Diagnóstico principal (puede incluir CIE-10)" autocomplete="off" aria-label="Diagnóstico médico" aria-required="true">
                                         </div>
                                         <div class="field-group">
                                             <label for="aislamiento">Aislamiento</label>
@@ -284,7 +329,7 @@
                                             <div class="cbx" data-cbx="estadoDental">
                                                 <input type="text" id="estadoDental" class="cbx-input" placeholder="Buscar estado dental…"
                                                        role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                                       aria-label="Estado dental">
+                                                       aria-label="Estado dental" aria-required="true">
                                                 <div class="cbx-list" role="listbox" hidden></div>
                                             </div>
                                         </div>
@@ -302,18 +347,18 @@
                                     </div>
                                 </div>
                                 <div class="flow-stage-footer">
-                                    <span class="flow-stage-message" data-flow-message="faseC" aria-live="polite"></span>
+                                    <span class="flow-stage-message" data-flow-message="faseC"></span>
                                     <button type="button" class="flow-continue" data-flow-continue="faseC">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                    <button type="button" class="reset-icon-btn reset-icon-btn--secondary" data-reset-section="faseC"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Diagnóstico y dispositivos">↺</button>
                                 </div>
                             </section>
 
                             <!-- ===== FASE D: Hallazgos y educación ===== -->
-                            <section class="phase flow-stage" id="faseD" data-section="faseD" data-flow-stage="faseD" aria-labelledby="faseDTitle" hidden>
+                            <section class="phase flow-stage" id="faseD" data-section="faseD" data-flow-stage="faseD" role="tabpanel" aria-labelledby="flowTabFaseD faseDTitle" hidden>
                                 <div class="phase-header">
                                     <h3 id="faseDTitle">Hallazgos y educación</h3>
-                                    <span class="phase-badge" data-phase-badge="faseD" aria-live="polite"></span>
-                                    <button type="button" class="reset-icon-btn" data-reset-section="faseD"
-                                            title="Reiniciar información" aria-label="Opciones para reiniciar Hallazgos y educación">↺</button>
+                                    <span class="phase-badge" data-phase-badge="faseD"></span>
                                 </div>
                                 <div class="phase-body">
                                     <div class="subblock" id="regionesBlock">
@@ -339,36 +384,36 @@
                                     </div>
                                 </div>
                                 <div class="flow-stage-footer">
-                                    <span class="flow-stage-message" data-flow-message="faseD" aria-live="polite"></span>
+                                    <span class="flow-stage-message" data-flow-message="faseD"></span>
                                     <button type="button" class="flow-continue" data-flow-continue="faseD">Continuar <span aria-hidden="true">&#8594;</span></button>
+                                    <button type="button" class="reset-icon-btn reset-icon-btn--secondary" data-reset-section="faseD"
+                                            title="Reiniciar información" aria-label="Opciones para reiniciar Hallazgos y educación">↺</button>
                                 </div>
                             </section>
 
-                            <section class="flow-stage flow-stage--pae" id="fasePAE" data-flow-stage="fasePAE" aria-labelledby="fasePAETitle" hidden>
+                            <section class="flow-stage flow-stage--pae" id="fasePAE" data-flow-stage="fasePAE" role="tabpanel" aria-labelledby="flowTabFasePAE fasePAETitle" hidden>
                             <div class="phase-header phase-header--pae">
                                 <h3 id="fasePAETitle">Plan de atención (PAE)</h3>
                                 <span class="phase-hint">NANDA · NOC · NIC · Evaluación B6</span>
-                                <button type="button" class="reset-icon-btn" data-reset-section="fasePAE"
-                                        title="Reiniciar información" aria-label="Opciones para reiniciar Plan de atención PAE">↺</button>
                             </div>
 
                             <div class="progress-track">
                                 <div class="progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-label="Progreso del formulario">
                                     <div class="progress-fill" id="progressFill"></div>
                                 </div>
-                                <span class="progress-label" id="progressLabel" aria-live="polite">Paso 1 de 5</span>
+                                <span class="progress-label" id="progressLabel">Paso 1 de 5</span>
                             </div>
 
                             <article class="step step--locked" id="step1" data-step="1">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 1: Identificar el diagnóstico">
+                                <div class="step-header" aria-label="Paso 1: Identificar el diagnóstico">
                                     <span class="step-badge">1</span>
-                                    <h3 data-step-title>Condiciones clínicas</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4 data-step-title>Condiciones clínicas</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <!-- Switch de ruta: integrado al inicio del paso 1 -->
                                     <div class="route-switch-wrap">
-                                        <div class="route-switch" role="radiogroup" aria-label="Cómo identificar el diagnóstico" id="routeSwitch">
+                                        <div class="route-switch" role="radiogroup" aria-orientation="horizontal" aria-label="Cómo identificar el diagnóstico" id="routeSwitch">
                                             <button type="button" class="route-btn" role="radio" aria-checked="true" data-mode="forward" tabindex="0">Por condición clínica</button>
                                             <button type="button" class="route-btn" role="radio" aria-checked="false" data-mode="reverse" tabindex="-1">Por signos y factores</button>
                                         </div>
@@ -386,7 +431,7 @@
                                         <p class="hint">Marque <strong>todos</strong> los signos y factores que observe en el paciente. Cuantos más indique, más precisas serán las sugerencias de diagnóstico del panel lateral.</p>
                                         <div class="reverse-filter-row">
                                             <span class="reverse-filter-label">Mostrar</span>
-                                            <div class="reverse-filter-group" role="radiogroup" aria-label="Filtrar hallazgos por tipo" id="findingKindFilters">
+                                            <div class="reverse-filter-group" role="radiogroup" aria-orientation="horizontal" aria-label="Filtrar hallazgos por tipo" id="findingKindFilters">
                                                 <button type="button" class="reverse-filter-btn" role="radio" aria-checked="true" data-filter="all" tabindex="0">Todos</button>
                                                 <button type="button" class="reverse-filter-btn" role="radio" aria-checked="false" data-filter="rc" tabindex="-1">Factores (RC)</button>
                                                 <button type="button" class="reverse-filter-btn" role="radio" aria-checked="false" data-filter="ep" tabindex="-1">Signos (EP)</button>
@@ -403,10 +448,10 @@
                             </article>
 
                             <article class="step" id="step2" data-step="2">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Paso 2: Diagnóstico de enfermería">
+                                <div class="step-header" aria-label="Paso 2: Diagnóstico de enfermería">
                                     <span class="step-badge">2</span>
-                                    <h3 data-step-title>Diagnóstico de enfermería (NANDA)</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4 data-step-title>Diagnóstico de enfermería (NANDA)</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <!-- Ruta principal: lista NANDA -->
@@ -419,10 +464,10 @@
                             </article>
 
                             <article class="step" id="step3" data-step="3" hidden>
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Relacionado con">
+                                <div class="step-header" aria-label="Relacionado con">
                                     <span class="step-badge">3</span>
-                                    <h3>Relacionado con</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4>Relacionado con</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <p class="hint">Factores relacionados con el diagnóstico · escriba para filtrar · Enter marca/desmarca · Shift+Enter (o Continuar) para seguir.</p>
@@ -438,10 +483,10 @@
                             </article>
 
                             <article class="step" id="step4" data-step="4" hidden>
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Evidenciado por">
+                                <div class="step-header" aria-label="Evidenciado por">
                                     <span class="step-badge">4</span>
-                                    <h3>Evidenciado por</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4>Evidenciado por</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <p class="hint">Signos y síntomas que evidencian el diagnóstico · escriba para filtrar · Enter marca/desmarca · Shift+Enter (o Continuar) para seguir.</p>
@@ -457,10 +502,10 @@
                             </article>
 
                             <article class="step" id="step5" data-step="5">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Resultado esperado NOC">
+                                <div class="step-header" aria-label="Resultado esperado NOC">
                                     <span class="step-badge">5</span>
-                                    <h3>Resultado esperado (NOC)</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4>Resultado esperado (NOC)</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <p class="hint">Seleccione el resultado que orienta la meta del cuidado.</p>
@@ -469,10 +514,10 @@
                             </article>
 
                             <article class="step" id="step6" data-step="6">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Intervenciones NIC">
+                                <div class="step-header" aria-label="Intervenciones NIC">
                                     <span class="step-badge">6</span>
-                                    <h3>Intervenciones NIC</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4>Intervenciones NIC</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <p class="hint">Escriba para filtrar · Enter o ↓ para navegar · Enter marca/desmarca · Shift+Enter (o Continuar) para seguir.</p>
@@ -488,10 +533,10 @@
                             </article>
 
                             <article class="step" id="step7" data-step="7">
-                                <div class="step-header" role="button" tabindex="-1" aria-expanded="false" aria-label="Evaluación Escala B6">
+                                <div class="step-header" aria-label="Evaluación Escala B6">
                                     <span class="step-badge">7</span>
-                                    <h3>Evaluación — Escala B6</h3>
-                                    <span class="step-summary" aria-live="polite"></span>
+                                    <h4>Evaluación — Escala B6</h4>
+                                    <span class="step-summary"></span>
                                 </div>
                                 <div class="step-content">
                                     <p class="hint">Indique el nivel de logro del NOC (1 = menor logro · 5 = óptimo).</p>
@@ -504,22 +549,24 @@
                                     <div class="options" id="evaluaciones"></div>
                                 </div>
                             </article>
+                            <div class="flow-stage-secondary-actions">
+                                <button type="button" class="reset-icon-btn reset-icon-btn--secondary" data-reset-section="fasePAE"
+                                        title="Reiniciar información" aria-label="Opciones para reiniciar Plan de atención PAE">↺</button>
+                            </div>
                             </section>
 
                             <!-- ===== FASE F: Evaluación y entrega ===== -->
-                            <section class="phase flow-stage" id="faseF" data-section="faseF" data-flow-stage="faseF" aria-labelledby="faseFTitle" hidden>
+                            <section class="phase flow-stage" id="faseF" data-section="faseF" data-flow-stage="faseF" role="tabpanel" aria-labelledby="flowTabFaseF faseFTitle" hidden>
                                 <div class="phase-header">
                                     <h3 id="faseFTitle">Evaluación y entrega del turno</h3>
-                                    <span class="phase-badge" data-phase-badge="faseF" aria-live="polite"></span>
-                                    <button type="button" class="reset-icon-btn" data-reset-section="faseF"
-                                            title="Reiniciar información" aria-label="Opciones para reiniciar Evaluación y entrega">↺</button>
+                                    <span class="phase-badge" data-phase-badge="faseF"></span>
                                 </div>
                                 <div class="phase-body">
                                     <div class="field-group">
                                         <label for="respuestaIntervenciones">Respuesta del paciente a las intervenciones <span class="required-star" aria-label="obligatorio">*</span></label>
                                         <textarea id="respuestaIntervenciones" class="obs-textarea" rows="2"
                                                   placeholder="Ej: disminución del dolor tras analgesia, tolerancia a la vía oral…"
-                                                  aria-label="Respuesta del paciente a las intervenciones"></textarea>
+                                                  aria-label="Respuesta del paciente a las intervenciones" aria-required="true"></textarea>
                                     </div>
                                     <div class="phase-field-row">
                                         <div class="field-group field-group--wide">
@@ -527,7 +574,7 @@
                                             <div class="cbx" data-cbx="tendenciaEvolutiva">
                                                 <input type="text" id="tendenciaEvolutiva" class="cbx-input" placeholder="Buscar o seleccionar tendencia…"
                                                        role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                                       aria-label="Tendencia evolutiva del paciente">
+                                                       aria-label="Tendencia evolutiva del paciente" aria-required="true">
                                                 <div class="cbx-list" role="listbox" hidden></div>
                                             </div>
                                         </div>
@@ -535,7 +582,7 @@
 
                                     <div class="meta-block" id="metaBlock">
                                         <label id="metaLabel">Estado de la meta (NOC) al cierre del turno <span class="required-star" aria-label="obligatorio">*</span></label>
-                                        <div class="meta-chip-group" role="radiogroup" aria-labelledby="metaLabel" id="metaSeg">
+                                        <div class="meta-chip-group" role="radiogroup" aria-orientation="horizontal" aria-labelledby="metaLabel" aria-required="true" id="metaSeg">
                                             <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Alcanzada" tabindex="0">Alcanzada</button>
                                             <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="Parcialmente alcanzada" tabindex="-1">Parcialmente alcanzada</button>
                                             <button type="button" class="meta-chip" role="radio" aria-checked="false" data-value="No alcanzada" tabindex="-1">No alcanzada</button>
@@ -549,14 +596,14 @@
                                         <label for="criterioClinico">Criterio clínico u objetivo alcanzado <span class="required-star" aria-label="obligatorio">*</span></label>
                                         <textarea id="criterioClinico" class="obs-textarea" rows="2"
                                                   placeholder="Evidencia objetiva del estado de la meta…"
-                                                  aria-label="Criterio clínico u objetivo alcanzado"></textarea>
+                                                  aria-label="Criterio clínico u objetivo alcanzado" aria-required="true"></textarea>
                                     </div>
 
                                     <div class="field-group">
                                         <label for="pendientes">Pendientes para el siguiente turno <span class="required-star" aria-label="obligatorio">*</span></label>
                                         <textarea id="pendientes" class="obs-textarea" rows="2"
                                                   placeholder="Tareas o seguimientos que debe continuar el turno entrante…"
-                                                  aria-label="Pendientes para el siguiente turno"></textarea>
+                                                  aria-label="Pendientes para el siguiente turno" aria-required="true"></textarea>
                                     </div>
                                 </div>
 
@@ -565,13 +612,13 @@
                                     <label for="otrosComentarios" class="obs-label">Otros comentarios u observaciones</label>
                                     <div class="obs-badges">
                                         <span class="obs-optional-badge">Opcional</span>
-                                        <span class="obs-info" tabindex="0" aria-label="Información sobre este campo">
+                                        <span class="obs-info">
                                             <svg class="obs-info-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                                 <circle cx="8" cy="8" r="6.5"/>
                                                 <line x1="8" y1="7.5" x2="8" y2="11"/>
                                                 <circle cx="8" cy="5.2" r="0.6" fill="currentColor" stroke="none"/>
                                             </svg>
-                                            <span class="obs-tooltip" role="tooltip">
+                                            <span class="obs-tooltip" id="otrosComentariosHelp" role="tooltip">
                                                 Este es un espacio opcional en el que puede describir, con sus propias palabras, situaciones, observaciones o información relevante que no haya sido contemplada en los apartados anteriores.
                                             </span>
                                         </span>
@@ -583,14 +630,17 @@
                                     rows="3"
                                     placeholder="Ejemplo: paciente irritable durante el examen, poco colaborador o con dificultad para seguir indicaciones."
                                     aria-label="Otros comentarios u observaciones (opcional)"
+                                    aria-describedby="otrosComentariosHelp"
                                 ></textarea>
                             </div>
 
                             <div class="workflow-actions">
-                                <div class="note-status" id="noteStatus" aria-live="polite"></div>
-                                <button type="button" class="copy-btn" id="copyBtn" disabled aria-disabled="true">
-                                    Copiar nota
+                                <div class="note-status" id="noteStatus"></div>
+                                <button type="button" class="copy-btn" id="copyBtn" disabled aria-disabled="true" hidden>
+                                    Revisar nota
                                 </button>
+                                <button type="button" class="reset-icon-btn reset-icon-btn--secondary" data-reset-section="faseF"
+                                        title="Reiniciar información" aria-label="Opciones para reiniciar Evaluación y entrega">↺</button>
                             </div>
                             </section>
 
@@ -606,16 +656,18 @@
     </div>
 
     <!-- Datos y lógica del note app -->
+    <div class="sr-only" id="actionAnnouncer" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="js/app-data.js"></script>
     <script src="js/nota-listas.js?v=1"></script>
     <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
          (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
          orden de documento, así que NotaCampos existe cuando app.js corre. -->
-    <script src="js/nota-campos.js?v=12" defer></script>
-    <script src="js/app.js?v=14" defer></script>
-    <!-- ⚠️ DEMO TEMPORAL — botón de escenarios para QA de la nota.
-         Para quitarlo: borrar esta línea y el archivo js/demo-escenarios.js -->
-    <script src="js/demo-escenarios.js?v=1" defer></script>
+    <script src="js/interaction-core.js?v=2" defer></script>
+    <script src="js/nota-campos.js?v=15" defer></script>
+    <script src="js/app.js?v=18" defer></script>
+    <!-- ⚠️ QA TEMPORAL — solo monta el inyector de escenarios con ?qa=1.
+         Inyecta estado para revisar la nota; no valida la interacción del formulario. -->
+    <script src="js/demo-escenarios.js?v=3" defer></script>
     <!-- Shell del producto -->
     <script src="js/shell.js"></script>
 </body>

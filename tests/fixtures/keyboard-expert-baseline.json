@@ -1,0 +1,28 @@
+{
+  "scenario": "minimum-note-without-scales-devices-alterations-or-ep",
+  "method": "real-ui-keyboard-only-chromium-1280x900",
+  "clinicalValuesRecorded": false,
+  "legacy": {
+    "pointerActions": 0,
+    "tabPresses": 5,
+    "directionalPresses": 2,
+    "navigationActions": 7,
+    "keyboardActions": 41,
+    "focusTransitions": 41,
+    "completed": true
+  },
+  "refined": {
+    "pointerActions": 0,
+    "tabPresses": 0,
+    "directionalPresses": 5,
+    "navigationActions": 5,
+    "keyboardActions": 39,
+    "focusTransitions": 40,
+    "completed": true
+  },
+  "change": {
+    "tabPressesPercent": -100,
+    "navigationActionsPercent": -28.6,
+    "keyboardActionsPercent": -4.9
+  }
+}

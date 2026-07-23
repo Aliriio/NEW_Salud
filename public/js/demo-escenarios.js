@@ -1,9 +1,8 @@
 /* ============================================================================
    ⚠️  ARCHIVO TEMPORAL — SOLO PARA QA VISUAL DE LA NOTA GENERADA  ⚠️
    ----------------------------------------------------------------------------
-   Botón flotante que carga escenarios de prueba (uno distinto en cada clic) y
-   abre la vista previa, para revisar la estructura de la nota sin llenar el
-   formulario a mano.
+   Con ?qa=1, monta un botón flotante que carga escenarios de prueba (uno distinto
+   en cada clic) y abre la vista previa para revisar la estructura de la nota.
 
    NO forma parte del producto. PARA ELIMINARLO POR COMPLETO:
      1. Borrar este archivo:  public/js/demo-escenarios.js
@@ -11,12 +10,14 @@
    No hay ninguna otra dependencia: este archivo no modifica nada del producto,
    solo escribe en el estado ya existente y llama a updateNote().
 
-   Nota: rellena el ESTADO y la NOTA (que es lo que se revisa). Las tarjetas
+   Nota: inyecta ESTADO; no valida la interacción real del formulario. Las tarjetas
    dinámicas del formulario (dispositivos/escalas/regiones/educación) no se
    re-renderizan porque sus funciones de render son internas del módulo.
    ============================================================================ */
 (function () {
     'use strict';
+
+    if (new URLSearchParams(window.location.search).get('qa') !== '1') return;
 
     /* ─── Utilidades para construir datos válidos desde los catálogos reales ─── */
     const L = () => window.notaListas?.listas || {};
@@ -27,7 +28,7 @@
         if (!meta) return null;
         return {
             id: `demo-${corto}`, nombre: meta.nombre, corto: meta.corto,
-            min: meta.min, max: meta.max, step: meta.step || 1,
+            min: meta.min, max: meta.max, step: meta.step ?? 1,
             display: meta.display, puntaje: String(puntaje),
         };
     }
@@ -249,6 +250,12 @@
         });
     }
 
+    function hydrateCombo(id, value) {
+        if (window.NotaCampos?.hydrateCombobox?.(id, value)) return;
+        const input = document.getElementById(id);
+        if (input) input.value = value ?? '';
+    }
+
     function aplicar(esc) {
         const d = esc.build();
         const st = window.NotaCampos?.state;
@@ -260,10 +267,8 @@
         if (dob) { dob.value = d.paciente.dobTxt; dob.dataset.iso = d.paciente.dobIso; }
         st.posicion = d.paciente.posicion;
         st.servicio = d.paciente.servicio;
-        const posEl = document.getElementById('posicion');
-        if (posEl) posEl.value = d.paciente.posicion;
-        const servEl = document.getElementById('servicio');
-        if (servEl) servEl.value = d.paciente.servicio;
+        hydrateCombo('posicion', d.paciente.posicion);
+        hydrateCombo('servicio', d.paciente.servicio);
         setSimple('numCama', d.paciente.numCama);
         setSimple('numHabitacion', d.paciente.numHabitacion);
 
@@ -272,7 +277,7 @@
         st.estadoHemodinamico = d.estado.hemo;
         st.estadoRespiratorio = d.estado.resp;
         [['estadoNeurologico', d.estado.neuro], ['estadoHemodinamico', d.estado.hemo], ['estadoRespiratorio', d.estado.resp]]
-            .forEach(([id, val]) => { const el = document.getElementById(id); if (el) el.value = val; });
+            .forEach(([id, val]) => hydrateCombo(id, val));
         st.escalas = (d.escalas || []).filter(Boolean);
         st.sinEscalas = d.sinEscalas;
 
@@ -280,11 +285,9 @@
         setSimple('diagnosticoMedico', d.clinico.diagnosticoMedico);
         // Aislamiento ahora es combobox: se fija el valor visible sin abrir el desplegable.
         st.aislamiento = d.clinico.aislamiento;
-        const aisEl = document.getElementById('aislamiento');
-        if (aisEl) aisEl.value = d.clinico.aislamiento;
+        hydrateCombo('aislamiento', d.clinico.aislamiento);
         st.estadoDental = d.clinico.estadoDental;
-        const dentEl = document.getElementById('estadoDental');
-        if (dentEl) dentEl.value = d.clinico.estadoDental;
+        hydrateCombo('estadoDental', d.clinico.estadoDental);
         st.dispositivos = (d.dispositivos || []).filter(Boolean);
         st.sinDispositivos = d.sinDispositivos;
 
@@ -313,13 +316,12 @@
             selected.b6Escala = escala || null;
             selected.b6Puntuacion = d.pae.b6;
             selected.b6Descripcion = nivel || `${d.pae.b6}. Moderadamente comprometido`;
-            window.NotaCampos.setArea?.(dx.areaKey);
         }
 
         // — Evaluación y entrega (Fase F)
         setSimple('respuestaIntervenciones', d.cierre.respuesta);
-        setSimple('tendenciaEvolutiva', d.cierre.tendencia);
         st.tendencia = d.cierre.tendencia;
+        hydrateCombo('tendenciaEvolutiva', d.cierre.tendencia);
         setSegmented('metaSeg', 'metaLograda', d.cierre.meta);
         setSimple('criterioClinico', d.cierre.criterio);
         setSimple('pendientes', d.cierre.pendientes);
@@ -328,7 +330,7 @@
         // — Regenerar la nota y abrir la vista previa
         if (typeof updateNote === 'function') updateNote();
         if (typeof updateCopyBtnState === 'function') updateCopyBtnState();
-        if (typeof toggleNote === 'function') toggleNote(true);
+        if (typeof toggleNote === 'function') toggleNote(true, document.getElementById('demoEscenariosBtn'));
     }
 
     /* ─── Botón flotante ─── */
