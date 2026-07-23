@@ -2564,6 +2564,7 @@
     window.NotaCampos = {
         state,
         init,
+        createCombobox,
         reset,
         resetPhase,
         captureState,

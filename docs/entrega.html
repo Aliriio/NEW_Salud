@@ -10,7 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/tokens.css">
     <!-- Estilos del note app (lógica intacta; solo tokens de color actualizados) -->
-    <link rel="stylesheet" href="styles.css?v=21">
+    <link rel="stylesheet" href="styles.css?v=23">
     <!-- Shell + capa de integración (carga después para envolver el note app) -->
     <link rel="stylesheet" href="css/careflow.css?v=3">
     <script src="js/auth.js"></script>
@@ -155,22 +155,22 @@
                             </div>
                             <p id="shortcutsDialogDescription" class="shortcuts-dialog-intro">La navegación Estándar conserva el recorrido habitual del navegador y todos los controles accesibles.</p>
                             <div class="keyboard-mode-setting">
-                                <div class="keyboard-mode-setting-header">
-                                    <span id="keyboardNavigationModeLabel">Modo de navegación</span>
-                                    <strong id="keyboardNavigationModeCurrent">Estándar activo</strong>
+                                <div class="keyboard-mode-setting-row">
+                                    <span id="keyboardNavigationModeLabel" class="keyboard-mode-title">Modo de navegación</span>
+                                    <div class="keyboard-mode-toggle">
+                                        <span class="keyboard-mode-option is-active" data-navigation-mode-label="standard">Estándar</span>
+                                        <button type="button" class="navigation-mode-switch" id="keyboardNavigationMode"
+                                                role="switch" aria-checked="false"
+                                                aria-labelledby="keyboardNavigationModeLabel keyboardNavigationModeCurrent"
+                                                aria-describedby="keyboardNavigationModeDescription">
+                                            <span class="navigation-mode-switch-track" aria-hidden="true">
+                                                <span class="navigation-mode-switch-thumb"></span>
+                                            </span>
+                                        </button>
+                                        <span class="keyboard-mode-option" data-navigation-mode-label="agile">Ágil</span>
+                                    </div>
                                 </div>
-                                <div class="keyboard-mode-toggle">
-                                    <span class="keyboard-mode-option is-active" data-navigation-mode-label="standard">Estándar</span>
-                                    <button type="button" class="navigation-mode-switch" id="keyboardNavigationMode"
-                                            role="switch" aria-checked="false"
-                                            aria-labelledby="keyboardNavigationModeLabel keyboardNavigationModeCurrent"
-                                            aria-describedby="keyboardNavigationModeDescription">
-                                        <span class="navigation-mode-switch-track" aria-hidden="true">
-                                            <span class="navigation-mode-switch-thumb"></span>
-                                        </span>
-                                    </button>
-                                    <span class="keyboard-mode-option" data-navigation-mode-label="agile">Ágil</span>
-                                </div>
+                                <strong id="keyboardNavigationModeCurrent" class="sr-only">Estándar activo</strong>
                                 <p id="keyboardNavigationModeDescription">Tab avanza secuencialmente y Shift + flechas conserva su comportamiento nativo.</p>
                             </div>
                             <dl class="shortcuts-list">
@@ -228,12 +228,12 @@
                                         <div class="patient-context-fields">
                                             <div class="field-group">
                                                 <label for="patientIdType">Tipo de identificación <span class="required-star" aria-label="obligatorio">*</span></label>
-                                                <select id="patientIdType" aria-required="true">
-                                                    <option value="">Seleccione un tipo</option>
-                                                    <option value="cc">Cédula de ciudadanía</option>
-                                                    <option value="birthCertificate">Certificado de nacimiento</option>
-                                                    <option value="liveBirthCertificate">Certificado de nacido vivo</option>
-                                                </select>
+                                                <div class="cbx" data-cbx="patientIdType">
+                                                    <input type="text" id="patientIdType" class="cbx-input" placeholder="Seleccione un tipo"
+                                                           role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                                                           aria-label="Tipo de identificación" aria-required="true">
+                                                    <div class="cbx-list" role="listbox" hidden></div>
+                                                </div>
                                             </div>
                                             <div class="field-group field-group--id-number">
                                                 <label for="patientIdNumber">Número de identificación <span class="required-star" aria-label="obligatorio">*</span></label>
@@ -702,10 +702,10 @@
     <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
          (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
          orden de documento, así que NotaCampos existe cuando app.js corre. -->
-    <script src="js/note-lifecycle.js?v=1" defer></script>
+    <script src="js/note-lifecycle.js?v=3" defer></script>
     <script src="js/interaction-core.js?v=2" defer></script>
-    <script src="js/nota-campos.js?v=15" defer></script>
-    <script src="js/app.js?v=18" defer></script>
+    <script src="js/nota-campos.js?v=16" defer></script>
+    <script src="js/app.js?v=20" defer></script>
     <!-- ⚠️ QA TEMPORAL — solo monta el inyector de escenarios con ?qa=1.
          Inyecta estado para revisar la nota; no valida la interacción del formulario. -->
     <script src="js/demo-escenarios.js?v=3" defer></script>

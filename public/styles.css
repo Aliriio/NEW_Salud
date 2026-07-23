@@ -1448,7 +1448,7 @@ body {
 .b6-custom-scale {
   margin-top: var(--sp-3);
   padding: var(--sp-3);
-  border: 1.5px dashed var(--border);
+  border: 1px solid var(--border-faint);
   border-radius: var(--r-sm);
   background: var(--surface-1);
 }
@@ -2345,11 +2345,11 @@ body {
 }
 
 /* === GRUPOS DE ESTADO (neuro / hemo / resp) === */
+/* Estados clínicos como campos planos (sin tarjeta), coherentes con faseC/faseF. */
 .estado-group {
-  border: 1.5px solid var(--border-faint);
-  border-radius: var(--r-sm);
-  background: var(--surface-1);
-  padding: var(--sp-3) var(--sp-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
 }
 
 .estado-head {
@@ -2389,11 +2389,6 @@ body {
   color: var(--text-primary);
 }
 
-.estado-group--done {
-  background: var(--success-bg);
-  border-color: #b7e4cc;
-}
-
 .estado-picker { margin-top: var(--sp-2); }
 
 .search-box--sm { margin-bottom: var(--sp-2); }
@@ -2404,9 +2399,10 @@ body {
 .options--list .option h4 { font-size: 0.85rem; }
 
 /* === SUB-BLOQUES (escalas, dispositivos, regiones, educación) === */
+/* Separación unificada: hairline sólido, igual que .delivery-group / .patient-context. */
 .subblock {
-  border-top: 1.5px dashed var(--border-faint);
-  padding-top: var(--sp-3);
+  border-top: 1px solid var(--border-faint);
+  padding-top: var(--sp-4);
   display: flex;
   flex-direction: column;
   gap: var(--sp-3);
@@ -2820,19 +2816,12 @@ body {
   gap: var(--sp-3);
 }
 #faseB .phase-body > #escalasBlock { grid-column: 1 / -1; }
-.estado-group {
-  min-width: 0;
-  padding: var(--sp-3);
-  border: 1px solid var(--border-faint);
-  background: var(--white);
-}
+.estado-group { min-width: 0; }
 .estado-group > label {
-  display: block;
-  margin-bottom: 5px;
   color: var(--text-muted);
-  font-size: .7rem;
-  font-weight: 750;
-  letter-spacing: .045em;
+  font-size: .73rem;
+  font-weight: 700;
+  letter-spacing: .05em;
   text-transform: uppercase;
 }
 .estado-group .cbx-input {
@@ -2848,8 +2837,8 @@ body {
   outline: none;
 }
 .estado-group .cbx-input:focus { border-color: var(--border-focus); box-shadow: 0 0 0 3px rgba(26,111,224,.14); }
-.estado-group--done { border-color: #b7e4cc; background: var(--success-bg); }
-.estado-group--done .cbx-input { background-color: var(--white); }
+/* Indicador sutil de "completado": el control toma el acento success (el foco lo sobrescribe). */
+.estado-group--done .cbx-input { border-color: var(--success); }
 
 /* Popovers globales: no pueden ser recortados por tarjetas o columnas. */
 .cbx-list--portal {
@@ -3306,42 +3295,33 @@ kbd {
 
 .keyboard-mode-setting {
   display: grid;
-  gap: 10px;
+  gap: 8px;
   margin: 0 0 18px;
-  padding: 13px 14px;
+  padding: 14px 16px;
   border: 1px solid var(--border-faint);
   border-radius: var(--r-md);
   background: var(--blue-pale);
 }
 
-.keyboard-mode-setting-header {
+/* Fila de ajuste: etiqueta a la izquierda, control a la derecha (sin huecos vacíos). */
+.keyboard-mode-setting-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 16px;
+  flex-wrap: wrap;
 }
 
-.keyboard-mode-setting-header > span {
+.keyboard-mode-title {
   color: var(--text-primary);
-  font-size: .84rem;
+  font-size: .86rem;
   font-weight: 700;
-}
-
-.keyboard-mode-setting-header strong {
-  padding: 4px 8px;
-  border: 1px solid rgba(31, 111, 235, .18);
-  border-radius: var(--r-full);
-  background: var(--white);
-  color: var(--blue-dark);
-  font-size: .72rem;
-  line-height: 1.2;
 }
 
 .keyboard-mode-toggle {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
-  gap: 9px;
+  gap: 10px;
 }
 
 .keyboard-mode-option {
@@ -3584,8 +3564,7 @@ dialog.note-drawer::backdrop {
   .keyboard-coach { width: 100%; }
   .shortcuts-btn { min-height: 44px; }
   .shortcuts-dialog { padding: 18px; }
-  .keyboard-mode-setting-header { align-items: flex-start; flex-direction: column; gap: 6px; }
-  .keyboard-mode-toggle { justify-content: flex-start; }
+  .keyboard-mode-setting-row { align-items: flex-start; flex-direction: column; gap: 10px; }
   .shortcuts-list > div { grid-template-columns: 1fr; gap: 6px; padding: 12px; }
 }
 

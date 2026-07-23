@@ -305,14 +305,32 @@ function isEditingPhase() {
     ].includes(lifecyclePhase());
 }
 
+/* Tipo de identificación: combobox (mismo patrón que el resto) que se abre al entrar
+   a Paciente con "Cédula de ciudadanía" resaltada, sin comprometerla hasta Enter/clic.
+   Se conserva el CÓDIGO ('cc'…) para el futuro lookup; el combobox muestra la etiqueta. */
+const ID_TYPES = [
+    { value: 'cc', label: 'Cédula de ciudadanía' },
+    { value: 'birthCertificate', label: 'Certificado de nacimiento' },
+    { value: 'liveBirthCertificate', label: 'Certificado de nacido vivo' },
+];
+const idTypeLabel = (value) => ID_TYPES.find((t) => t.value === value)?.label || '';
+const idTypeValue = (label) => ID_TYPES.find((t) => t.label === label)?.value || '';
+let patientIdCombo = null;
+let patientIdTypeCode = '';
+
 function renderPatientContext() {
     const { lookup, identity, hasConfirmed } = noteLifecycle.getContext();
-    if (els.patientIdType && els.patientIdType.value !== identity.type) els.patientIdType.value = identity.type;
+    patientIdTypeCode = identity.type || '';
+    if (patientIdCombo) patientIdCombo.setValue(idTypeLabel(identity.type));
+    else if (els.patientIdType && els.patientIdType.value !== idTypeLabel(identity.type)) {
+        els.patientIdType.value = idTypeLabel(identity.type);
+    }
     if (els.patientIdNumber && els.patientIdNumber.value !== identity.number) els.patientIdNumber.value = identity.number;
     if (els.patientContextPanel) els.patientContextPanel.dataset.lookupStatus = lookup.status;
 
     const locked = hasConfirmed;
-    if (els.patientIdType) {
+    if (patientIdCombo) patientIdCombo.setDisabled(locked);
+    else if (els.patientIdType) {
         els.patientIdType.disabled = locked;
         els.patientIdType.setAttribute('aria-disabled', locked ? 'true' : 'false');
     }
@@ -324,7 +342,7 @@ function renderPatientContext() {
 
 function syncPatientIdentity({ changed = true } = {}) {
     const accepted = noteLifecycle.setIdentity({
-        type: els.patientIdType?.value || '',
+        type: patientIdTypeCode,
         number: els.patientIdNumber?.value || '',
     });
     if (!accepted) {
@@ -387,32 +405,23 @@ async function verifyPatientOnIdentifierExit() {
 }
 
 function setupPatientContext() {
-    renderPatientContext();
-    els.patientIdType?.addEventListener('change', () => {
-        patientLookupRequest += 1;
-        syncPatientIdentity();
-        updateNote();
-    });
-    els.patientIdType?.addEventListener('keydown', (event) => {
-        if (event.ctrlKey || event.metaKey || event.altKey) return;
-        if (['ArrowDown', 'ArrowUp'].includes(event.key)) {
-            event.preventDefault();
-            const direction = event.key === 'ArrowDown' ? 1 : -1;
-            const count = els.patientIdType.options.length;
-            els.patientIdType.selectedIndex = Math.max(0, Math.min(count - 1, els.patientIdType.selectedIndex + direction));
-            syncPatientIdentity({ changed: false });
+    // Combobox de Tipo de identificación (reutiliza el componente común de NotaCampos).
+    patientIdCombo = window.NotaCampos?.createCombobox?.({
+        id: 'patientIdType',
+        options: () => ID_TYPES,
+        required: true,
+        onSelect: (opt) => {
+            patientIdTypeCode = opt == null ? '' : (typeof opt === 'string' ? idTypeValue(opt) : (opt.value || ''));
+            patientLookupRequest += 1;
+            const accepted = noteLifecycle.setIdentity({ type: patientIdTypeCode, number: els.patientIdNumber?.value || '' });
+            if (accepted) markDraftRevision();
+            if (els.patientContextPanel) els.patientContextPanel.dataset.lookupStatus = noteLifecycle.getContext().lookup.status;
             updateNote();
-            return;
-        }
-        if (event.key !== 'Enter' || event.shiftKey) return;
-        event.preventDefault();
-        if (!els.patientIdType.value) {
-            announceAction('Seleccione un tipo de identificación.');
-            return;
-        }
-        syncPatientIdentity({ changed: false });
-        els.patientIdNumber?.focus();
-    });
+            return accepted;
+        },
+        onConfirm: () => els.patientIdNumber?.focus(),
+    }) || null;
+    renderPatientContext();
     els.patientIdNumber?.addEventListener('input', () => {
         patientLookupRequest += 1;
         syncPatientIdentity();
@@ -707,11 +716,11 @@ function syncIssueAccessibility(issues) {
 function collectFormIssues() {
     const issues = [];
     const add = (issue) => issues.push(issue);
-    if (!els.patientIdType?.value) {
+    if (!patientIdTypeCode) {
         add({
             id: 'app-patient-id-type', stageId: 'patient', controlId: 'patientIdType', type: 'missing',
             message: 'Tipo de identificación', order: 0,
-            focus: () => { els.patientIdType?.focus(); return true; },
+            focus: () => { if (patientIdCombo) patientIdCombo.prepareEntry({ direction: 'down' }); else els.patientIdType?.focus(); return true; },
         });
     }
     if (!els.patientIdNumber?.value?.trim()) {
@@ -832,6 +841,13 @@ function updateFlowNavigator() {
 }
 
 function focusFlowStageEntry(id, reason = 'advance') {
+    // Punto de entrada del paciente: el menú de Tipo de identificación se abre con
+    // "Cédula de ciudadanía" resaltada (sin comprometerla). Enter confirma o las flechas
+    // cambian de inmediato. En correcciones puntuales se respeta el issue señalado.
+    if (id === 'patient' && reason !== 'correction') {
+        if (patientIdCombo) { patientIdCombo.prepareEntry({ direction: 'down' }); return; }
+        if (els.patientIdType) { els.patientIdType.focus(); return; }
+    }
     const issue = collectFormIssues().find((entry) => entry.stageId === id);
     if (issue?.focus) {
         issue.focus({ report: false });
@@ -4775,7 +4791,8 @@ function resetCurrentSection(sectionId) {
     if (sectionId === 'patient') {
         window.NotaCampos?.resetPhase('patient');
         if (!noteLifecycle.getConfirmationMeta()) {
-            if (els.patientIdType) els.patientIdType.value = '';
+            patientIdTypeCode = '';
+            patientIdCombo?.setValue('');
             if (els.patientIdNumber) els.patientIdNumber.value = '';
             noteLifecycle.setIdentity({ type: '', number: '' });
             noteLifecycle.setLookup(NoteLifecycle.LOOKUP_STATES.IDLE);
@@ -4894,7 +4911,8 @@ function resetWorkflow({ confirmed = false } = {}) {
         b.tabIndex = i === 0 ? 0 : -1;
     });
     if (els.otrosComentarios) els.otrosComentarios.value = '';
-    if (els.patientIdType) els.patientIdType.value = '';
+    patientIdTypeCode = '';
+    patientIdCombo?.setValue('');
     if (els.patientIdNumber) els.patientIdNumber.value = '';
     if (els.dobFecha) { els.dobFecha.value = ''; els.dobFecha.dataset.iso = ''; }
     if (els.dobFeedback) { els.dobFeedback.textContent = ''; els.dobFeedback.className = 'dob-feedback'; }
@@ -4930,8 +4948,9 @@ function resetWorkflow({ confirmed = false } = {}) {
     syncNotePanelHeight();
     suppressRevisionTracking = false;
     renderPatientContext();
-    // Listo para el siguiente paciente: foco en el inicio del contexto.
-    els.patientIdType?.focus();
+    // Listo para el siguiente paciente: abrir Tipo de identificación con la opción activa.
+    if (patientIdCombo) patientIdCombo.prepareEntry({ direction: 'down' });
+    else els.patientIdType?.focus();
     window.scrollTo({ top: 0, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
 }
 
