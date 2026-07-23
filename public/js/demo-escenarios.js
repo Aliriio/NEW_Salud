@@ -23,24 +23,41 @@
     const L = () => window.notaListas?.listas || {};
     const CAT = () => window.notaListas || {};
 
-    function mkEscala(corto, puntaje) {
+    function mkEscala(corto, puntaje, { noEvaluable = false } = {}) {
         const meta = (CAT().escalas || []).find((e) => e.corto === corto);
         if (!meta) return null;
+        const resolved = noEvaluable ? null : window.CareFlowClinical?.resolveScaleMeaning(meta.id, puntaje);
         return {
-            id: `demo-${corto}`, nombre: meta.nombre, corto: meta.corto,
+            id: `demo-${corto}`, clinicalId: meta.id, nombre: meta.nombre, corto: meta.corto,
             min: meta.min, max: meta.max, step: meta.step ?? 1,
-            display: meta.display, puntaje: String(puntaje),
+            display: meta.display, captureMode: meta.captureMode, mappings: meta.mappings,
+            puntaje: noEvaluable ? '' : String(puntaje), rango: noEvaluable ? 'No evaluable por sedación' : '',
+            significado: noEvaluable ? 'No evaluable por sedación' : resolved?.meaning || '',
+            noEvaluable,
         };
     }
 
-    function mkDispositivo(match, fechaIns, fechaCur, estadoMatch) {
+    function demoParameter(field) {
+        if (field.type === 'date') return '2026-07-09';
+        if (field.type === 'select') return field.options[0];
+        if (field.type === 'boolean') return 'Sí';
+        if (field.type === 'number') return String(Math.max(Number(field.min) || 0, 1));
+        if (field.type === 'repeatable') {
+            return [Object.fromEntries(field.fields.map((child) => [child.id, demoParameter(child)]))];
+        }
+        return 'Registrado';
+    }
+
+    function mkDispositivo(match, _fechaIns, _fechaCur, estadoMatch) {
         const nombre = (L().DISPOSITIVOS || []).find((d) => d.includes(match));
-        const estado = (L().ESTADO_DISPOSITIVO || []).find((e) => e.includes(estadoMatch));
         if (!nombre) return null;
+        const definition = window.CareFlowClinical?.getDevice(nombre);
+        const estado = definition?.statuses.find((entry) => entry.label.toLowerCase().includes(String(estadoMatch).toLowerCase()))
+            || definition?.statuses[0];
         return {
-            id: `demo-${match}`, nombre,
-            fechaInsercion: fechaIns || '', fechaCuracion: fechaCur || '',
-            estado: estado || (L().ESTADO_DISPOSITIVO || [])[0] || '',
+            id: `demo-${match}`, clinicalId: definition?.id, nombre, origen: 'manual',
+            estadoId: estado?.id || '', estado: estado?.label || '',
+            parametros: Object.fromEntries((definition?.fields || []).map((field) => [field.id, demoParameter(field)])),
         };
     }
 
@@ -116,7 +133,7 @@
                     hemo: pick('HEMO', 'norepinefrina'),
                     resp: pick('RESP', 'controlado por volumen'),
                 },
-                escalas: [mkEscala('Glasgow', 8), mkEscala('Braden', 12), mkEscala('Morse', 55), mkEscala('RASS', -3)],
+                escalas: [mkEscala('Glasgow', '', { noEvaluable: true }), mkEscala('Braden', 12), mkEscala('Morse', 55), mkEscala('RASS', -3)],
                 sinEscalas: false,
                 clinico: {
                     diagnosticoMedico: 'Choque séptico de origen abdominal (A41.9)',
@@ -136,7 +153,7 @@
                 sinAlteraciones: false,
                 educacion: [
                     { id: 'demo-edu-1', destinatario: pick('EDUCACION_DEST', 'Familiar directo'), tema: 'signos de alarma y cuidados del catéter central en casa' },
-                    { id: 'demo-edu-2', destinatario: pick('EDUCACION_DEST', 'Cuidador principal'), tema: 'movilización segura y prevención de úlceras por presión' },
+                    { id: 'demo-edu-2', destinatario: pick('EDUCACION_DEST', 'Cuidador externo'), tema: 'movilización segura y prevención de úlceras por presión' },
                 ],
                 pae: { area: 'Infecciosas', dxIndex: 0, nRc: 3, nEp: 3, nNic: 3, b6: '2' },
                 cierre: {
@@ -174,7 +191,7 @@
                 sinDispositivos: true,
                 regiones: [],
                 sinAlteraciones: true,
-                educacion: [{ id: 'demo-edu-3', destinatario: pick('EDUCACION_DEST', 'No fue posible brindar educación – sin acompañante'), tema: '' }],
+                educacion: [{ id: 'demo-edu-3', destinatario: 'Sin acompañante', tema: '', motivo: '', sinAcompananteAutonomo: true }],
                 pae: { area: 'Digestivas', dxIndex: 0, nRc: 1, nEp: 1, nNic: 1, b6: '5' },
                 cierre: {
                     respuesta: 'tolerancia adecuada a la vía oral sin vómito en las últimas 8 horas',
@@ -262,12 +279,7 @@
         if (!st || !window.datosProPai) return;
 
         // — Paciente (Fase A)
-        const idType = document.getElementById('patientIdType');
-        if (idType) {
-            idType.value = 'cc';
-            idType.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-        setSimple('patientIdNumber', `QA-${idx + 1}`);
+        window.CareFlowQaPatientIdentity?.('cc', `QA-${idx + 1}`);
         window.CareFlowQaPatientLookup?.('found');
         setSegmented('sexoSeg', 'sexo', d.paciente.sexo);
         const dob = document.getElementById('dobFecha');
@@ -283,6 +295,11 @@
         st.estadoNeurologico = d.estado.neuro;
         st.estadoHemodinamico = d.estado.hemo;
         st.estadoRespiratorio = d.estado.resp;
+        st.parametrosRespiratorios = {};
+        const respiratoryRule = window.CareFlowClinical?.getRespiratoryRequirement(d.estado.resp);
+        (respiratoryRule?.fields || []).forEach((field) => {
+            st.parametrosRespiratorios[field.id] = demoParameter(field);
+        });
         [['estadoNeurologico', d.estado.neuro], ['estadoHemodinamico', d.estado.hemo], ['estadoRespiratorio', d.estado.resp]]
             .forEach(([id, val]) => hydrateCombo(id, val));
         st.escalas = (d.escalas || []).filter(Boolean);
@@ -296,12 +313,19 @@
         st.estadoDental = d.clinico.estadoDental;
         hydrateCombo('estadoDental', d.clinico.estadoDental);
         st.dispositivos = (d.dispositivos || []).filter(Boolean);
+        if (respiratoryRule?.autoDevice && !st.dispositivos.some((device) => device.nombre === respiratoryRule.autoDevice)) {
+            st.dispositivos.push(mkDispositivo(respiratoryRule.autoDevice, '', '', ''));
+            st.dispositivos.at(-1).origen = 'automatico-respiratorio';
+        }
         st.sinDispositivos = d.sinDispositivos;
+        st.pendientesAutomaticos = [];
 
         // — Hallazgos y educación (Fase D)
         st.regiones = (d.regiones || []).filter(Boolean);
         st.sinAlteraciones = d.sinAlteraciones;
-        st.educacion = d.educacion || [];
+        st.educacion = (d.educacion || []).map((entry) => ({
+            motivo: '', sinAcompanante: false, sinAcompananteAutonomo: false, ...entry,
+        }));
 
         // — PAE (desde el catálogo real, para que RC/EP/NOC/NIC sean coherentes)
         const dx = pickDx(d.pae.area, d.pae.dxIndex);
@@ -334,7 +358,10 @@
         setSimple('pendientes', d.cierre.pendientes);
         setSimple('otrosComentarios', d.observaciones);
 
-        // — Regenerar la nota y abrir la vista previa
+        // — Rehidratar controles dinámicos y abrir la vista previa. El escenario
+        // QA usa el mismo adaptador que el descarte de una edición confirmada:
+        // no mantiene un DOM paralelo ni omite parámetros clínicos estructurados.
+        window.NotaCampos?.restoreState?.(window.NotaCampos.captureState(), { notify: false });
         if (typeof updateNote === 'function') updateNote();
         if (typeof updateCopyBtnState === 'function') updateCopyBtnState();
         if (typeof toggleNote === 'function') toggleNote(true, document.getElementById('demoEscenariosBtn'));

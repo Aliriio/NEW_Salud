@@ -6,6 +6,9 @@ export default defineConfig({
   testDir: './tests',
   testMatch: 'keyboard.spec.mjs',
   fullyParallel: false,
+  // Estas pruebas verifican foco exacto y restauración entre diálogos. Ejecutar
+  // motores headless en paralelo introduce carreras de foco ajenas a la app.
+  workers: 1,
   timeout: 30_000,
   expect: { timeout: 5_000 },
   use: {

@@ -1,7 +1,10 @@
 /* ─── Catálogos clínicos de la Nota de entrega ───
-   Fuente: Campos_Nota_Enfermeria_actualizado.xlsx (oficial).
+   Fuente: Campos_Nota_Enfermeria.xlsx (SHA-256 6d45de79…d23b47).
    `areas[].key` DEBE coincidir con las claves de window.datosProPai (app-data.js);
    `label` es el nombre que ve el usuario y el que entra a la nota. */
+const careFlowClinical = window.CareFlowClinical;
+if (!careFlowClinical) throw new Error('CareFlowClinical debe cargarse antes de nota-listas.js');
+
 window.notaListas = {
 
     /* Áreas clínicas: key = clave exacta en datosProPai, label = etiqueta oficial */
@@ -20,39 +23,18 @@ window.notaListas = {
         { key: 'Respiratorias',          label: 'Respiratorias' },
     ],
 
-    /* Escalas de valoración: rango numérico validable por escala.
-       `corto` es el nombre breve usado en chips y en la nota.
-       Rangos sin fuente en el Excel marcados // validar clínicamente. */
-    escalas: [
-        { nombre: 'Escala de Coma de Glasgow (3–15) – consciencia',                corto: 'Glasgow',             min: 3,   max: 15,  display: '3–15' },
-        { nombre: 'Escala EVA / NRS (0–10) – dolor',                               corto: 'EVA / NRS',           min: 0,   max: 10,  display: '0–10' },
-        { nombre: 'Escala de Braden (6–23) – riesgo de UPP',                       corto: 'Braden',              min: 6,   max: 23,  display: '6–23' },
-        { nombre: 'Escala de Norton (5–20) – riesgo de UPP',                       corto: 'Norton',              min: 5,   max: 20,  display: '5–20' },
-        { nombre: 'Escala EMINA (0–15) – riesgo de UPP',                           corto: 'EMINA',               min: 0,   max: 15,  display: '0–15' },
-        { nombre: 'Escala de Barthel (0–100) – funcionalidad ABVD',                corto: 'Barthel',             min: 0,   max: 100, display: '0–100' },
-        { nombre: 'Escala de Morse (0–125) – riesgo de caídas',                    corto: 'Morse',               min: 0,   max: 125, display: '0–125' },
-        { nombre: 'Escala de Downton – riesgo de caídas',                          corto: 'Downton',             min: 0,   max: 11,  display: '0–11' },  // validar clínicamente
-        { nombre: 'Escala de Tinetti – equilibrio y marcha',                       corto: 'Tinetti',             min: 0,   max: 28,  display: '0–28' },  // validar clínicamente
-        { nombre: 'Escala Fóvea / Godet (0–4+) – edema con fóvea',                 corto: 'Fóvea / Godet',       min: 0,   max: 4,   display: '0–4+' },
-        { nombre: 'Escala de Ramsay (1–6) – sedación',                             corto: 'Ramsay',              min: 1,   max: 6,   display: '1–6' },
-        { nombre: 'Escala RASS (−5 a +4) – agitación-sedación Richmond',           corto: 'RASS',                min: -5,  max: 4,   display: '−5 a +4' },
-        { nombre: 'Escala de Silverman-Anderson (0–10) – distrés respiratorio neonatal', corto: 'Silverman-Anderson', min: 0, max: 10, display: '0–10' },
-        { nombre: 'Escala de Aldrete modificada – recuperación postanestésica',    corto: 'Aldrete',             min: 0,   max: 10,  display: '0–10' },  // validar clínicamente
-        { nombre: 'Escala CURB-65 (0–5) – gravedad neumonía',                      corto: 'CURB-65',             min: 0,   max: 5,   display: '0–5' },
-        { nombre: 'Escala NIHSS – déficit neurológico ACV',                        corto: 'NIHSS',               min: 0,   max: 42,  display: '0–42' },  // validar clínicamente
-        { nombre: 'Escala de Pfeiffer (0–10) – estado mental / demencia',          corto: 'Pfeiffer',            min: 0,   max: 10,  display: '0–10' },
-        { nombre: 'Test de Isaac – cribado cognitivo',                             corto: 'Test de Isaac',       min: 0,   max: 40,  display: '0–40' },  // validar clínicamente
-        { nombre: 'Escala de Wagner (0–5) – pie diabético',                        corto: 'Wagner',              min: 0,   max: 5,   display: '0–5' },
-        { nombre: 'Escala de Maddox – flebitis',                                   corto: 'Maddox',              min: 0,   max: 5,   display: '0–5' },   // validar clínicamente
-        { nombre: 'Escala de valoración visual de flebitis (VIP)',                 corto: 'VIP',                 min: 0,   max: 5,   display: '0–5' },   // validar clínicamente
-        { nombre: 'Escala PUSH (0–17) – cicatrización de heridas',                 corto: 'PUSH',                min: 0,   max: 17,  display: '0–17' },
-        { nombre: 'Escala de Daniels (0–5) – fuerza muscular',                     corto: 'Daniels',             min: 0,   max: 5,   display: '0–5' },
-        { nombre: 'Índice de Masa Corporal (IMC) – estado nutricional',            corto: 'IMC',                 min: 10,  max: 70,  display: '10–70', step: 0.1 }, // validar clínicamente
-        { nombre: 'Escala NRS-2002 – riesgo nutricional',                          corto: 'NRS-2002',            min: 0,   max: 7,   display: '0–7' },   // validar clínicamente
-        { nombre: 'Escala MNA – valoración nutricional geriátrica',                corto: 'MNA',                 min: 0,   max: 30,  display: '0–30', step: 0.5 }, // validar clínicamente
-        { nombre: 'Escala de Borg modificada – disnea y esfuerzo percibido',       corto: 'Borg',                min: 0,   max: 10,  display: '0–10', step: 0.5 }, // validar clínicamente
-        { nombre: 'Escala APGAR neonatal (0–10)',                                  corto: 'APGAR',               min: 0,   max: 10,  display: '0–10' },
-    ],
+    /* Adaptador de compatibilidad: el contenido vive en clinical-rules.js. */
+    escalas: careFlowClinical.scales.map((scale) => ({
+        id: scale.id,
+        nombre: scale.name,
+        corto: scale.short,
+        min: scale.min,
+        max: scale.max,
+        step: scale.step,
+        display: scale.display,
+        captureMode: scale.captureMode,
+        mappings: scale.mappings,
+    })),
 
     /* Regiones/sistemas afectados, agrupados para el picker (47 en total) */
     regionesGrupos: [
@@ -157,21 +139,7 @@ window.notaListas = {
             'Psiquiatría',
             'Hospitalización General',
         ],
-        NEURO: [
-            'Alerta y orientado en tiempo, lugar y persona',
-            'Alerta con desorientación en tiempo',
-            'Alerta con desorientación en tiempo y lugar',
-            'Alerta con desorientación en las 3 esferas',
-            'Somnoliento pero orientable al estímulo verbal',
-            'Confuso / agitado',
-            'Estuporoso (responde solo a estímulos intensos)',
-            'Coma superficial – Glasgow 9–12',
-            'Coma moderado – Glasgow 6–8',
-            'Coma profundo – Glasgow < 6',
-            'Sedoanalgesiado – escala Ramsay / RASS',
-            'Afásico con comprensión conservada',
-            'Afásico sin comprensión',
-        ],
+        NEURO: [...careFlowClinical.neurologicalStates],
         HEMO: [
             'Estable hemodinámicamente',
             'Inestable – hipotensión sin soporte vasoactivo',
@@ -184,23 +152,7 @@ window.notaListas = {
             'Taquicárdico con estabilidad relativa',
             'Bradicárdico con estabilidad relativa',
         ],
-        RESP: [
-            'Ventilando espontáneamente sin soporte',
-            'Con soporte de O₂ – cánula nasal (especificar litros/min)',
-            'Con soporte de O₂ – mascarilla simple',
-            'Con soporte de O₂ – mascarilla con reservorio',
-            'Con soporte de O₂ – Venturi (especificar FiO₂)',
-            'Oxigenoterapia de alto flujo (OAF / Optiflow)',
-            'Ventilación mecánica no invasiva – CPAP',
-            'Ventilación mecánica no invasiva – BiPAP',
-            'Ventilación mecánica invasiva – modo controlado por volumen (VCV)',
-            'Ventilación mecánica invasiva – modo controlado por presión (PCV)',
-            'Ventilación mecánica invasiva – modo SIMV',
-            'Ventilación mecánica invasiva – modo PSV (soporte de presión)',
-            'Destete / weaning ventilatorio en progreso',
-            'Traqueostomía con collar de traqueostomía',
-            'Traqueostomía en VMI',
-        ],
+        RESP: careFlowClinical.respiratory.map((rule) => rule.state),
         AISLAMIENTO: [
             'No aplica',
             'Aislamiento de contacto',
@@ -211,64 +163,9 @@ window.notaListas = {
             'Aislamiento por contacto y gotas combinado',
             'Cuarto individual por indicación clínica no infecciosa',
         ],
-        DISPOSITIVOS: [
-            'Catéter venoso periférico (CVP)',
-            'Catéter venoso central (CVC) – yugular interna',
-            'Catéter venoso central (CVC) – subclavia',
-            'Catéter venoso central (CVC) – femoral',
-            'PICC (catéter central de inserción periférica)',
-            'Catéter de línea media (Midline)',
-            'Port-a-cath (reservorio subcutáneo)',
-            'Catéter arterial (línea arterial)',
-            'Catéter de Swan-Ganz (arteria pulmonar)',
-            'Catéter de diálisis / hemodiálisis',
-            'Tubo orotraqueal (TOT) – intubación orotraqueal',
-            'Tubo nasotraqueal (TNT) – intubación nasotraqueal',
-            'Traqueostomía (TQT)',
-            'Cánula de Guedel',
-            'Sonda nasogástrica (SNG)',
-            'Sonda orogástrica (SOG)',
-            'Sonda nasoenteral (SNE) / nasoyeyunal',
-            'Sonda de gastrostomía (PEG / quirúrgica)',
-            'Sonda de yeyunostomía',
-            'Sonda de Sengstaken-Blakemore',
-            'Sonda vesical (Foley) – sondeo permanente',
-            'Catéter suprapúbico',
-            'Nefrostomía percutánea',
-            'Ureterostomía',
-            'Drenaje de Jackson-Pratt',
-            'Drenaje de Blake',
-            'Drenaje de Penrose',
-            'Drenaje torácico / toracotubo (pleural)',
-            'Drenaje pericárdico',
-            'Drenaje abdominal (peritoneal / biliar)',
-            'Drenaje ventricular externo (DVE)',
-            'Colostomía',
-            'Ileostomía',
-            'Urostomía / nefrostomía',
-            'Gastrostomía (G-tube)',
-            'Monitor de presión intracraneal (PIC)',
-            'Balón de contrapulsación intraaórtico (BCIA)',
-            'Marcapasos transitorio',
-            'Marcapasos definitivo (implantado)',
-            'Sistema de nutrición parenteral total (NPT)',
-            'Bomba de infusión de medicamentos',
-            'Sistema de analgesia controlada por el paciente (PCA)',
-        ],
-        ESTADO_DISPOSITIVO: [
-            'Permeable y funcional',
-            'Permeable – con signos de flebitis grado I (eritema leve)',
-            'Permeable – con signos de flebitis grado II (dolor y eritema)',
-            'Permeable – con signos de flebitis grado III (induracion)',
-            'Permeable – con signos de flebitis grado IV (tromboflebitis)',
-            'Funcional con signos locales de infección incipiente',
-            'Con signos francos de infección (exudado, calor, dolor)',
-            'Extravasación presente',
-            'Obstruido – requiere permeabilización',
-            'Requiere cambio programado',
-            'Retirado durante el turno – sin reposición',
-            'Retirado durante el turno – repuesto',
-        ],
+        DISPOSITIVOS: careFlowClinical.devices.map((device) => device.name),
+        /* Alias de compatibilidad; los menús usan device.statuses. */
+        ESTADO_DISPOSITIVO: [],
         DENTAL: [
             'Dentición permanente completa',
             'Dentición incompleta (edentulismo parcial)',
@@ -281,14 +178,7 @@ window.notaListas = {
             'Dentición primaria (pediátrico)',
             'Dentición mixta (pediátrico)',
         ],
-        EDUCACION_DEST: [
-            'Paciente',
-            'Familiar directo (cónyuge / padre / madre / hijo/a)',
-            'Cuidador principal',
-            'Paciente y familiar',
-            'No fue posible brindar educación – paciente sin condiciones',
-            'No fue posible brindar educación – sin acompañante',
-        ],
+        EDUCACION_DEST: [...careFlowClinical.educationRecipients],
         TENDENCIA: [
             'Mejoría progresiva',
             'Mejoría parcial',

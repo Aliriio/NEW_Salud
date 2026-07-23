@@ -111,10 +111,13 @@ test('delivery accessibility ownership stays explicit in source markup', async (
       assert.equal(attribute(tag, 'tabindex'), null, 'Inactive PAE headers must not enter the tab order');
     });
 
+    const clinical = source.indexOf('js/clinical-rules.js');
+    const lists = source.indexOf('js/nota-listas.js');
     const lifecycle = source.indexOf('js/note-lifecycle.js');
     const core = source.indexOf('js/interaction-core.js');
     const fields = source.indexOf('js/nota-campos.js');
     const app = source.indexOf('js/app.js');
+    assert.ok(clinical >= 0 && clinical < lists, 'Clinical rules must load before clinical catalog adapters');
     assert.ok(lifecycle >= 0 && lifecycle < app, 'Lifecycle state must load before app.js');
     assert.ok(core >= 0 && core < fields && fields < app, 'Interaction scripts must preserve core → fields → app order');
   }
@@ -146,7 +149,7 @@ test('the QA scenario injector is source-gated by ?qa=1', async () => {
 
 test('clinical catalogs are internally coherent', async () => {
   const context = vm.createContext({ window: {} });
-  for (const relative of ['js/app-data.js', 'js/nota-listas.js']) {
+  for (const relative of ['js/app-data.js', 'js/clinical-rules.js', 'js/nota-listas.js']) {
     const filename = path.join(publicDir, relative);
     vm.runInContext(await readFile(filename, 'utf8'), context, { filename });
   }
@@ -186,11 +189,21 @@ test('clinical catalogs are internally coherent', async () => {
   assert.ok(diagnosisCount > 0, 'No diagnoses were checked');
 
   assert.ok(catalog.listas && typeof catalog.listas === 'object', 'notaListas.listas is missing');
-  for (const [name, values] of Object.entries(catalog.listas)) nonEmptyUniqueStrings(values, `notaListas.listas.${name}`);
+  for (const [name, values] of Object.entries(catalog.listas)) {
+    nonEmptyUniqueStrings(values, `notaListas.listas.${name}`, { allowEmpty: name === 'ESTADO_DISPOSITIVO' });
+  }
+  assert.deepEqual(Array.from(catalog.listas.ESTADO_DISPOSITIVO), [], 'Global device statuses must stay hidden');
   assert.ok(Array.isArray(catalog.escalas) && catalog.escalas.length > 0, 'No assessment scales found');
   for (const [index, scale] of catalog.escalas.entries()) {
     assert.ok(scale.nombre?.trim() && scale.corto?.trim(), `Scale ${index} lacks names`);
-    assert.ok(Number.isFinite(scale.min) && Number.isFinite(scale.max) && scale.min <= scale.max, `Scale ${scale.corto} has invalid bounds`);
+    if (scale.captureMode === 'manual') {
+      assert.equal(scale.min, null, `Manual scale ${scale.corto} must not invent a minimum`);
+      assert.equal(scale.max, null, `Manual scale ${scale.corto} must not invent a maximum`);
+    } else {
+      assert.ok(scale.min === null || Number.isFinite(scale.min), `Scale ${scale.corto} has an invalid minimum`);
+      assert.ok(scale.max === null || Number.isFinite(scale.max), `Scale ${scale.corto} has an invalid maximum`);
+      if (scale.min !== null && scale.max !== null) assert.ok(scale.min <= scale.max, `Scale ${scale.corto} has inverted bounds`);
+    }
     if (scale.step !== undefined) {
       assert.ok(Number.isFinite(scale.step) && scale.step > 0, `Scale ${scale.corto} has an invalid step`);
     }

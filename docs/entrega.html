@@ -306,10 +306,11 @@
                                     <div class="estado-group" data-estado="estadoNeurologico" data-label="Estado neurológico"></div>
                                     <div class="estado-group" data-estado="estadoHemodinamico" data-label="Estado hemodinámico"></div>
                                     <div class="estado-group" data-estado="estadoRespiratorio" data-label="Estado respiratorio"></div>
+                                    <div class="clinical-dependent-fields" id="respiratoryParameters" hidden></div>
                                     <div class="subblock" id="escalasBlock">
                                         <div class="subblock-head">
                                             <label>Escalas de valoración <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <span class="subblock-hint">Seleccione cada escala aplicada y registre su puntaje</span>
+                                            <span class="subblock-hint">Registre puntaje y significado; puede comenzar por cualquiera de los dos</span>
                                         </div>
                                         <div class="selection-choice-row" role="group" aria-label="Elegir escalas aplicadas o indicar que no se aplicaron">
                                             <div class="multi-add-wrap" id="escalasPicker"></div>
@@ -336,7 +337,7 @@
                                     <div class="phase-field-row">
                                         <div class="field-group field-group--wide">
                                             <label for="diagnosticoMedico">Diagnóstico médico <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <input type="text" id="diagnosticoMedico" placeholder="Diagnóstico principal (puede incluir CIE-10)" autocomplete="off" aria-label="Diagnóstico médico" aria-required="true">
+                                            <input type="text" id="diagnosticoMedico" placeholder="Diagnóstico principal (puede incluir CIE-11)" autocomplete="off" aria-label="Diagnóstico médico, puede incluir CIE-11" aria-required="true">
                                         </div>
                                         <div class="field-group">
                                             <label for="aislamiento">Aislamiento</label>
@@ -360,7 +361,7 @@
                                     <div class="subblock" id="dispositivosBlock">
                                         <div class="subblock-head">
                                             <label>Dispositivos presentes <span class="required-star" aria-label="obligatorio">*</span></label>
-                                            <span class="subblock-hint">Cada dispositivo requiere fecha de inserción y estado</span>
+                                            <span class="subblock-hint">Cada dispositivo muestra únicamente sus parámetros y estados aplicables</span>
                                         </div>
                                         <div class="selection-choice-row" role="group" aria-label="Elegir dispositivos presentes o indicar que no hay dispositivos">
                                             <div class="multi-add-wrap" id="dispositivosPicker"></div>
@@ -399,7 +400,7 @@
                                         <div class="subblock-head">
                                             <label>Educación al paciente / familia</label>
                                             <span class="obs-optional-badge">Opcional</span>
-                                            <span class="subblock-hint">Si no se registra, la frase se omite de la nota</span>
+                                            <span class="subblock-hint">Puede agregar varias entradas, incluso para el mismo destinatario</span>
                                         </div>
                                         <div class="edu-quick" id="eduQuick"></div>
                                         <div class="multi-add-wrap" id="educacionPicker"></div>
@@ -634,12 +635,19 @@
                                     <!-- Grupo 3 · Traspaso al siguiente turno (pendientes + notas opcionales) -->
                                     <div class="delivery-group">
                                         <h4 class="delivery-group-title">Traspaso al siguiente turno</h4>
+                                        <div class="generated-pendings" id="generatedPendings" hidden>
+                                            <div class="subblock-head">
+                                                <label id="generatedPendingsLabel">Pendientes generados por estados de dispositivos</label>
+                                                <span class="subblock-hint">Revise o edite cada pendiente antes de confirmar</span>
+                                            </div>
+                                            <div id="generatedPendingsList" aria-labelledby="generatedPendingsLabel"></div>
+                                        </div>
                                         <div class="delivery-group-fields delivery-group-fields--pair">
                                             <div class="field-group">
-                                                <label for="pendientes">Pendientes para el siguiente turno <span class="required-star" aria-label="obligatorio">*</span></label>
+                                                <label for="pendientes">Pendientes adicionales</label>
                                                 <textarea id="pendientes" class="obs-textarea" rows="2"
-                                                          placeholder="Tareas o seguimientos que debe continuar el turno entrante…"
-                                                          aria-label="Pendientes para el siguiente turno" aria-required="true"></textarea>
+                                                          placeholder="Agregue tareas no generadas automáticamente…"
+                                                          aria-label="Pendientes adicionales para el siguiente turno"></textarea>
                                             </div>
                                             <div class="obs-block obs-block--inline">
                                                 <div class="obs-block-header">
@@ -698,7 +706,8 @@
     <!-- Datos y lógica del note app -->
     <div class="sr-only" id="actionAnnouncer" role="status" aria-live="polite" aria-atomic="true"></div>
     <script src="js/app-data.js"></script>
-    <script src="js/nota-listas.js?v=1"></script>
+    <script src="js/clinical-rules.js?v=1"></script>
+    <script src="js/nota-listas.js?v=2"></script>
     <!-- nota-campos define window.NotaCampos; usa helpers de app.js solo en runtime
          (NotaCampos.init se llama desde init() de app.js). Los defer se ejecutan en
          orden de documento, así que NotaCampos existe cuando app.js corre. -->

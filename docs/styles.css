@@ -2500,9 +2500,10 @@ body {
 .multi-add-remove:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
 
 /* Subcampos de dispositivos y escalas */
-.device-fields {
+.device-fields,
+.clinical-fields-grid {
   display: grid;
-  grid-template-columns: minmax(190px, auto) minmax(190px, auto) 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
   gap: var(--sp-3);
   margin-top: var(--sp-2);
 }
@@ -2511,10 +2512,69 @@ body {
 
 .escala-fields {
   display: grid;
-  grid-template-columns: minmax(180px, 260px);
+  grid-template-columns: repeat(2, minmax(180px, 280px));
   gap: var(--sp-3);
   margin-top: var(--sp-2);
 }
+
+.clinical-dependent-fields {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--border-faint);
+  padding-top: var(--sp-4);
+}
+
+.clinical-derived-value,
+.clinical-source-hint,
+.clinical-origin {
+  display: block;
+  color: var(--text-muted);
+  font-size: .7rem;
+  line-height: 1.35;
+}
+
+.clinical-origin { margin-top: 2px; font-weight: 500; }
+.clinical-source-hint { margin: 5px 0 0; }
+
+.clinical-checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-secondary);
+  font-size: .78rem;
+  font-weight: 600;
+}
+
+.clinical-checkbox input { accent-color: var(--blue); }
+.clinical-checkbox--compact { margin-top: 6px; }
+
+.repeatable-clinical-list {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.repeatable-clinical-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(130px, 1fr)) auto;
+  gap: 7px;
+  align-items: center;
+}
+
+.clinical-add-row {
+  justify-self: start;
+  border: 1.5px dashed var(--border);
+  border-radius: var(--r-sm);
+  background: var(--white);
+  color: var(--blue-dark);
+  padding: 7px 12px;
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.clinical-add-row:hover { border-color: var(--blue-mid); background: var(--blue-pale); }
+.clinical-add-row:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
 
 .field-group--puntaje input { max-width: 160px; }
 
@@ -2816,6 +2876,7 @@ body {
   gap: var(--sp-3);
 }
 #faseB .phase-body > #escalasBlock { grid-column: 1 / -1; }
+#faseB .phase-body > #respiratoryParameters { grid-column: 1 / -1; }
 .estado-group { min-width: 0; }
 .estado-group > label {
   color: var(--text-muted);
@@ -2910,8 +2971,9 @@ body {
 .multi-add-list:not(:empty) { margin-top: 2px; }
 .multi-add-item { padding: 10px 12px; background: #fbfcfe; }
 .multi-add-item-head strong { font-size: .82rem; line-height: 1.35; }
-.escala-fields { grid-template-columns: minmax(150px, 210px); margin-top: 7px; }
+.escala-fields { grid-template-columns: repeat(2, minmax(150px, 240px)); margin-top: 7px; }
 .device-fields { grid-template-columns: minmax(150px, .8fr) minmax(150px, .8fr) minmax(260px, 1.4fr); margin-top: 7px; }
+.device-fields > .field-group--wide { grid-column: 1 / -1; }
 .device-fields .field-group label,
 .escala-fields .field-group label { font-size: .66rem; }
 
@@ -2932,6 +2994,46 @@ body {
 #educacionList .multi-add-item { display: grid; grid-template-columns: minmax(180px, .7fr) minmax(320px, 1.3fr); align-items: start; gap: var(--sp-3); }
 #educacionList .multi-add-item-head { padding-top: 7px; }
 #educacionList .field-group { min-width: 0; }
+#educacionList .clinical-checkbox { grid-column: 2; }
+
+.generated-pendings {
+  border-bottom: 1px solid var(--border-faint);
+  padding-bottom: var(--sp-4);
+  margin-bottom: var(--sp-4);
+}
+
+#generatedPendingsList {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.generated-pending-item {
+  border: 1px solid var(--border-faint);
+  border-radius: var(--r-sm);
+  background: var(--surface-1);
+  padding: 10px 12px;
+}
+
+.generated-pending-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  margin-bottom: 7px;
+  color: var(--text-secondary);
+  font-size: .75rem;
+}
+
+.priority-badge {
+  border-radius: var(--r-full);
+  padding: 2px 8px;
+  font-size: .68rem;
+  font-weight: 700;
+}
+
+.priority-badge--high { background: rgba(192, 57, 43, .1); color: #9e2d22; }
+.priority-badge--medium { background: rgba(196, 128, 0, .12); color: #805500; }
 
 /* Fase F: la evaluación se recorre como 3 grupos clínicos apilados
    (Evolución → Cierre de la meta → Traspaso), separados por hairlines, no por cajas.
@@ -3008,11 +3110,11 @@ body {
   .flow-nav-copy small { display: none; }
   .flow-nav-item { justify-content: center; }
   #faseB .phase-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #faseB .phase-body > #escalasBlock { grid-column: 1 / -1; }
+  #faseB .phase-body > #escalasBlock,
+  #faseB .phase-body > #respiratoryParameters { grid-column: 1 / -1; }
   #faseC .phase-field-row { grid-template-columns: 1fr 1fr; }
   #faseC .phase-field-row > :first-child { grid-column: 1 / -1; }
   .device-fields { grid-template-columns: 1fr 1fr; }
-  .device-fields > :nth-child(3) { grid-column: 1 / -1; }
   /* Pares de Fase F apilan cuando el textarea principal se estrecharía demasiado. */
   .delivery-group-fields--pair { grid-template-columns: 1fr; }
 }
@@ -3036,11 +3138,15 @@ body {
   #faseC .phase-field-row,
   #faseF .phase-body,
   .device-fields,
+  .clinical-fields-grid,
+  .escala-fields,
+  .repeatable-clinical-row,
   #educacionList .multi-add-item { grid-template-columns: 1fr; }
+  #educacionList .clinical-checkbox { grid-column: 1; }
   #faseB .phase-body > #escalasBlock,
+  #faseB .phase-body > #respiratoryParameters,
   #faseC .phase-field-row > :first-child,
-  #faseF .phase-body > *,
-  .device-fields > :nth-child(3) { grid-column: 1; }
+  #faseF .phase-body > * { grid-column: 1; }
 }
 
 /* Vista previa: panel modal superpuesto, sin recalcular el ancho del formulario. */
@@ -3102,7 +3208,8 @@ body.note-drawer-open { overflow: hidden; }
   .flow-nav-item { justify-content: center; }
   .flow-nav-copy { flex: 0 1 auto; }
   #faseB .phase-body { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  #faseB .phase-body > #escalasBlock { grid-column: 1 / -1; }
+  #faseB .phase-body > #escalasBlock,
+  #faseB .phase-body > #respiratoryParameters { grid-column: 1 / -1; }
   #faseC .phase-field-row { grid-template-columns: 1fr 1fr; }
   #faseC .phase-field-row > :first-child { grid-column: 1 / -1; }
 }
@@ -3118,6 +3225,7 @@ body.note-drawer-open { overflow: hidden; }
   #faseC .phase-field-row,
   #faseF .phase-body { grid-template-columns: 1fr; }
   #faseB .phase-body > #escalasBlock,
+  #faseB .phase-body > #respiratoryParameters,
   #faseC .phase-field-row > :first-child,
   #faseF .phase-body > * { grid-column: 1; }
   .device-fields,

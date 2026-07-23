@@ -4,9 +4,13 @@
   "type": "module",
   "scripts": {
     "test": "npm run test:static",
-    "test:static": "node --test tests/static-integrity.test.mjs tests/note-lifecycle.test.mjs",
-    "test:e2e": "playwright test",
-    "test:all": "npm run test:static && npm run test:e2e",
+    "test:static": "node --test tests/static-integrity.test.mjs tests/note-lifecycle.test.mjs tests/clinical-rules.test.mjs",
+    "test:clinical-audit": "python3 scripts/auditar_reglas_clinicas.py",
+    "test:e2e": "npm run test:e2e:chromium && npm run test:e2e:firefox && npm run test:e2e:webkit",
+    "test:e2e:chromium": "playwright test --project=chromium",
+    "test:e2e:firefox": "playwright test --project=firefox",
+    "test:e2e:webkit": "playwright test --project=webkit",
+    "test:all": "npm run test:clinical-audit && npm run test:static && npm run test:e2e",
     "serve:test": "node tests/static-server.mjs"
   },
   "devDependencies": {

@@ -7,6 +7,7 @@
     'use strict';
 
     const NL = () => window.notaListas || { listas: {}, escalas: [], areas: [], regionesGrupos: [] };
+    const CR = () => window.CareFlowClinical;
 
     const state = {
         // Fase A (sexo/DOB viven en app.js; la condición clínica se elige dentro del PAE)
@@ -18,23 +19,25 @@
         estadoNeurologico: '',
         estadoHemodinamico: '',
         estadoRespiratorio: '',
-        escalas: [],        // { id, nombre, corto, min, max, step, display, puntaje }
+        parametrosRespiratorios: {},
+        escalas: [],        // { id, clinicalId, puntaje, rango, significado, noEvaluable }
         sinEscalas: false,
         // Fase C
         diagnosticoMedico: '',
         aislamiento: 'No aplica',
         estadoDental: '',
-        dispositivos: [],   // { id, nombre, fechaInsercion, fechaCuracion, estado }
+        dispositivos: [],   // { id, clinicalId, nombre, origen, estadoId, estado, parametros }
         sinDispositivos: false,
         // Fase D
         regiones: [],       // strings
         sinAlteraciones: false,
-        educacion: [],      // { id, destinatario, tema }  (sección opcional)
+        educacion: [],      // { id, destinatario, tema, motivo, sinAcompanante, sinAcompananteAutonomo }
         // Fase F
         respuesta: '',
         tendencia: '',
         criterioClinico: '',
         pendientes: '',
+        pendientesAutomaticos: [], // { id, ruleId, deviceId, statusId, texto, textoOriginal, prioridad, editado }
     };
 
     let onChangeCb = () => {};
@@ -498,6 +501,218 @@
         { field: 'estadoRespiratorio', lista: 'RESP' },
     ];
 
+    function hasValue(value) {
+        if (Array.isArray(value)) return value.length > 0;
+        return value !== undefined && value !== null && String(value).trim() !== '';
+    }
+
+    function validateParameter(definition, value, context = {}) {
+        return CR()?.validateParameterValue?.(definition, value, context)
+            || { valid: hasValue(value), code: hasValue(value) ? '' : 'required', min: definition?.min ?? null, max: definition?.max ?? null };
+    }
+
+    function parameterValidationMessage(definition, validation) {
+        if (validation.code === 'required' || validation.code === 'repeatable-incomplete') {
+            return `Complete ${definition.label}`;
+        }
+        if (validation.code === 'out-of-range') {
+            if (validation.min !== null && validation.max !== null) {
+                return `${definition.label} debe estar entre ${validation.min} y ${validation.max}${definition.unit ? ` ${definition.unit}` : ''}`;
+            }
+            if (validation.min !== null) return `${definition.label} debe ser mayor o igual a ${validation.min}`;
+            if (validation.max !== null) return `${definition.label} debe ser menor o igual a ${validation.max}`;
+        }
+        return `Seleccione o ingrese un valor válido para ${definition.label}`;
+    }
+
+    function neurologicalOptions() {
+        const all = NL().listas.NEURO || [];
+        const glasgow = state.escalas.find((item) => item.clinicalId === 'glasgow');
+        if (!glasgow) return all;
+        const result = CR()?.validateGlasgowNeuro({
+            score: glasgow.puntaje,
+            range: glasgow.rango,
+            noEvaluable: glasgow.noEvaluable,
+            neurologicalState: '',
+        });
+        if (!result?.compatibleStates?.length) return all;
+        if (glasgow.noEvaluable) return result.compatibleStates;
+        const aphasia = all.filter((option) => option.startsWith('Afásico'));
+        return [...new Set([...result.compatibleStates, ...aphasia])];
+    }
+
+    function deviceDefinition(deviceOrName) {
+        return CR()?.getDevice(deviceOrName) || null;
+    }
+
+    function createDeviceRecord(nombre, origen = 'manual') {
+        const definition = deviceDefinition(nombre);
+        return {
+            id: uid(),
+            clinicalId: definition?.id || focusToken(nombre),
+            nombre,
+            origen,
+            estadoId: '',
+            estado: '',
+            parametros: {},
+        };
+    }
+
+    function respiratoryRequiredNames(rule = CR()?.getRespiratoryRequirement(state.estadoRespiratorio)) {
+        if (!rule) return [];
+        return [rule.autoDevice, ...(rule.requiresOneOf || [])].filter(Boolean);
+    }
+
+    function deviceRequiredByRespiratory(item) {
+        const rule = CR()?.getRespiratoryRequirement(state.estadoRespiratorio);
+        return !!rule && (
+            rule.autoDevice === item.nombre
+            || ((rule.requiresOneOf || []).includes(item.nombre)
+                && state.dispositivos.filter((entry) => (rule.requiresOneOf || []).includes(entry.nombre)).length === 1)
+        );
+    }
+
+    function syncRespiratoryDevice(rule) {
+        const requiredNow = new Set(respiratoryRequiredNames(rule));
+        const removedAutomaticIds = new Set(state.dispositivos
+            .filter((item) => item.origen === 'automatico-respiratorio' && !requiredNow.has(item.nombre))
+            .map((item) => item.id));
+        state.dispositivos = state.dispositivos.filter((item) => (
+            item.origen !== 'automatico-respiratorio' || requiredNow.has(item.nombre)
+        ));
+        if (removedAutomaticIds.size) {
+            state.pendientesAutomaticos = state.pendientesAutomaticos
+                .filter((entry) => !removedAutomaticIds.has(entry.deviceInstanceId));
+        }
+        if (rule?.autoDevice && !state.dispositivos.some((item) => item.nombre === rule.autoDevice)) {
+            state.sinDispositivos = false;
+            state.dispositivos.push(createDeviceRecord(rule.autoDevice, 'automatico-respiratorio'));
+            announce(`Se agregó automáticamente ${rule.autoDevice} por el estado respiratorio seleccionado.`);
+        }
+        syncNoneChoice('sinDispositivosBtn', false);
+        renderDispositivos();
+        dispositivosUI?.renderPicker();
+    }
+
+    function respiratoryFieldValue(field) {
+        return state.parametrosRespiratorios[field.id] ?? '';
+    }
+
+    function renderRespiratoryParameters() {
+        const wrap = document.getElementById('respiratoryParameters');
+        if (!wrap) return;
+        const rule = CR()?.getRespiratoryRequirement(state.estadoRespiratorio);
+        wrap.innerHTML = '';
+        wrap.hidden = !rule?.fields?.length;
+        if (!rule?.fields?.length) return;
+        const title = document.createElement('div');
+        title.className = 'subblock-head';
+        title.innerHTML = '<label>Parámetros del soporte respiratorio</label><span class="subblock-hint">Obligatorios para el soporte seleccionado</span>';
+        const fields = document.createElement('div');
+        fields.className = 'clinical-fields-grid';
+        rule.fields.forEach((definition, index) => {
+            const id = `resp-param-${definition.id}`;
+            const group = document.createElement('div');
+            group.className = 'field-group';
+            const label = document.createElement('label');
+            label.htmlFor = id;
+            label.innerHTML = `${esc(definition.label)}${definition.unit ? ` <span class="label-optional">(${esc(definition.unit)})</span>` : ''} <span class="required-star" aria-label="obligatorio">*</span>`;
+            let control;
+            if (definition.type === 'select') {
+                control = document.createElement('select');
+                control.innerHTML = `<option value="">Seleccione…</option>${definition.options.map((option) => `<option value="${esc(option)}">${esc(option)}</option>`).join('')}`;
+            } else {
+                control = document.createElement('input');
+                control.type = definition.type === 'number' ? 'number' : 'text';
+                if (definition.min !== undefined) control.min = definition.min;
+                if (definition.max !== undefined) control.max = definition.max;
+                if (definition.step !== undefined) control.step = definition.step;
+            }
+            control.id = id;
+            control.className = 'clinical-parameter';
+            control.value = respiratoryFieldValue(definition);
+            control.required = true;
+            control.setAttribute('aria-required', 'true');
+            const update = () => {
+                state.parametrosRespiratorios[definition.id] = control.value;
+                const validation = validateParameter(definition, control.value, state.parametrosRespiratorios);
+                const message = parameterValidationMessage(definition, validation);
+                control.setAttribute('aria-invalid', validation.valid ? 'false' : 'true');
+                control.setCustomValidity(validation.valid ? '' : message);
+                const automaticDevice = state.dispositivos.find((item) => item.nombre === rule.autoDevice);
+                if (automaticDevice) automaticDevice.parametros[definition.id] = control.value;
+                emit();
+            };
+            control.addEventListener('input', update);
+            control.addEventListener('change', update);
+            control.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' || event.ctrlKey || event.metaKey || event.altKey) return;
+                event.preventDefault();
+                const validation = validateParameter(definition, control.value, state.parametrosRespiratorios);
+                if (!validation.valid) {
+                    control.setAttribute('aria-invalid', 'true');
+                    announce(`${parameterValidationMessage(definition, validation)}.`);
+                    return;
+                }
+                const next = fields.querySelectorAll('.clinical-parameter')[index + 1];
+                (next || document.querySelector('#escalasBlock .multi-add-input'))?.focus();
+            });
+            group.append(label, control);
+            fields.appendChild(group);
+        });
+        wrap.append(title, fields);
+    }
+
+    function applyRespiratoryState(value) {
+        const previousRule = CR()?.getRespiratoryRequirement(state.estadoRespiratorio);
+        const nextRule = CR()?.getRespiratoryRequirement(value);
+        const previousFields = new Set((previousRule?.fields || []).map((field) => field.id));
+        const nextFields = new Set((nextRule?.fields || []).map((field) => field.id));
+        Object.keys(state.parametrosRespiratorios).forEach((key) => {
+            if (previousFields.has(key) && !nextFields.has(key)) delete state.parametrosRespiratorios[key];
+        });
+        state.estadoRespiratorio = value || '';
+        syncRespiratoryDevice(nextRule);
+        renderRespiratoryParameters();
+    }
+
+    function selectRespiratoryState(value, group) {
+        const previous = state.estadoRespiratorio;
+        if (!previous || previous === value) {
+            applyRespiratoryState(value);
+            group.classList.toggle('estado-group--done', !!value);
+            emit();
+            return true;
+        }
+        const previousRule = CR()?.getRespiratoryRequirement(previous);
+        const nextRule = CR()?.getRespiratoryRequirement(value);
+        const losesParameters = Object.values(state.parametrosRespiratorios).some(hasValue)
+            && (previousRule?.fields || []).some((field) => !(nextRule?.fields || []).some((next) => next.id === field.id));
+        const losesAutomaticDevice = state.dispositivos.some((item) => item.origen === 'automatico-respiratorio'
+            && item.nombre !== nextRule?.autoDevice
+            && (item.estado || Object.values(item.parametros || {}).some(hasValue)));
+        if ((losesParameters || losesAutomaticDevice) && typeof window.CareFlowConfirmChange === 'function') {
+            cbx.estadoRespiratorio?.setValue(previous);
+            window.CareFlowConfirmChange({
+                title: 'Cambiar el soporte respiratorio',
+                description: 'Este cambio quitará parámetros o un dispositivo automático que ya tienen información.',
+                confirmLabel: 'Cambiar soporte',
+                trigger: cbx.estadoRespiratorio?.input,
+                onConfirm: () => {
+                    cbx.estadoRespiratorio?.setValue(value);
+                    applyRespiratoryState(value);
+                    group.classList.toggle('estado-group--done', !!value);
+                    emit();
+                },
+            });
+            return false;
+        }
+        applyRespiratoryState(value);
+        group.classList.toggle('estado-group--done', !!value);
+        emit();
+        return true;
+    }
+
     function setupEstadoGroup({ field, lista }, chainNext) {
         const group = document.querySelector(`.estado-group[data-estado="${field}"]`);
         if (!group) return;
@@ -514,16 +729,43 @@
 
         cbx[field] = createCombobox({
             id: field,
-            options: () => NL().listas[lista] || [],
+            options: () => field === 'estadoNeurologico' ? neurologicalOptions() : (NL().listas[lista] || []),
             onDraft: () => {
-                state[field] = '';
-                group.classList.remove('estado-group--done');
+                // El texto provisional de soporte respiratorio no reemplaza el
+                // valor clínico comprometido: podría implicar retirar parámetros
+                // o un dispositivo y debe conservarse hasta confirmar el cambio.
+                if (field !== 'estadoRespiratorio') {
+                    state[field] = '';
+                    group.classList.remove('estado-group--done');
+                }
                 emit();
             },
             onSelect: (value) => {
-                state[field] = value || '';
-                group.classList.toggle('estado-group--done', !!value);
-                emit();
+                if (field === 'estadoRespiratorio') {
+                    return selectRespiratoryState(value || '', group);
+                } else {
+                    if (field === 'estadoNeurologico') {
+                        const glasgow = state.escalas.find((item) => item.clinicalId === 'glasgow');
+                        if (glasgow) {
+                            const result = CR()?.validateGlasgowNeuro({
+                                score: glasgow.puntaje,
+                                range: glasgow.rango,
+                                noEvaluable: glasgow.noEvaluable,
+                                neurologicalState: value,
+                            });
+                            if (result && !result.valid) {
+                                cbx[field]?.setValue(state[field]);
+                                announce(result.message);
+                                return false;
+                            }
+                            if (result?.severity === 'information' && result.message) announce(result.message);
+                        }
+                    }
+                    state[field] = value || '';
+                    group.classList.toggle('estado-group--done', !!value);
+                    emit();
+                    return true;
+                }
             },
             onConfirm: chainNext,
         });
@@ -687,8 +929,13 @@
             const value = opt.dataset.value;
             const removing = getUsed().includes(value);
             const context = { moveFocus };
-            if (removing) onRemove?.(value, context);
-            else onAdd(value, context);
+            const changed = removing ? onRemove?.(value, context) : onAdd(value, context);
+            if (changed === false) {
+                search.value = '';
+                renderPicker();
+                positionPicker();
+                return;
+            }
             emit();
             search.value = '';
             if (keepOpen) {
@@ -852,13 +1099,19 @@
             renderEscalas();
             escalasUI?.renderPicker();
         } else if (kind === 'dispositivos') {
+            if (active && respiratoryRequiredNames().length) {
+                announce('El estado respiratorio seleccionado requiere registrar al menos un dispositivo de soporte.');
+                return;
+            }
             state.sinDispositivos = active;
             if (active) {
                 state.dispositivos = [];
+                state.pendientesAutomaticos = [];
                 deviceDrafts.clear();
             }
             syncNoneChoice('sinDispositivosBtn', active);
             renderDispositivos();
+            renderGeneratedPendings();
             dispositivosUI?.renderPicker();
         } else if (kind === 'alteraciones') {
             state.sinAlteraciones = active;
@@ -904,10 +1157,22 @@
     }
 
     function escalaValida(item) {
+        if (item.clinicalId === 'glasgow' && item.noEvaluable) {
+            return state.estadoNeurologico === 'Sedoanalgesiado – escala Ramsay / RASS';
+        }
         const raw = String(item.puntaje ?? '').trim();
-        if (raw === '') return false;
+        if (raw === '') {
+            return item.captureMode !== 'manual'
+                && !!String(item.rango || '').trim()
+                && !!String(item.significado || '').trim();
+        }
         const n = Number(raw.replace(',', '.'));
-        return !Number.isNaN(n) && n >= item.min && n <= item.max;
+        if (Number.isNaN(n)) return false;
+        if (item.captureMode === 'manual') return !!String(item.significado || '').trim();
+        if (item.min !== null && item.min !== undefined && n < item.min) return false;
+        if (item.max !== null && item.max !== undefined && n > item.max) return false;
+        if (item.clinicalId === 'mna' && n > 14) return true;
+        return !!item.significado;
     }
 
     function focusStageContinue(stageId) {
@@ -945,9 +1210,15 @@
         wrap.innerHTML = '';
         state.escalas.forEach((item, itemIndex) => {
             const inputId = `escala-puntaje-${item.id}`;
+            const meaningId = `escala-significado-${item.id}`;
             const errorId = `${inputId}-error`;
+            const isManual = item.captureMode === 'manual';
+            const noEvaluable = item.clinicalId === 'glasgow' && item.noEvaluable;
+            const minAttribute = item.min === null || item.min === undefined ? '' : ` min="${item.min}"`;
+            const maxAttribute = item.max === null || item.max === undefined ? '' : ` max="${item.max}"`;
             const card = document.createElement('div');
             card.className = 'multi-add-item';
+            card.dataset.scaleId = item.clinicalId;
             card.innerHTML = `
                 <div class="multi-add-item-head">
                     <strong>${esc(item.nombre)}</strong>
@@ -956,37 +1227,128 @@
                 <div class="escala-fields">
                     <div class="field-group field-group--puntaje">
                         <label for="${inputId}">Puntaje (${esc(item.display)})</label>
-                        <input type="number" id="${inputId}" class="escala-puntaje" min="${item.min}" max="${item.max}"
+                        <input type="number" id="${inputId}" class="escala-puntaje"${minAttribute}${maxAttribute}
                                step="${item.step ?? 1}" value="${esc(item.puntaje)}"
                                placeholder="${esc(item.display)}" aria-label="Puntaje de ${esc(item.corto)}"
-                               aria-required="true" aria-invalid="false" aria-describedby="${errorId}" aria-errormessage="${errorId}">
+                               aria-required="true" aria-invalid="false" aria-describedby="${errorId}" aria-errormessage="${errorId}" ${noEvaluable ? 'disabled' : ''}>
                         <div class="puntaje-error" id="${errorId}" hidden></div>
                     </div>
+                    <div class="field-group field-group--meaning">
+                        <label for="${meaningId}">Significado / categoría</label>
+                        ${isManual ? `
+                            <input type="text" id="${meaningId}" class="escala-significado" value="${esc(item.significado)}"
+                                   placeholder="Registre el significado clínico" aria-label="Significado de ${esc(item.corto)}">
+                        ` : `
+                            <select id="${meaningId}" class="escala-significado" aria-label="Significado de ${esc(item.corto)}" ${noEvaluable ? 'disabled' : ''}>
+                                <option value="">Seleccione o ingrese el puntaje…</option>
+                                ${item.mappings.map((mapping) => `<option value="${esc(mapping.meaning)}" ${mapping.meaning === item.significado ? 'selected' : ''}>${esc(mapping.meaning)} (${esc(mapping.score)})</option>`).join('')}
+                            </select>
+                        `}
+                        ${item.rango ? `<span class="clinical-derived-value">Rango registrado: ${esc(item.rango)}</span>` : ''}
+                    </div>
+                    ${item.clinicalId === 'glasgow' ? `
+                        <label class="clinical-checkbox">
+                            <input type="checkbox" class="glasgow-no-evaluable" ${item.noEvaluable ? 'checked' : ''}>
+                            No evaluable por sedación
+                        </label>
+                    ` : ''}
                 </div>`;
             const input = card.querySelector('.escala-puntaje');
+            const meaning = card.querySelector('.escala-significado');
             const errEl = card.querySelector('.puntaje-error');
             const validate = (final = false) => {
                 item.puntaje = input.value.trim();
-                const missing = item.puntaje === '';
-                const outOfRange = !missing && !escalaValida(item);
-                const invalid = outOfRange || (final && missing);
-                const message = outOfRange
-                    ? `Debe estar entre ${item.display}`
-                    : invalid ? 'Ingrese el puntaje de la escala' : '';
+                item.significado = meaning.value.trim();
+                const rangeSelection = item.captureMode !== 'manual'
+                    && !!String(item.rango || '').trim()
+                    && !!item.significado;
+                const missing = !item.noEvaluable && item.puntaje === '' && !rangeSelection;
+                const numeric = Number(String(item.puntaje).replace(',', '.'));
+                const outOfRange = !!item.puntaje && (
+                    !Number.isFinite(numeric)
+                    || (item.min !== null && item.min !== undefined && numeric < item.min)
+                    || (item.max !== null && item.max !== undefined && numeric > item.max)
+                );
+                const missingMeaning = final && item.captureMode === 'manual' && !item.significado;
+                const invalid = outOfRange || missingMeaning || (final && missing);
+                const message = outOfRange ? `Debe estar dentro de ${item.display}`
+                    : missingMeaning ? 'Registre el significado clínico'
+                        : invalid ? 'Ingrese el puntaje de la escala' : '';
                 input.classList.toggle('puntaje-invalid', invalid);
                 input.setAttribute('aria-invalid', invalid ? 'true' : 'false');
                 input.setCustomValidity(message);
+                meaning.setAttribute('aria-invalid', missingMeaning ? 'true' : 'false');
                 errEl.hidden = !invalid;
                 errEl.textContent = message;
-                return !missing && !outOfRange;
+                return !invalid && escalaValida(item);
             };
             input._notaValidity = {
                 reportValidity: () => validate(true),
                 isInvalid: () => !escalaValida(item),
             };
-            input.addEventListener('input', () => { validate(false); emit(); });
+            meaning._notaValidity = input._notaValidity;
+            const reconcileGlasgow = () => {
+                if (item.clinicalId !== 'glasgow') return;
+                const result = CR()?.validateGlasgowNeuro({
+                    score: item.puntaje,
+                    range: item.rango,
+                    noEvaluable: item.noEvaluable,
+                    neurologicalState: state.estadoNeurologico,
+                });
+                if (result?.forcedState && state.estadoNeurologico !== result.forcedState) {
+                    state.estadoNeurologico = result.forcedState;
+                    cbx.estadoNeurologico?.setValue(result.forcedState);
+                    document.querySelector('[data-estado="estadoNeurologico"]')?.classList.add('estado-group--done');
+                    announce(`${result.forcedState} seleccionado por la regla de Glasgow.`);
+                } else if (result?.severity === 'information' && result.message) announce(result.message);
+            };
+            input.addEventListener('input', () => {
+                item.rango = '';
+                const resolved = CR()?.resolveScaleMeaning(item.clinicalId, input.value);
+                item.significado = resolved?.meaning || '';
+                meaning.value = item.significado;
+                validate(false);
+                reconcileGlasgow();
+                emit();
+            });
+            meaning.addEventListener(isManual ? 'input' : 'change', () => {
+                item.significado = meaning.value.trim();
+                if (!isManual) {
+                    const resolved = CR()?.resolveScaleSelection(item.clinicalId, item.significado);
+                    item.rango = resolved?.range || '';
+                    item.puntaje = resolved?.score || '';
+                    input.value = item.puntaje;
+                }
+                validate(false);
+                reconcileGlasgow();
+                if (!isManual) {
+                    renderEscalas();
+                    document.getElementById(meaningId)?.focus();
+                }
+                emit();
+            });
+            const sedation = card.querySelector('.glasgow-no-evaluable');
+            sedation?.addEventListener('change', () => {
+                item.noEvaluable = sedation.checked;
+                if (item.noEvaluable) {
+                    item.puntaje = '';
+                    item.rango = 'No evaluable por sedación';
+                    item.significado = 'No evaluable por sedación';
+                } else {
+                    item.rango = '';
+                    item.significado = '';
+                }
+                reconcileGlasgow();
+                renderEscalas();
+                emit();
+            });
             input.addEventListener('keydown', (e) => {
                 if (e.key !== 'Enter' || e.shiftKey || e.ctrlKey || e.metaKey || e.altKey) return;
+                e.preventDefault();
+                meaning.focus();
+            });
+            meaning.addEventListener('keydown', (e) => {
+                if (e.key !== 'Enter' || e.ctrlKey || e.metaKey || e.altKey) return;
                 e.preventDefault();
                 if (!validate(true)) return;
                 emit();
@@ -1336,128 +1698,349 @@
         emit();
     }
 
+    function syncGeneratedPendings(item) {
+        const generated = CR()?.getGeneratedPendings(item.clinicalId, item.estadoId || item.estado) || [];
+        const nextIds = new Set(generated.map((entry) => entry.id));
+        const previous = state.pendientesAutomaticos.filter((entry) => entry.deviceInstanceId === item.id);
+        const removed = previous.filter((entry) => !nextIds.has(entry.id));
+        state.pendientesAutomaticos = state.pendientesAutomaticos.filter((entry) => entry.deviceInstanceId !== item.id);
+        generated.forEach((entry) => {
+            const existing = previous.find((candidate) => candidate.id === entry.id);
+            state.pendientesAutomaticos.push(existing || {
+                ...entry,
+                deviceInstanceId: item.id,
+                texto: entry.text,
+                textoOriginal: entry.text,
+                prioridad: entry.priority,
+                editado: false,
+            });
+        });
+        if (removed.length) announce(`${removed.length} pendiente(s) automático(s) retirado(s) al cambiar el estado del dispositivo.`);
+        if (generated.length && !previous.some((entry) => nextIds.has(entry.id))) {
+            announce(`${generated.length} pendiente(s) agregado(s) por el estado de ${item.nombre}.`);
+        }
+        renderGeneratedPendings();
+    }
+
+    function renderGeneratedPendings() {
+        const block = document.getElementById('generatedPendings');
+        const wrap = document.getElementById('generatedPendingsList');
+        if (!block || !wrap) return;
+        block.hidden = !state.pendientesAutomaticos.length;
+        wrap.innerHTML = '';
+        state.pendientesAutomaticos.forEach((item, index) => {
+            const id = `pending-auto-${item.id}`;
+            const card = document.createElement('div');
+            card.className = 'generated-pending-item';
+            card.innerHTML = `
+                <div class="generated-pending-meta">
+                    <strong>${esc(state.dispositivos.find((device) => device.id === item.deviceInstanceId)?.nombre || 'Dispositivo')}</strong>
+                    <span class="priority-badge priority-badge--${item.prioridad === 'Alta' ? 'high' : 'medium'}">${esc(item.prioridad)}</span>
+                </div>
+                <label class="sr-only" for="${id}">Pendiente automático ${index + 1}</label>
+                <textarea id="${id}" class="obs-textarea generated-pending-text" rows="2">${esc(item.texto)}</textarea>`;
+            const field = card.querySelector('textarea');
+            field.addEventListener('input', () => {
+                item.texto = field.value.trim();
+                item.editado = item.texto !== item.textoOriginal;
+                emit();
+            });
+            field.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' || !event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+                event.preventDefault();
+                (wrap.children[index + 1]?.querySelector('textarea') || document.getElementById('pendientes'))?.focus();
+            });
+            wrap.appendChild(card);
+        });
+    }
+
+    function applyDeviceStatus(item, statusLabel) {
+        const definition = deviceDefinition(item.clinicalId || item.nombre);
+        const status = definition?.statuses.find((entry) => entry.label === statusLabel);
+        item.estado = status?.label || '';
+        item.estadoId = status?.id || '';
+        syncGeneratedPendings(item);
+        emit();
+    }
+
+    function renderParameterControl(item, definition, card, itemIndex) {
+        const id = `dev-param-${item.id}-${definition.id}`;
+        const group = document.createElement('div');
+        group.className = `field-group${definition.type === 'repeatable' ? ' field-group--wide' : ''}`;
+        const label = document.createElement('label');
+        label.htmlFor = id;
+        label.innerHTML = `${esc(definition.label)}${definition.unit ? ` <span class="label-optional">(${esc(definition.unit)})</span>` : ''} <span class="required-star" aria-label="obligatorio">*</span>`;
+        group.appendChild(label);
+        if (definition.type === 'repeatable') {
+            const list = document.createElement('div');
+            list.id = id;
+            list.className = 'repeatable-clinical-list';
+            const entries = Array.isArray(item.parametros[definition.id]) ? item.parametros[definition.id] : [];
+            const renderEntries = () => {
+                list.innerHTML = '';
+                entries.forEach((entry, entryIndex) => {
+                    const row = document.createElement('div');
+                    row.className = 'repeatable-clinical-row';
+                    definition.fields.forEach((subfield) => {
+                        const input = document.createElement('input');
+                        input.type = subfield.type === 'number' ? 'number' : 'text';
+                        input.value = entry[subfield.id] || '';
+                        input.placeholder = `${subfield.label}${subfield.unit ? ` (${subfield.unit})` : ''}`;
+                        input.setAttribute('aria-label', `${subfield.label}, ${definition.label} ${entryIndex + 1}`);
+                        if (subfield.min !== undefined) input.min = subfield.min;
+                        if (subfield.max !== undefined) input.max = subfield.max;
+                        if (subfield.step !== undefined) input.step = subfield.step;
+                        input.required = true;
+                        input.setAttribute('aria-required', 'true');
+                        input.addEventListener('input', () => {
+                            entry[subfield.id] = input.value;
+                            const validation = validateParameter(subfield, input.value, entry);
+                            input.setAttribute('aria-invalid', validation.valid ? 'false' : 'true');
+                            input.setCustomValidity(validation.valid ? '' : parameterValidationMessage(subfield, validation));
+                            emit();
+                        });
+                        row.appendChild(input);
+                    });
+                    const remove = document.createElement('button');
+                    remove.type = 'button';
+                    remove.className = 'multi-add-remove';
+                    remove.setAttribute('aria-label', `Quitar ${definition.label} ${entryIndex + 1}`);
+                    remove.textContent = '✕';
+                    remove.addEventListener('click', () => {
+                        entries.splice(entryIndex, 1);
+                        renderEntries();
+                        emit();
+                    });
+                    row.appendChild(remove);
+                    list.appendChild(row);
+                });
+                const add = document.createElement('button');
+                add.type = 'button';
+                add.className = 'clinical-add-row';
+                add.textContent = `Agregar ${definition.label.toLowerCase()}`;
+                add.addEventListener('click', () => {
+                    entries.push(Object.fromEntries(definition.fields.map((subfield) => [subfield.id, ''])));
+                    item.parametros[definition.id] = entries;
+                    renderEntries();
+                    list.querySelector('.repeatable-clinical-row:last-of-type input')?.focus();
+                    emit();
+                });
+                list.appendChild(add);
+            };
+            item.parametros[definition.id] = entries;
+            renderEntries();
+            group.appendChild(list);
+            card.appendChild(group);
+            return;
+        }
+
+        let control;
+        if (definition.type === 'select' || definition.type === 'boolean') {
+            control = document.createElement('select');
+            const options = definition.type === 'boolean' ? ['Sí', 'No'] : definition.options;
+            control.innerHTML = `<option value="">Seleccione…</option>${options.map((option) => `<option value="${esc(option)}">${esc(option)}</option>`).join('')}`;
+        } else {
+            control = document.createElement('input');
+            control.type = definition.type === 'date' ? 'text' : definition.type === 'number' ? 'number' : 'text';
+            if (definition.min !== undefined) control.min = definition.min;
+            if (definition.max !== undefined) control.max = definition.max;
+            if (definition.step !== undefined) control.step = definition.step;
+        }
+        control.id = id;
+        control.className = `device-parameter${definition.type === 'date' ? ' clinical-date-input' : ''}`;
+        const current = definition.linkedRespiratory
+            ? state.parametrosRespiratorios[definition.linkedRespiratory] ?? item.parametros[definition.id]
+            : item.parametros[definition.id];
+        control.value = current || '';
+        const initialValidation = validateParameter(definition, current, item.parametros);
+        if (definition.type === 'number') {
+            if (initialValidation.max === null) control.removeAttribute('max');
+            else control.max = initialValidation.max;
+        }
+        const linkedToCurrentSupport = definition.linkedRespiratory
+            && hasValue(state.parametrosRespiratorios[definition.linkedRespiratory]);
+        control.disabled = !!linkedToCurrentSupport;
+        control.setAttribute('aria-required', 'true');
+        const commit = (next) => {
+            item.parametros[definition.id] = next;
+            if (definition.linkedRespiratory) {
+                item.parametros[definition.id] = state.parametrosRespiratorios[definition.linkedRespiratory] || next;
+            }
+            const stored = item.parametros[definition.id];
+            const validation = validateParameter(definition, stored, item.parametros);
+            control.setAttribute('aria-invalid', validation.valid ? 'false' : 'true');
+            control.setCustomValidity(validation.valid ? '' : parameterValidationMessage(definition, validation));
+            (deviceDefinition(item.clinicalId || item.nombre)?.fields || [])
+                .filter((candidate) => candidate.maxBy?.field === definition.id)
+                .forEach((candidate) => {
+                    const dependent = document.getElementById(`dev-param-${item.id}-${candidate.id}`);
+                    if (!dependent) return;
+                    const dependentValidation = validateParameter(candidate, item.parametros[candidate.id], item.parametros);
+                    if (dependentValidation.max === null) dependent.removeAttribute('max');
+                    else dependent.max = dependentValidation.max;
+                    dependent.setAttribute('aria-invalid', dependentValidation.valid ? 'false' : 'true');
+                    dependent.setCustomValidity(dependentValidation.valid
+                        ? ''
+                        : parameterValidationMessage(candidate, dependentValidation));
+                });
+            emit();
+        };
+        // Los adaptadores de fecha envuelven el input en su propio contenedor;
+        // el control debe estar conectado al grupo antes de inicializarlos.
+        group.appendChild(control);
+        if (definition.type === 'date') {
+            control.dataset.iso = current || '';
+            setupDeviceDateInput(control, (next) => commit(next), {
+                required: true,
+                nextFocus: () => card.querySelectorAll('.device-parameter')[itemIndex + 1]?.focus(),
+            });
+        } else {
+            control.addEventListener('input', () => commit(control.value));
+            control.addEventListener('change', () => commit(control.value));
+        }
+        if (linkedToCurrentSupport) {
+            const linked = document.createElement('span');
+            linked.className = 'clinical-derived-value';
+            linked.textContent = 'Valor registrado en soporte respiratorio';
+            group.appendChild(linked);
+        }
+        if (definition.allowNotApplicable && !linkedToCurrentSupport) {
+            const notApplicable = document.createElement('label');
+            notApplicable.className = 'clinical-checkbox clinical-checkbox--compact';
+            notApplicable.innerHTML = `<input type="checkbox" ${current === 'No aplica' ? 'checked' : ''}> No aplica`;
+            const checkbox = notApplicable.querySelector('input');
+            control.disabled = checkbox.checked;
+            checkbox.addEventListener('change', () => {
+                control.disabled = checkbox.checked;
+                if (checkbox.checked) {
+                    control.value = '';
+                    commit('No aplica');
+                } else commit('');
+            });
+            group.appendChild(notApplicable);
+        }
+        card.appendChild(group);
+    }
+
     function renderDispositivos() {
         const wrap = document.getElementById('dispositivosList');
         if (!wrap) return;
         wrap.querySelectorAll('[data-cbx]').forEach((node) => node._notaCombobox?.destroy?.());
         wrap.querySelectorAll('.clinical-date-input').forEach((node) => node._notaDateControl?.destroy?.());
-        // Las listas de los comboboxes de estado se portalan a <body> al abrirse; al
-        // reconstruir las tarjetas hay que retirar las huérfanas para no acumularlas.
-        document.querySelectorAll('body > .cbx-list[id^="dev-estado-"]').forEach((el) => el.remove());
+        document.querySelectorAll('body > .cbx-list[id^="dev-estado-"]').forEach((element) => element.remove());
         wrap.innerHTML = '';
-        const liveIds = new Set(state.dispositivos.map((item) => item.id));
-        [...deviceDrafts.keys()].forEach((id) => { if (!liveIds.has(id)) deviceDrafts.delete(id); });
-        const estados = NL().listas.ESTADO_DISPOSITIVO || [];
         state.dispositivos.forEach((item, itemIndex) => {
+            const definition = deviceDefinition(item.clinicalId || item.nombre);
+            if (!definition) return;
+            item.clinicalId = definition.id;
+            item.parametros ||= {};
+            item.origen ||= 'manual';
             const estadoId = `dev-estado-${item.id}`;
-            const insertionId = `dev-fecha-ins-${item.id}`;
-            const healingId = `dev-fecha-cur-${item.id}`;
-            const drafts = deviceDrafts.get(item.id) || {};
-            const insertionIso = item.fechaInsercion || drafts.fechaInsercionConfirmado || '';
-            const healingIso = item.fechaCuracion || drafts.fechaCuracionConfirmado || '';
             const card = document.createElement('div');
             card.className = 'multi-add-item multi-add-item--device';
             card.dataset.deviceId = item.id;
             card.innerHTML = `
                 <div class="multi-add-item-head">
-                    <strong>${esc(item.nombre)}</strong>
+                    <div>
+                        <strong>${esc(item.nombre)}</strong>
+                        ${item.origen === 'automatico-respiratorio' ? '<span class="clinical-origin">Agregado por soporte respiratorio</span>' : ''}
+                    </div>
                     <button type="button" class="multi-add-remove" data-focus-id="quitar-dispositivo-${item.id}" aria-label="Quitar ${esc(item.nombre)}">✕</button>
                 </div>
-                <div class="device-fields">
-                    <div class="field-group">
-                        <label for="${insertionId}">Fecha de inserción <span class="required-star" aria-label="obligatorio">*</span></label>
-                        <input type="text" id="${insertionId}" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" class="dev-fecha-ins clinical-date-input" data-iso="${esc(insertionIso)}" data-date-draft="${esc(drafts.fechaInsercion || '')}" autocomplete="off" aria-label="Fecha de inserción de ${esc(item.nombre)}, formato día, mes y año">
-                    </div>
-                    <div class="field-group">
-                        <label for="${healingId}">Última curación <span class="label-optional">(opcional)</span></label>
-                        <input type="text" id="${healingId}" inputmode="numeric" maxlength="10" placeholder="DD/MM/AAAA" class="dev-fecha-cur clinical-date-input" data-iso="${esc(healingIso)}" data-date-draft="${esc(drafts.fechaCuracion || '')}" autocomplete="off" aria-label="Fecha de última curación de ${esc(item.nombre)}, formato día, mes y año">
-                    </div>
-                    <div class="field-group field-group--wide">
-                        <label for="${estadoId}">Estado del dispositivo <span class="required-star" aria-label="obligatorio">*</span></label>
-                        <div class="cbx" data-cbx="${estadoId}">
-                            <input type="text" id="${estadoId}" class="cbx-input dev-estado" placeholder="Buscar estado…"
-                                   role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
-                                   aria-label="Estado de ${esc(item.nombre)}" value="${esc(drafts.estado ?? item.estado)}">
-                            <div class="cbx-list" role="listbox" hidden></div>
-                        </div>
-                    </div>
-                </div>`;
-            // Insertar la tarjeta antes de crear el combobox: createCombobox busca sus
-            // nodos en el document (data-cbx / id), no dentro del fragmento suelto.
+                <p class="clinical-source-hint">${esc(definition.frequency)}</p>
+                <div class="device-fields"></div>`;
             wrap.appendChild(card);
-
-            const remove = () => {
-                const removed = { ...item };
-                const removedDrafts = { ...(deviceDrafts.get(item.id) || {}) };
-                state.dispositivos = state.dispositivos.filter((d) => d.id !== item.id);
-                deviceDrafts.delete(item.id);
-                renderDispositivos();
-                dispositivosUI?.renderPicker();
-                emit();
-                offerUndo(`Se quitó ${item.nombre}`, () => {
-                    if (state.dispositivos.some((entry) => entry.nombre === removed.nombre)) return;
-                    state.sinDispositivos = false;
-                    syncNoneChoice('sinDispositivosBtn', false);
-                    state.dispositivos.splice(Math.min(itemIndex, state.dispositivos.length), 0, removed);
-                    if (Object.keys(removedDrafts).length) deviceDrafts.set(removed.id, removedDrafts);
-                    renderDispositivos();
-                    dispositivosUI?.renderPicker();
-                    emit();
-                });
-            };
-            const insertion = card.querySelector('.dev-fecha-ins');
-            const healing = card.querySelector('.dev-fecha-cur');
-
-            // Estado del dispositivo: mismo combobox buscable que el resto del formulario.
+            const fields = card.querySelector('.device-fields');
+            definition.fields.forEach((parameter, parameterIndex) => renderParameterControl(item, parameter, fields, parameterIndex));
+            const statusGroup = document.createElement('div');
+            statusGroup.className = 'field-group field-group--wide';
+            statusGroup.innerHTML = `
+                <label for="${estadoId}">Estado del dispositivo <span class="required-star" aria-label="obligatorio">*</span></label>
+                <div class="cbx" data-cbx="${estadoId}">
+                    <input type="text" id="${estadoId}" class="cbx-input dev-estado" placeholder="Buscar estado específico…"
+                           role="combobox" aria-expanded="false" aria-autocomplete="list" autocomplete="off"
+                           aria-label="Estado de ${esc(item.nombre)}">
+                    <div class="cbx-list" role="listbox" hidden></div>
+                </div>`;
+            fields.appendChild(statusGroup);
             const estadoCombo = createCombobox({
                 id: estadoId,
-                options: () => estados,
-                onDraft: (draft, committed) => {
-                    const nextDrafts = { ...(deviceDrafts.get(item.id) || {}) };
-                    nextDrafts.estado = draft;
-                    nextDrafts.estadoConfirmado = committed;
-                    deviceDrafts.set(item.id, nextDrafts);
-                    item.estado = '';
+                options: () => definition.statuses.map((status) => status.label),
+                onDraft: () => {
+                    // Conservar el estado comprometido mientras se filtra. Así el
+                    // diálogo de cambio puede restaurarlo exactamente si se cancela.
                     emit();
                 },
-                onSelect: (value) => {
-                    item.estado = value || '';
-                    const nextDrafts = { ...(deviceDrafts.get(item.id) || {}) };
-                    delete nextDrafts.estado;
-                    delete nextDrafts.estadoConfirmado;
-                    if (Object.keys(nextDrafts).length) deviceDrafts.set(item.id, nextDrafts);
-                    else deviceDrafts.delete(item.id);
-                    emit();
+                onSelect: (next) => {
+                    const editedPending = state.pendientesAutomaticos.find((entry) => entry.deviceInstanceId === item.id && entry.editado);
+                    if (editedPending && next !== item.estado && typeof window.CareFlowConfirmChange === 'function') {
+                        const previous = item.estado;
+                        estadoCombo.setValue(previous);
+                        window.CareFlowConfirmChange({
+                            title: 'Cambiar el estado del dispositivo',
+                            description: 'Este cambio quitará un pendiente automático que fue editado.',
+                            confirmLabel: 'Cambiar estado',
+                            trigger: estadoCombo.input,
+                            onConfirm: () => {
+                                estadoCombo.setValue(next);
+                                applyDeviceStatus(item, next);
+                            },
+                        });
+                        return false;
+                    }
+                    applyDeviceStatus(item, next);
+                    return true;
                 },
                 onConfirm: () => {
                     const nextCard = card.nextElementSibling;
-                    const nextField = nextCard?.querySelector('.dev-fecha-ins');
-                    if (nextField) nextField.focus();
-                    else focusStageContinue('faseC');
+                    (nextCard?.querySelector('.device-parameter, .dev-estado') || document.querySelector('[data-flow-continue="faseC"]'))?.focus();
                 },
             });
-            if (Object.prototype.hasOwnProperty.call(drafts, 'estado')) {
-                estadoCombo?.hydrate({
-                    committedValue: drafts.estadoConfirmado || '',
-                    draftValue: drafts.estado,
-                });
-            } else if (item.estado) estadoCombo?.setValue(item.estado);
+            if (item.estado) estadoCombo?.setValue(item.estado);
 
-            setupDeviceDateInput(insertion, (value, result, display) => {
-                updateDeviceDate(item, 'fechaInsercion', value, result, display);
-            }, {
-                required: true,
-                nextFocus: () => healing?.focus(),
-            });
-            setupDeviceDateInput(healing, (value, result, display) => {
-                updateDeviceDate(item, 'fechaCuracion', value, result, display);
-            }, {
-                nextFocus: () => estadoCombo?.input.focus(),
-            });
+            const remove = () => {
+                if (deviceRequiredByRespiratory(item)) {
+                    announce(`${item.nombre} no puede quitarse mientras sea requerido por el estado respiratorio.`);
+                    return;
+                }
+                const commit = () => {
+                    const removed = cloneState(item);
+                    const removedPendings = cloneState(state.pendientesAutomaticos
+                        .filter((entry) => entry.deviceInstanceId === item.id));
+                    state.dispositivos = state.dispositivos.filter((device) => device.id !== item.id);
+                    state.pendientesAutomaticos = state.pendientesAutomaticos.filter((entry) => entry.deviceInstanceId !== item.id);
+                    renderDispositivos();
+                    renderGeneratedPendings();
+                    dispositivosUI?.renderPicker();
+                    emit();
+                    offerUndo(`Se quitó ${item.nombre}`, () => {
+                        if (state.dispositivos.some((device) => device.nombre === removed.nombre)) return;
+                        state.dispositivos.splice(Math.min(itemIndex, state.dispositivos.length), 0, removed);
+                        state.pendientesAutomaticos.push(...removedPendings);
+                        renderDispositivos();
+                        renderGeneratedPendings();
+                        dispositivosUI?.renderPicker();
+                        emit();
+                    });
+                };
+                const edited = state.pendientesAutomaticos.some((entry) => entry.deviceInstanceId === item.id && entry.editado);
+                if (edited && typeof window.CareFlowConfirmChange === 'function') {
+                    window.CareFlowConfirmChange({
+                        title: 'Quitar dispositivo y pendiente editado',
+                        description: 'También se eliminará el pendiente automático que fue editado.',
+                        confirmLabel: 'Quitar dispositivo',
+                        trigger: card.querySelector('.multi-add-remove'),
+                        onConfirm: commit,
+                    });
+                    return;
+                }
+                commit();
+            };
             bindRemovableControl(card.querySelector('.multi-add-remove'), remove, () => {
                 focusEquivalentAfterRemoval('#dispositivosList', itemIndex, () => dispositivosUI?.search);
             });
         });
+        renderGeneratedPendings();
     }
 
     /* ═══════════ Fase D: regiones (chips) y educación ═══════════ */
@@ -1495,8 +2078,8 @@
     }
 
     function focusScaleCompletion() {
-        const pending = [...document.querySelectorAll('#escalasList .escala-puntaje')]
-            .find((input) => !input.value.trim() || input.classList.contains('puntaje-invalid'));
+        const pending = [...document.querySelectorAll('#escalasList .escala-puntaje, #escalasList .escala-significado')]
+            .find((input) => !input.disabled && (!input.value.trim() || input.classList.contains('puntaje-invalid')));
         if (pending) pending.focus();
         else if (state.escalas.length || state.sinEscalas) focusStageContinue('faseB');
         else escalasUI?.search.focus();
@@ -1505,19 +2088,15 @@
     function focusDeviceCompletion() {
         const cards = [...document.querySelectorAll('#dispositivosList .multi-add-item')];
         for (const card of cards) {
-            const insertion = card.querySelector('.dev-fecha-ins');
-            const healing = card.querySelector('.dev-fecha-cur');
+            const parameters = [...card.querySelectorAll('.device-parameter:not(:disabled)')];
             const status = card.querySelector('.dev-estado');
-            if (insertion && !insertion.dataset.iso) {
-                insertion._notaDateControl?.reportValidity?.();
-                insertion.focus();
-                return;
-            }
-            if (healing?.value.trim() && !healing.dataset.iso) {
-                healing._notaDateControl?.reportValidity?.();
-                healing.focus();
-                return;
-            }
+            const pending = parameters.find((field) => (
+                field.classList.contains('clinical-date-input') ? !field.dataset.iso : !field.value.trim()
+            ));
+            if (pending) { pending.focus(); return; }
+            const emptyRepeatable = [...card.querySelectorAll('.repeatable-clinical-list')]
+                .find((list) => !list.querySelector('.repeatable-clinical-row'));
+            if (emptyRepeatable) { emptyRepeatable.querySelector('.clinical-add-row')?.focus(); return; }
             if (status && !status.value) { status.focus(); return; }
         }
         if (state.dispositivos.length || state.sinDispositivos) focusStageContinue('faseC');
@@ -1585,31 +2164,40 @@
             const card = document.createElement('div');
             card.className = 'multi-add-item';
             card.dataset.eduId = item.id;
-            const sinTema = noEdu(item.destinatario);
+            const sinTema = noEdu(item.destinatario) || item.sinAcompananteAutonomo;
             const topicId = `edu-tema-${item.id}`;
+            const reasonId = `edu-motivo-${item.id}`;
             const errorId = `${topicId}-error`;
             card.innerHTML = `
                 <div class="multi-add-item-head">
                     <strong>${esc(item.destinatario)}</strong>
                     <button type="button" class="multi-add-remove" data-focus-id="quitar-educacion-${item.id}" aria-label="Quitar registro de educación">✕</button>
                 </div>
-                ${sinTema ? '' : `
+                ${sinTema ? `
+                <div class="field-group">
+                    <label for="${reasonId}">Motivo / observación <span class="label-optional">(opcional)</span></label>
+                    <textarea id="${reasonId}" class="edu-motivo obs-textarea" rows="2" placeholder="Describa el motivo si corresponde…">${esc(item.motivo)}</textarea>
+                </div>` : `
                 <div class="field-group">
                     <label for="${topicId}">Tema de educación <span class="required-star" aria-label="obligatorio">*</span></label>
                     <textarea id="${topicId}" class="edu-tema obs-textarea" rows="2" placeholder="Describa el contenido educativo impartido…"
                               aria-label="Tema de educación para ${esc(item.destinatario)}" aria-required="true"
                               aria-invalid="false" aria-describedby="${errorId}" aria-errormessage="${errorId}">${esc(item.tema)}</textarea>
                     <div class="cbx-feedback" id="${errorId}" hidden></div>
-                </div>`}`;
+                </div>
+                ${item.destinatario === 'Paciente' ? `
+                    <label class="clinical-checkbox">
+                        <input type="checkbox" class="edu-no-companion" ${item.sinAcompanante ? 'checked' : ''}>
+                        Sin acompañante
+                    </label>
+                ` : ''}`}`;
             const remove = () => {
-                const removed = { ...item };
+                const removed = cloneState(item);
                 state.educacion = state.educacion.filter((e2) => e2.id !== item.id);
                 if (lastEducationId === item.id) lastEducationId = state.educacion.at(-1)?.id || null;
                 renderEducacion();
                 emit();
                 offerUndo('Se quitó el registro de educación', () => {
-                    if (state.educacion.some((entry) => entry.destinatario === removed.destinatario)) return;
-                    if (state.educacion.some((entry) => noEdu(entry.destinatario) !== noEdu(removed.destinatario))) return;
                     state.educacion.splice(Math.min(itemIndex, state.educacion.length), 0, removed);
                     lastEducationId = removed.id;
                     renderEducacion();
@@ -1633,6 +2221,8 @@
                 ta.addEventListener('input', () => {
                     item.tema = ta.value.trim();
                     validateTopic(false);
+                    const warnings = CR()?.validateEducation(state.educacion).filter((issue) => issue.type === 'warning' && issue.entryId === item.id) || [];
+                    if (warnings[0]) announce(warnings[0].message);
                     emit();
                 });
                 ta.addEventListener('keydown', (e) => {
@@ -1645,23 +2235,26 @@
                     focusEducationCompletion();
                 });
             }
+            const reason = card.querySelector('.edu-motivo');
+            reason?.addEventListener('input', () => {
+                item.motivo = reason.value.trim();
+                emit();
+            });
+            card.querySelector('.edu-no-companion')?.addEventListener('change', (event) => {
+                item.sinAcompanante = event.currentTarget.checked;
+                emit();
+            });
             bindRemovableControl(removeButton, remove, () => {
-                [...document.querySelectorAll('#eduQuick .edu-quick-btn')]
-                    .find((button) => button.dataset.eduDest === item.destinatario)?.focus();
+                document.querySelector('#eduQuick .edu-quick-btn')?.focus();
             });
             wrap.appendChild(card);
-        });
-        document.querySelectorAll('#eduQuick [data-edu-dest]').forEach((btn) => {
-            const selected = state.educacion.some((e2) => e2.destinatario === btn.dataset.eduDest);
-            btn.setAttribute('aria-pressed', selected ? 'true' : 'false');
-            btn.classList.toggle('edu-quick-btn--active', selected);
         });
     }
 
     function setupEduQuick() {
         const wrap = document.getElementById('eduQuick');
         if (!wrap) return;
-        const opciones = NL().listas.EDUCACION_DEST || [];
+        const opciones = [...(NL().listas.EDUCACION_DEST || []), 'Sin acompañante'];
         wrap.innerHTML = '';
         opciones.forEach((dest) => {
             const btn = document.createElement('button');
@@ -1669,57 +2262,48 @@
             btn.className = 'edu-quick-btn';
             btn.dataset.eduDest = dest;
             btn.dataset.focusId = `educacion-${focusToken(dest)}`;
-            btn.setAttribute('aria-pressed', 'false');
-            btn.setAttribute('aria-keyshortcuts', 'Enter Shift+Enter Delete Backspace Shift+Backspace');
+            btn.setAttribute('aria-keyshortcuts', 'Enter Shift+Enter');
             btn.textContent = dest
                 .replace('Familiar directo (cónyuge / padre / madre / hijo/a)', 'Familiar directo')
                 .replace('No fue posible brindar educación – ', 'No fue posible: ');
             btn.title = dest;
-            const applyToggle = () => {
-                const existing = state.educacion.find((e2) => e2.destinatario === dest);
-                if (existing) {
-                    const removed = { ...existing };
-                    const itemIndex = state.educacion.indexOf(existing);
-                    state.educacion = state.educacion.filter((e2) => e2.id !== existing.id);
-                    if (lastEducationId === existing.id) lastEducationId = state.educacion.at(-1)?.id || null;
-                    renderEducacion();
-                    emit();
-                    offerUndo('Se quitó el registro de educación', () => {
-                        if (state.educacion.some((entry) => entry.destinatario === removed.destinatario)) return;
-                        if (state.educacion.some((entry) => noEdu(entry.destinatario) !== noEdu(removed.destinatario))) return;
-                        state.educacion.splice(Math.min(itemIndex, state.educacion.length), 0, removed);
-                        lastEducationId = removed.id;
-                        renderEducacion();
-                        emit();
-                    });
-                } else {
-                    // "No fue posible" (educación NO realizada) es excluyente con las
-                    // opciones que indican que SÍ se educó. Al elegir una, se descartan
-                    // las del grupo opuesto para no dejar estados contradictorios.
-                    const addingNegative = noEdu(dest);
-                    const displaced = state.educacion.filter((entry) => noEdu(entry.destinatario) !== addingNegative);
-                    const commit = () => {
-                        state.educacion = state.educacion.filter((entry) => noEdu(entry.destinatario) === addingNegative);
-                        const added = { id: uid(), destinatario: dest, tema: '' };
-                        state.educacion.push(added);
-                        lastEducationId = added.id;
-                        renderEducacion();
-                        emit();
-                    };
-                    if (displaced.length && typeof window.CareFlowConfirmChange === 'function') {
-                        window.CareFlowConfirmChange({
-                            title: 'Cambiar el tipo de registro de educación',
-                            description: 'Este cambio quitará los registros de educación del grupo contrario.',
-                            confirmLabel: 'Cambiar registro',
-                            trigger: btn,
-                            onConfirm: commit,
-                        });
-                        return;
-                    }
-                    commit();
+            const addEntry = () => {
+                const standalone = dest === 'Sin acompañante';
+                const patientWithoutConditions = dest === 'No fue posible brindar educación – paciente sin condiciones';
+                const hasPatientEducation = state.educacion.some((entry) => entry.destinatario === 'Paciente' && entry.tema);
+                if (standalone && state.educacion.length) {
+                    announce('“Sin acompañante” usado de forma autónoma no puede combinarse con otros registros de educación.');
+                    return;
                 }
+                if (!standalone && state.educacion.some((entry) => entry.sinAcompananteAutonomo)) {
+                    announce('Quite el registro autónomo “Sin acompañante” antes de agregar educación.');
+                    return;
+                }
+                if (patientWithoutConditions && hasPatientEducation) {
+                    announce('“Paciente sin condiciones” no puede combinarse con educación al paciente en la misma nota.');
+                    return;
+                }
+                if (dest === 'Paciente' && state.educacion.some((entry) => noEdu(entry.destinatario))) {
+                    announce('No puede agregar educación al paciente mientras figure “paciente sin condiciones”.');
+                    return;
+                }
+                const added = {
+                    id: uid(),
+                    destinatario: standalone ? 'Sin acompañante' : dest,
+                    tema: '',
+                    motivo: '',
+                    sinAcompanante: false,
+                    sinAcompananteAutonomo: standalone,
+                };
+                state.educacion.push(added);
+                lastEducationId = added.id;
+                renderEducacion();
+                emit();
+                setTimeout(() => {
+                    document.getElementById(standalone || patientWithoutConditions ? `edu-motivo-${added.id}` : `edu-tema-${added.id}`)?.focus();
+                }, 0);
             };
-            listen(btn, 'click', applyToggle);
+            listen(btn, 'click', addEntry);
             listen(btn, 'keydown', (e) => {
                 if (e.key === 'Enter' && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
                     e.preventDefault();
@@ -1727,12 +2311,6 @@
                     focusEducationTopicsStart();
                     return;
                 }
-                if ((e.key !== 'Backspace' && e.key !== 'Delete') || e.ctrlKey || e.metaKey || e.altKey) return;
-                e.preventDefault();
-                e.stopPropagation();
-                if (btn.getAttribute('aria-pressed') !== 'true') return;
-                applyToggle();
-                setTimeout(() => btn.focus(), 0);
             });
             wrap.appendChild(btn);
         });
@@ -1745,14 +2323,33 @@
     /* Ítems sueltos de cada grupo denso — misma fuente que los formatters de string.
        Permiten a la nota presentarlos en línea (pocos) o como lista de viñetas (muchos). */
     function escalasItems() {
-        return state.escalas.map((e2) => `${e2.corto}: ${e2.puntaje !== '' ? e2.puntaje : '___'}`);
+        return state.escalas.map((item) => {
+            if (item.noEvaluable) return `${item.corto}: no evaluable por sedación`;
+            const score = item.puntaje !== '' ? item.puntaje : item.rango || '___';
+            return `${item.corto}: ${score}${item.significado ? ` – ${item.significado}` : ''}`;
+        });
+    }
+
+    function formatParameterValue(value) {
+        if (Array.isArray(value)) {
+            return value.map((entry) => Object.values(entry).filter(hasValue).join(' / ')).filter(Boolean).join(' · ');
+        }
+        return String(value ?? '').trim();
     }
 
     function dispositivosItems() {
         return state.dispositivos.map((d) => {
             const extras = [];
-            if (d.fechaInsercion) extras.push(`inserción ${isoToDMY(d.fechaInsercion)}`);
-            if (d.fechaCuracion) extras.push(`última curación ${isoToDMY(d.fechaCuracion)}`);
+            const definition = deviceDefinition(d.clinicalId || d.nombre);
+            (definition?.fields || []).forEach((parameter) => {
+                const raw = parameter.linkedRespiratory
+                    ? state.parametrosRespiratorios[parameter.linkedRespiratory] ?? d.parametros?.[parameter.id]
+                    : d.parametros?.[parameter.id];
+                const formatted = formatParameterValue(raw);
+                if (!formatted) return;
+                const value = parameter.type === 'date' && formatted !== 'No aplica' ? isoToDMY(formatted) : formatted;
+                extras.push(`${parameter.label}: ${value}${parameter.unit && formatted !== 'No aplica' ? ` ${parameter.unit}` : ''}`);
+            });
             if (d.estado) extras.push(`estado: ${d.estado}`);
             return d.nombre + (extras.length ? ` (${extras.join(', ')})` : '');
         });
@@ -1782,20 +2379,48 @@
     /* Frase completa de educación, o '' si no se registró (sección opcional) */
     function formatEducacion() {
         if (!state.educacion.length) return '';
-        const con = state.educacion.filter((e2) => !noEdu(e2.destinatario));
-        const sin = state.educacion.filter((e2) => noEdu(e2.destinatario));
+        const con = state.educacion.filter((e2) => !noEdu(e2.destinatario) && !e2.sinAcompananteAutonomo);
+        const sin = state.educacion.filter((e2) => noEdu(e2.destinatario) || e2.sinAcompananteAutonomo);
         const frases = [];
         if (con.length) {
-            const partes = con.map((e2) => `${e2.destinatario.toLowerCase()} sobre ${e2.tema || '___'}`);
+            const partes = con.map((e2) => `${e2.destinatario.toLowerCase()} sobre ${e2.tema || '___'}${e2.sinAcompanante ? ', sin acompañante' : ''}`);
             frases.push(`Se brindó educación a ${joinNat(partes)}, con verificación de comprensión según corresponda.`);
         }
-        sin.forEach((e2) => frases.push(`${e2.destinatario}.`));
+        sin.forEach((e2) => frases.push(`${e2.destinatario}${e2.motivo ? `: ${e2.motivo}` : ''}.`));
         return frases.join(' ');
+    }
+
+    function pendientesItems() {
+        const values = [
+            ...state.pendientesAutomaticos.map((item) => item.texto).filter(hasValue),
+            state.pendientes,
+        ].filter(hasValue);
+        const seen = new Set();
+        return values.filter((value) => {
+            const key = norm(value).trim();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+    }
+
+    function formatPendientes() {
+        return pendientesItems().join('; ');
+    }
+
+    function formatRespiratoryState() {
+        if (!state.estadoRespiratorio) return '';
+        const rule = CR()?.getRespiratoryRequirement(state.estadoRespiratorio);
+        const parameters = (rule?.fields || []).map((field) => {
+            const value = state.parametrosRespiratorios[field.id];
+            return hasValue(value) ? `${field.label}: ${value}${field.unit ? ` ${field.unit}` : ''}` : '';
+        }).filter(Boolean);
+        return `${state.estadoRespiratorio}${parameters.length ? ` (${parameters.join(', ')})` : ''}`;
     }
 
     function formatVigentes() {
         const parts = [];
-        if (state.estadoRespiratorio) parts.push(state.estadoRespiratorio);
+        if (state.estadoRespiratorio) parts.push(formatRespiratoryState());
         state.dispositivos.forEach((d) => {
             if (!d.estado || !d.estado.startsWith('Retirado')) {
                 parts.push(d.nombre + (d.estado ? ` (${d.estado})` : ''));
@@ -1812,6 +2437,18 @@
         control?.focus?.();
         if (control && typeof scrollSoft === 'function') scrollSoft(control, 'nearest');
         return !!control;
+    }
+
+    function parameterValue(item, definition) {
+        if (definition.linkedRespiratory && hasValue(state.parametrosRespiratorios[definition.linkedRespiratory])) {
+            return state.parametrosRespiratorios[definition.linkedRespiratory];
+        }
+        return item.parametros?.[definition.id];
+    }
+
+    function parameterComplete(item, definition) {
+        const value = parameterValue(item, definition);
+        return validateParameter(definition, value, item.parametros || {}).valid;
     }
 
     function getIssues(stageId) {
@@ -1865,6 +2502,37 @@
                 `Puntaje de ${item.corto} (${item.display})`,
                 () => focusControl(input, () => input?._notaValidity?.reportValidity?.()));
         });
+        const glasgow = state.escalas.find((item) => item.clinicalId === 'glasgow');
+        if (glasgow && escalaValida(glasgow)) {
+            const congruence = CR()?.validateGlasgowNeuro({
+                score: glasgow.puntaje,
+                range: glasgow.rango,
+                noEvaluable: glasgow.noEvaluable,
+                neurologicalState: state.estadoNeurologico,
+            });
+            if (congruence && !congruence.valid) {
+                const input = document.getElementById(`escala-puntaje-${glasgow.id}`);
+                add('faseB', 'faseB', input?.id || `escala-${glasgow.id}`, 'invalid',
+                    congruence.message,
+                    () => focusControl(input || cbx.estadoNeurologico?.input));
+            }
+        }
+        const respiratoryRule = CR()?.getRespiratoryRequirement(state.estadoRespiratorio);
+        (respiratoryRule?.fields || []).forEach((field) => {
+            const value = state.parametrosRespiratorios[field.id];
+            const validation = validateParameter(field, value, state.parametrosRespiratorios);
+            if (validation.valid) return;
+            const input = document.getElementById(`resp-param-${field.id}`);
+            add('faseB', 'faseB', input?.id || `resp-param-${field.id}`, hasValue(value) ? 'invalid' : 'missing',
+                `${parameterValidationMessage(field, validation)} en el soporte respiratorio`,
+                () => focusControl(input, () => input?.reportValidity?.()));
+        });
+        if (respiratoryRule?.requiresOneOf?.length
+            && !state.dispositivos.some((item) => respiratoryRule.requiresOneOf.includes(item.nombre))) {
+            add('faseC', 'faseC', 'respiratory-airway', 'missing',
+                'Vía aérea artificial (TOT, TNT o Traqueostomía) requerida por el estado respiratorio',
+                () => focusControl(dispositivosUI?.search));
+        }
 
         if (!state.diagnosticoMedico) add('faseC', 'faseC', 'diagnosticoMedico', 'missing', 'Diagnóstico médico',
             () => focusControl(document.getElementById('diagnosticoMedico')));
@@ -1878,22 +2546,23 @@
                 () => focusControl(dispositivosUI?.search));
         }
         state.dispositivos.forEach((item) => {
-            const drafts = deviceDrafts.get(item.id) || {};
-            const insertion = document.getElementById(`dev-fecha-ins-${item.id}`);
-            const healing = document.getElementById(`dev-fecha-cur-${item.id}`);
             const status = document.getElementById(`dev-estado-${item.id}`);
-            if (!item.fechaInsercion) {
-                const hasDraft = !!(insertion?.value.trim() || drafts.fechaInsercion);
-                add('faseC', 'faseC', insertion?.id || `dev-fecha-ins-${item.id}`,
-                    hasDraft ? 'invalid' : 'missing',
-                    hasDraft ? `Fecha de inserción válida de ${item.nombre}` : `Fecha de inserción de ${item.nombre}`,
-                    () => focusControl(insertion, () => insertion?._notaDateControl?.reportValidity?.()));
-            }
-            if (!item.fechaCuracion && (healing?.value.trim() || drafts.fechaCuracion)) {
-                add('faseC', 'faseC', healing?.id || `dev-fecha-cur-${item.id}`, 'invalid',
-                    `Fecha de última curación válida de ${item.nombre}`,
-                    () => focusControl(healing, () => healing?._notaDateControl?.reportValidity?.()));
-            }
+            const definition = deviceDefinition(item.clinicalId || item.nombre);
+            (definition?.fields || []).forEach((parameter) => {
+                if (parameterComplete(item, parameter)) return;
+                const input = document.getElementById(`dev-param-${item.id}-${parameter.id}`);
+                const value = parameterValue(item, parameter);
+                const validation = validateParameter(parameter, value, item.parametros || {});
+                add('faseC', 'faseC', input?.id || `dev-param-${item.id}-${parameter.id}`,
+                    hasValue(value) ? 'invalid' : 'missing',
+                    `${parameterValidationMessage(parameter, validation)} en ${item.nombre}`,
+                    () => focusControl(
+                        parameter.type === 'repeatable'
+                            ? input?.querySelector('input:placeholder-shown') || input?.querySelector('.clinical-add-row')
+                            : input,
+                        () => input?.reportValidity?.()
+                    ));
+            });
             if (!item.estado) {
                 const control = status?.closest('[data-cbx]')?._notaCombobox;
                 add('faseC', 'faseC', status?.id || `dev-estado-${item.id}`,
@@ -1907,11 +2576,16 @@
                 () => focusControl(regionesUI?.search));
         }
         state.educacion.forEach((item) => {
-            if (noEdu(item.destinatario) || item.tema) return;
+            if (noEdu(item.destinatario) || item.sinAcompananteAutonomo || item.tema) return;
             const topic = document.getElementById(`edu-tema-${item.id}`);
             add('faseD', 'faseD', topic?.id || `edu-tema-${item.id}`, 'missing',
                 `Tema de educación (${item.destinatario})`,
                 () => focusControl(topic, () => topic?._notaValidity?.reportValidity?.()));
+        });
+        (CR()?.validateEducation(state.educacion) || []).filter((issue) => issue.type === 'error').forEach((issue) => {
+            const topic = issue.entryId ? document.getElementById(`edu-tema-${issue.entryId}`) : document.querySelector('#educacionList textarea');
+            add('faseD', 'faseD', issue.entryId || issue.code, 'invalid', issue.message,
+                () => focusControl(topic || document.querySelector('#eduQuick .edu-quick-btn')));
         });
 
         if (!state.respuesta) add('evaluacion', 'faseF', 'respuestaIntervenciones', 'missing',
@@ -1924,7 +2598,7 @@
         }
         if (!state.criterioClinico) add('cierre', 'faseF', 'criterioClinico', 'missing',
             'Criterio clínico u objetivo alcanzado', () => focusControl(document.getElementById('criterioClinico')));
-        if (!state.pendientes) add('cierre', 'faseF', 'pendientes', 'missing',
+        if (!pendientesItems().length) add('cierre', 'faseF', 'pendientes', 'missing',
             'Pendientes para el siguiente turno', () => focusControl(document.getElementById('pendientes')));
 
         const targetStage = stageId === 'faseA' ? 'patient' : stageId;
@@ -1942,9 +2616,11 @@
         const m = getMissing();
         const totals = {
             faseA: 4,
-            faseB: 4 + (state.sinEscalas ? 0 : state.escalas.length),
-            faseC: 3 + (state.sinDispositivos ? 0 : state.dispositivos.length * 2)
-                + state.dispositivos.filter((item) => item.fechaCuracion || deviceDrafts.get(item.id)?.fechaCuracion).length,
+            faseB: 4 + (CR()?.getRespiratoryRequirement(state.estadoRespiratorio)?.fields.length || 0)
+                + (state.sinEscalas ? 0 : state.escalas.length),
+            faseC: 3 + (state.sinDispositivos ? 0 : state.dispositivos.reduce((total, item) => (
+                total + (deviceDefinition(item.clinicalId || item.nombre)?.fields.length || 0) + 1
+            ), 0)),
             faseD: 1 + state.educacion.filter((e2) => !noEdu(e2.destinatario)).length,
             faseF: 4,
         };
@@ -2126,17 +2802,24 @@
         } else if (id === 'faseB') {
             Object.assign(state, {
                 estadoNeurologico: '', estadoHemodinamico: '', estadoRespiratorio: '',
-                escalas: [], sinEscalas: false,
+                parametrosRespiratorios: {}, escalas: [], sinEscalas: false,
             });
+            const removedIds = new Set(state.dispositivos
+                .filter((item) => item.origen === 'automatico-respiratorio').map((item) => item.id));
+            state.dispositivos = state.dispositivos.filter((item) => item.origen !== 'automatico-respiratorio');
+            state.pendientesAutomaticos = state.pendientesAutomaticos.filter((item) => !removedIds.has(item.deviceInstanceId));
             ['estadoNeurologico', 'estadoHemodinamico', 'estadoRespiratorio'].forEach((fieldId) => cbx[fieldId]?.setValue(''));
             document.querySelectorAll('.estado-group').forEach((group) => group.classList.remove('estado-group--done'));
+            renderRespiratoryParameters();
             renderEscalas();
+            renderDispositivos();
+            renderGeneratedPendings();
             syncNoneChoice('sinEscalasBtn', false);
             escalasUI?.renderPicker();
         } else if (id === 'faseC') {
             Object.assign(state, {
                 diagnosticoMedico: '', aislamiento: 'No aplica', estadoDental: '',
-                dispositivos: [], sinDispositivos: false,
+                dispositivos: [], sinDispositivos: false, pendientesAutomaticos: [],
             });
             deviceDrafts.clear();
             const diagnosis = document.getElementById('diagnosticoMedico');
@@ -2144,6 +2827,7 @@
             cbx.aislamiento?.setValue('No aplica');
             cbx.estadoDental?.setValue('');
             renderDispositivos();
+            syncRespiratoryDevice(CR()?.getRespiratoryRequirement(state.estadoRespiratorio));
             syncNoneChoice('sinDispositivosBtn', false);
             dispositivosUI?.renderPicker();
         } else if (id === 'faseD') {
@@ -2171,9 +2855,9 @@
         Object.assign(state, {
             posicion: '', numCama: '', numHabitacion: '', servicio: '',
             estadoNeurologico: '', estadoHemodinamico: '', estadoRespiratorio: '',
-            escalas: [], sinEscalas: false, diagnosticoMedico: '', aislamiento: 'No aplica', estadoDental: '',
+            parametrosRespiratorios: {}, escalas: [], sinEscalas: false, diagnosticoMedico: '', aislamiento: 'No aplica', estadoDental: '',
             dispositivos: [], sinDispositivos: false, regiones: [], sinAlteraciones: false, educacion: [],
-            respuesta: '', tendencia: '', criterioClinico: '', pendientes: '',
+            respuesta: '', tendencia: '', criterioClinico: '', pendientes: '', pendientesAutomaticos: [],
         });
         deviceDrafts.clear();
         lastEducationId = null;
@@ -2186,10 +2870,12 @@
         cbx.tendenciaEvolutiva?.setValue('');
         document.querySelectorAll('.estado-group').forEach((g) => g.classList.remove('estado-group--done'));
         document.querySelectorAll('.multi-add-input').forEach((t) => t.setAttribute('aria-expanded', 'false'));
+        renderRespiratoryParameters();
         renderEscalas();
         renderDispositivos();
         renderRegiones();
         renderEducacion();
+        renderGeneratedPendings();
         syncNoneChoice('sinEscalasBtn', false);
         syncNoneChoice('sinDispositivosBtn', false);
         syncNoneChoice('sinAlteracionesBtn', false);
@@ -2209,12 +2895,42 @@
         return cloneState(state);
     }
 
-    function restoreState(snapshot) {
+    function restoreState(snapshot, { notify = true } = {}) {
         if (!snapshot || typeof snapshot !== 'object') return false;
         const next = cloneState(snapshot);
         Object.keys(state).forEach((key) => {
             if (Object.prototype.hasOwnProperty.call(next, key)) state[key] = next[key];
         });
+        state.parametrosRespiratorios ||= {};
+        state.pendientesAutomaticos ||= [];
+        state.escalas = (state.escalas || []).map((item) => {
+            const definition = CR()?.getScale(item.clinicalId || item.nombre || item.corto);
+            return {
+                ...item,
+                clinicalId: definition?.id || item.clinicalId,
+                captureMode: definition?.captureMode || item.captureMode || 'bidirectional',
+                mappings: definition?.mappings || item.mappings || [],
+                rango: item.rango || '',
+                significado: item.significado || CR()?.resolveScaleMeaning(definition?.id, item.puntaje)?.meaning || '',
+                noEvaluable: !!item.noEvaluable,
+            };
+        });
+        state.dispositivos = (state.dispositivos || []).map((item) => {
+            const definition = deviceDefinition(item.clinicalId || item.nombre);
+            return {
+                ...item,
+                clinicalId: definition?.id || item.clinicalId,
+                origen: item.origen || 'manual',
+                estadoId: item.estadoId || definition?.statuses.find((status) => status.label === item.estado)?.id || '',
+                parametros: item.parametros || {},
+            };
+        });
+        state.educacion = (state.educacion || []).map((item) => ({
+            ...item,
+            motivo: item.motivo || '',
+            sinAcompanante: !!item.sinAcompanante,
+            sinAcompananteAutonomo: !!item.sinAcompananteAutonomo,
+        }));
         deviceDrafts.clear();
         lastEducationId = state.educacion.at(-1)?.id || null;
 
@@ -2239,10 +2955,12 @@
         document.querySelectorAll('.estado-group').forEach((group) => {
             group.classList.toggle('estado-group--done', !!state[group.dataset.estado]);
         });
+        renderRespiratoryParameters();
         renderEscalas();
         renderDispositivos();
         renderRegiones();
         renderEducacion();
+        renderGeneratedPendings();
         syncNoneChoice('sinEscalasBtn', state.sinEscalas);
         syncNoneChoice('sinDispositivosBtn', state.sinDispositivos);
         syncNoneChoice('sinAlteracionesBtn', state.sinAlteraciones);
@@ -2250,6 +2968,7 @@
         dispositivosUI?.renderPicker();
         regionesUI?.renderPicker();
         closeMenus();
+        if (notify) emit();
         return true;
     }
 
@@ -2308,7 +3027,22 @@
                 if (!meta) return;
                 state.sinEscalas = false;
                 syncNoneChoice('sinEscalasBtn', false);
-                state.escalas.push({ id: uid(), nombre: meta.nombre, corto: meta.corto, min: meta.min, max: meta.max, step: meta.step ?? 1, display: meta.display, puntaje: '' });
+                state.escalas.push({
+                    id: uid(),
+                    clinicalId: meta.id,
+                    nombre: meta.nombre,
+                    corto: meta.corto,
+                    min: meta.min,
+                    max: meta.max,
+                    step: meta.step ?? 1,
+                    display: meta.display,
+                    captureMode: meta.captureMode,
+                    mappings: meta.mappings || [],
+                    puntaje: '',
+                    rango: '',
+                    significado: '',
+                    noEvaluable: false,
+                });
                 renderEscalas();
                 if (moveFocus) {
                     setTimeout(() => {
@@ -2361,32 +3095,62 @@
             onAdd: (nombre, { moveFocus = true } = {}) => {
                 state.sinDispositivos = false;
                 syncNoneChoice('sinDispositivosBtn', false);
-                state.dispositivos.push({ id: uid(), nombre, fechaInsercion: '', fechaCuracion: '', estado: '' });
+                state.dispositivos.push(createDeviceRecord(nombre));
                 renderDispositivos();
                 if (moveFocus) {
                     setTimeout(() => {
                         const cards = document.querySelectorAll('#dispositivosList .multi-add-item');
-                        cards[cards.length - 1]?.querySelector('.dev-fecha-ins')?.focus();
+                        cards[cards.length - 1]?.querySelector('.device-parameter, .dev-estado')?.focus();
                     }, 0);
                 }
             },
             onRemove: (nombre) => {
                 const itemIndex = state.dispositivos.findIndex((item) => item.nombre === nombre);
-                const removed = itemIndex >= 0 ? { ...state.dispositivos[itemIndex] } : null;
-                const removedDrafts = removed ? { ...(deviceDrafts.get(removed.id) || {}) } : {};
-                state.dispositivos = state.dispositivos.filter((item) => item.nombre !== nombre);
-                if (removed) deviceDrafts.delete(removed.id);
-                renderDispositivos();
-                if (removed) offerUndo(`Se quitó ${removed.nombre}`, () => {
-                    if (state.dispositivos.some((item) => item.nombre === removed.nombre)) return;
-                    state.sinDispositivos = false;
-                    syncNoneChoice('sinDispositivosBtn', false);
-                    state.dispositivos.splice(Math.min(itemIndex, state.dispositivos.length), 0, removed);
-                    if (Object.keys(removedDrafts).length) deviceDrafts.set(removed.id, removedDrafts);
+                const removed = itemIndex >= 0 ? state.dispositivos[itemIndex] : null;
+                if (removed && deviceRequiredByRespiratory(removed)) {
+                    announce(`${removed.nombre} no puede quitarse mientras sea requerido por el estado respiratorio.`);
                     renderDispositivos();
                     dispositivosUI?.renderPicker();
-                    emit();
-                });
+                    return false;
+                }
+                const removedPendings = removed
+                    ? cloneState(state.pendientesAutomaticos.filter((entry) => entry.deviceInstanceId === removed.id))
+                    : [];
+                const commit = ({ notify = false } = {}) => {
+                    state.dispositivos = state.dispositivos.filter((item) => item.nombre !== nombre);
+                    if (removed) {
+                        state.pendientesAutomaticos = state.pendientesAutomaticos
+                            .filter((entry) => entry.deviceInstanceId !== removed.id);
+                    }
+                    renderDispositivos();
+                    renderGeneratedPendings();
+                    dispositivosUI?.renderPicker();
+                    if (notify) emit();
+                    if (removed) offerUndo(`Se quitó ${removed.nombre}`, () => {
+                        if (state.dispositivos.some((item) => item.nombre === removed.nombre)) return;
+                        state.sinDispositivos = false;
+                        syncNoneChoice('sinDispositivosBtn', false);
+                        state.dispositivos.splice(Math.min(itemIndex, state.dispositivos.length), 0, removed);
+                        state.pendientesAutomaticos.push(...removedPendings);
+                        renderDispositivos();
+                        renderGeneratedPendings();
+                        dispositivosUI?.renderPicker();
+                        emit();
+                    });
+                };
+                const edited = removed && removedPendings.some((entry) => entry.editado);
+                if (edited && typeof window.CareFlowConfirmChange === 'function') {
+                    window.CareFlowConfirmChange({
+                        title: 'Quitar dispositivo y pendiente editado',
+                        description: 'También se eliminará el pendiente automático que fue editado.',
+                        confirmLabel: 'Quitar dispositivo',
+                        trigger: dispositivosUI?.search,
+                        onConfirm: () => commit({ notify: true }),
+                    });
+                    return false;
+                }
+                commit();
+                return true;
             },
             onFinish: focusDeviceCompletion,
         });
@@ -2463,10 +3227,12 @@
         });
         cbx.aislamiento?.setValue(state.aislamiento || 'No aplica');
         cbx.tendenciaEvolutiva?.setValue(state.tendencia);
+        renderRespiratoryParameters();
         renderEscalas();
         renderDispositivos();
         renderRegiones();
         renderEducacion();
+        renderGeneratedPendings();
         syncNoneChoice('sinEscalasBtn', state.sinEscalas);
         syncNoneChoice('sinDispositivosBtn', state.sinDispositivos);
         syncNoneChoice('sinAlteracionesBtn', state.sinAlteraciones);
@@ -2518,7 +3284,7 @@
             if (!belongsToStage(control.input)) return;
             if (!control.commitDraft()) valid = false;
         });
-        document.querySelectorAll('.escala-puntaje, .edu-tema').forEach((field) => {
+        document.querySelectorAll('.escala-puntaje, .escala-significado, .edu-tema').forEach((field) => {
             if (!belongsToStage(field)) return;
             if (field._notaValidity?.reportValidity?.() === false) valid = false;
         });
@@ -2589,11 +3355,14 @@
         formatDate: isoToDMY,
         formatEscalas,
         formatDispositivos,
+        formatRespiratoryState,
         formatRegiones,
         formatEducacion,
+        formatPendientes,
         formatVigentes,
         escalasItems,
         dispositivosItems,
+        pendientesItems,
         regionesItems,
     };
 })();

@@ -2,10 +2,10 @@ import { test, expect } from '@playwright/test';
 import { createHash } from 'node:crypto';
 
 const QA_NOTE_FINGERPRINTS = [
-  '5eccbc1bd26bd402a395a88137df2c145c751024649aafe0f040220179f8f635',
-  'b17c35aa2196d3f6af3eb14376cb7959d3e2c168c9210201faf954f94f03b34a',
-  '572f27624f890c9343dfecb70ef45a060a24dfc6e24df45f9f184d94b9c10797',
-  'fc48325f40f71c610cef2c7dc6f94805678ac961da3254dd530a50b8e473382e',
+  '4f4e6d6e701e6aa3d3626894976fe1fbb8d70b9ffa08498028883106c7cccc8c',
+  '33a3061a7736ccaf426337593ff7bc92624e27458ac88a621c106a26a7d8f041',
+  '61c528743c7359f6d6039f7250de74de9859a74d0f83e5352a7e7497186659a4',
+  '01575fab1f19044478d443209e3b896e98fef4311b7ded4fc7ebe93e6e9d8f14',
 ];
 const measuringLegacyBaseline = process.env.STATIC_ROOT === 'docs';
 const printExpertMetrics = process.env.PRINT_EXPERT_METRICS === '1';
@@ -61,8 +61,20 @@ async function loadCompleteQa(page, options = {}) {
   await closeReview(page);
 }
 
+async function selectPatientIdType(page, code) {
+  const labels = {
+    cc: 'Cédula de ciudadanía',
+    birthCertificate: 'Certificado de nacimiento',
+    liveBirthCertificate: 'Certificado de nacido vivo',
+  };
+  const field = page.locator('#patientIdType');
+  await field.click();
+  await page.getByRole('option', { name: labels[code], exact: true }).click();
+  await expect(field).toHaveValue(labels[code]);
+}
+
 async function completePatientThroughUi(page) {
-  await page.locator('#patientIdType').selectOption('cc');
+  await selectPatientIdType(page, 'cc');
   await page.locator('#patientIdNumber').fill('123456789');
   const sex = page.locator('#sexoSeg [role="radio"]').first();
   await sex.focus();
@@ -357,7 +369,7 @@ test('patient identity is required and verification runs silently when the numbe
   await expect(page.locator('#noteSection')).toHaveJSProperty('open', false);
   await expect(page.locator('#patientIdType')).toBeFocused();
 
-  await page.locator('#patientIdType').selectOption('liveBirthCertificate');
+  await selectPatientIdType(page, 'liveBirthCertificate');
   await page.locator('#patientIdNumber').fill('CNV-2026-001');
   await page.locator('#sexoSeg [role="radio"]').first().focus();
   await expect(page.locator('#patientContextPanel')).toHaveAttribute('data-lookup-status', 'integrationPending');
@@ -405,6 +417,34 @@ test('confirmed identity locks and an incomplete pending edition can be discarde
 
   await page.locator('#noteToggleBtn').click();
   await expect(page.locator('#drawerCopyBtn')).toBeEnabled();
+  expect(await page.locator('#noteContent').innerHTML()).toBe(confirmedHtml);
+});
+
+test('discarding a dense edit restores scales, respiratory parameters, devices and education exactly', async ({ page }) => {
+  await openDelivery(page);
+  await loadQaScenario(page);
+  await closeReview(page);
+  await loadQaScenario(page);
+  await confirmOpenReview(page);
+  const confirmedState = await page.evaluate(() => window.NotaCampos.captureState());
+  const confirmedHtml = await page.locator('#noteContent').innerHTML();
+  await closeReview(page);
+
+  await page.locator('#flowTabFaseB').click();
+  await page.locator('#resp-param-fio2').fill('55');
+  await page.locator('[data-scale-id="rass"] .escala-puntaje').fill('-2');
+  await page.locator('#flowTabFaseC').click();
+  await page.locator('#dispositivosList .clinical-date-input').first().fill('04/07/2026');
+  await page.locator('#flowTabFaseD').click();
+  const topic = page.locator('#educacionList .edu-tema').first();
+  await topic.fill(`${await topic.inputValue()} · ajuste temporal`);
+  await page.locator('#flowTabFaseF').click();
+  await expect(page.locator('#workflowDiscardBtn')).toBeVisible();
+
+  await page.locator('#workflowDiscardBtn').click();
+  await page.locator('[data-dependent-confirm]').click();
+  await expect.poll(() => page.evaluate(() => window.NotaCampos.captureState())).toEqual(confirmedState);
+  await page.locator('#noteToggleBtn').click();
   expect(await page.locator('#noteContent').innerHTML()).toBe(confirmedHtml);
 });
 
@@ -691,7 +731,7 @@ test('QA scenario opens a modal review and traps/restores focus', async ({ page 
 test('an invalid combobox draft blocks review', async ({ page }) => {
   await openDelivery(page, { qa: false });
 
-  await page.locator('#patientIdType').selectOption('cc');
+  await selectPatientIdType(page, 'cc');
   await page.locator('#patientIdNumber').fill('123456789');
   const sex = page.locator('#sexoSeg [role="radio"]').first();
   await sex.focus();
@@ -994,44 +1034,45 @@ test('missing Clipboard API succeeds only when the fallback confirms copy', asyn
   await expect(page.locator('#drawerCopyBtn')).toHaveClass(/copied/);
 });
 
-test('invalid optional healing date blocks review and Escape restores empty', async ({ page }) => {
+test('invalid source-backed device date blocks review and Escape restores the committed value', async ({ page }) => {
   await loadCompleteQa(page);
   await page.locator('#flowTabFaseC').click();
 
-  const search = page.locator('#dispositivosPicker-search');
-  await search.fill('Sonda nasogástrica (SNG)');
-  await search.press('Enter');
-
   const cards = page.locator('#dispositivosList .multi-add-item');
-  await expect(cards).toHaveCount(2);
-  const card = cards.last();
-  const insertion = card.locator('.dev-fecha-ins');
-  const healing = card.locator('.dev-fecha-cur');
-  const deviceState = card.locator('.dev-estado');
+  await expect(cards).toHaveCount(1);
+  const card = cards.first();
+  const insertion = card.locator('.clinical-date-input');
+  const phlebitisScale = card.locator('select.device-parameter');
+  const phlebitisGrade = card.locator('input.device-parameter[type="number"]');
+  await phlebitisScale.selectOption('Maddox');
+  await phlebitisGrade.fill('5');
+  await expect(phlebitisGrade).toHaveAttribute('max', '4');
+  await expect(phlebitisGrade).toHaveAttribute('aria-invalid', 'true');
+  await phlebitisGrade.fill('4');
+  await expect(phlebitisGrade).toHaveAttribute('aria-invalid', 'false');
+  await phlebitisScale.selectOption('VIP');
+  await expect(phlebitisGrade).toHaveAttribute('max', '5');
+  await phlebitisGrade.fill('5');
+  await expect(phlebitisGrade).toHaveAttribute('aria-invalid', 'false');
 
-  await insertion.fill('01/01/2020');
-  await insertion.press('Enter');
-  await deviceState.fill('Permeable y funcional');
-  await deviceState.press('Enter');
-  await healing.fill('31/02/2020');
-  await healing.press('Tab');
+  const committed = await insertion.inputValue();
+  await insertion.fill('31/02/2020');
+  await insertion.press('Tab');
 
-  await expect(healing).toHaveAttribute('aria-invalid', 'true');
+  await expect(insertion).toHaveAttribute('aria-invalid', 'true');
   await expect(card.locator('.clinical-date-feedback:not([hidden])')).toContainText('fecha real');
   await expect(page.locator('#copyBtn')).toBeDisabled();
 
-  await healing.focus();
-  await healing.press('Control+Enter');
+  await insertion.focus();
+  await insertion.press('Control+Enter');
   await expect(page.locator('#noteSection')).toHaveJSProperty('open', false);
-  await expect(healing).toBeFocused();
+  await expect(insertion).toBeFocused();
 
-  await healing.press('Escape');
-  await expect(healing).toHaveValue('');
-  await expect(healing).toHaveAttribute('aria-invalid', 'false');
-  await healing.press('Shift+Backspace');
-  await expect(cards).toHaveCount(2);
+  await insertion.press('Escape');
+  await expect(insertion).toHaveValue(committed);
+  await expect(insertion).toHaveAttribute('aria-invalid', 'false');
 
-  await healing.press('Control+Enter');
+  await insertion.press('Control+Enter');
   await expect(page.locator('#noteSection')).toHaveJSProperty('open', true);
 });
 
@@ -1051,7 +1092,11 @@ test('assessment scales render catalog bounds and steps and keep decimal increme
     return {
       corto: meta.corto,
       state: item ? { min: item.min, max: item.max, step: item.step } : null,
-      dom: input ? { min: Number(input.min), max: Number(input.max), step: Number(input.step) } : null,
+      dom: input ? {
+        min: input.hasAttribute('min') ? Number(input.min) : null,
+        max: input.hasAttribute('max') ? Number(input.max) : null,
+        step: Number(input.step),
+      } : null,
       expected: { min: meta.min, max: meta.max, step: meta.step ?? 1 },
     };
   }));
@@ -1072,11 +1117,11 @@ test('assessment scales render catalog bounds and steps and keep decimal increme
   expect(await imc.inputValue()).not.toContain('00000000000000004');
   await imc.fill('70');
   await imc.press('ArrowUp');
-  await expect(imc).toHaveValue('70');
-  await imc.fill('10');
+  await expect(imc).toHaveValue('70.1');
+  await imc.fill('0');
   await imc.press('ArrowDown');
-  await expect(imc).toHaveValue('10');
-  await imc.fill('9.9');
+  await expect(imc).toHaveValue('0');
+  await imc.fill('-0.1');
   await expect(imc).toHaveAttribute('aria-invalid', 'true');
 
   await mna.fill('1');
@@ -1093,6 +1138,160 @@ test('assessment scales render catalog bounds and steps and keep decimal increme
   await expect(origin).toHaveValue(originValue);
 });
 
+test('scale score and category stay bidirectional while Glasgow blocks incongruent neurological state', async ({ page }) => {
+  await loadCompleteQa(page);
+  await page.locator('#flowTabFaseB').click();
+
+  const braden = page.locator('[data-scale-id="braden"]');
+  await braden.locator('.escala-puntaje').fill('12');
+  await expect(braden.locator('.escala-significado')).toHaveValue('Riesgo alto');
+
+  await braden.locator('.escala-significado').selectOption('Riesgo moderado');
+  await expect.poll(() => page.evaluate(() => {
+    const item = window.NotaCampos.state.escalas.find((scale) => scale.clinicalId === 'braden');
+    return { score: item.puntaje, range: item.rango, meaning: item.significado };
+  })).toEqual({ score: '', range: '13–14', meaning: 'Riesgo moderado' });
+  await expect(page.locator('[data-scale-id="braden"] .clinical-derived-value')).toContainText('13–14');
+
+  const glasgowScore = page.locator('[data-scale-id="glasgow"] .escala-puntaje');
+  await glasgowScore.fill('8');
+  await expect(page.locator('[data-scale-id="glasgow"] .escala-significado')).toHaveValue('Coma moderado');
+  await expect(page.locator('#estadoNeurologico')).toHaveValue('Coma moderado – Glasgow 6–8');
+  await page.locator('#estadoNeurologico').click();
+  await expect(page.getByRole('option', { name: 'Alerta y orientado en tiempo, lugar y persona', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('option', { name: 'Coma moderado – Glasgow 6–8', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('option', { name: 'Afásico con comprensión conservada', exact: true })).toHaveCount(1);
+  await page.locator('#estadoNeurologico').press('Escape');
+
+  await glasgowScore.fill('10');
+  await expect(page.locator('#noteStatus')).toContainText('no es congruente con Glasgow 10');
+  await page.locator('#estadoNeurologico').fill('Confuso / agitado');
+  await page.locator('#estadoNeurologico').press('Enter');
+  await expect(page.locator('#noteStatus')).not.toContainText('no es congruente');
+
+  await glasgowScore.fill('15');
+  await expect(page.locator('#estadoNeurologico')).toHaveValue('Alerta y orientado en tiempo, lugar y persona');
+});
+
+test('respiratory support renders parameters, manages its device and requires an airway for VMI', async ({ page }) => {
+  await loadCompleteQa(page);
+  await page.locator('#flowTabFaseB').click();
+  const respiratory = page.locator('#estadoRespiratorio');
+  const highFlow = 'Oxigenoterapia de alto flujo (OAF / Optiflow)';
+  await respiratory.fill(highFlow);
+  await respiratory.press('Enter');
+
+  await expect(page.locator('#respiratoryParameters')).toBeVisible();
+  await expect(page.locator('#resp-param-fio2')).toBeVisible();
+  await expect(page.locator('#resp-param-flujo')).toBeVisible();
+  await page.locator('#resp-param-fio2').fill('101');
+  await expect(page.locator('#resp-param-fio2')).toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#resp-param-fio2').fill('40');
+  await page.locator('#resp-param-flujo').fill('9');
+  await expect(page.locator('#resp-param-flujo')).toHaveAttribute('aria-invalid', 'true');
+  await page.locator('#resp-param-flujo').fill('35');
+
+  const automatic = page.locator('#dispositivosList .multi-add-item', {
+    hasText: 'Cánula de alto flujo (OAF/Optiflow)',
+  });
+  await expect(automatic).toHaveCount(1);
+  await expect(automatic).toContainText('Agregado por soporte respiratorio');
+  await page.locator('#flowTabFaseC').click();
+  await automatic.locator('.multi-add-remove').click();
+  await expect(automatic).toHaveCount(1);
+  await expect(page.locator('#actionAnnouncer')).toContainText('no puede quitarse');
+
+  await page.locator('#flowTabFaseB').click();
+  const invasive = 'Ventilación mecánica invasiva – modo controlado por volumen (VCV)';
+  await respiratory.fill(invasive);
+  await respiratory.press('Enter');
+  await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', true);
+  await expect(respiratory).toHaveValue(highFlow);
+  await page.keyboard.press('Escape');
+  await expect(respiratory).toHaveValue(highFlow);
+  await expect(page.locator('#resp-param-fio2')).toHaveValue('40');
+  await expect(page.locator('#resp-param-flujo')).toHaveValue('35');
+
+  await respiratory.fill(invasive);
+  await respiratory.press('Enter');
+  await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', true);
+  await page.locator('[data-dependent-confirm]').click();
+  await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', false);
+  await expect(respiratory).toHaveValue(invasive);
+  await expect(automatic).toHaveCount(0);
+  await expect(page.locator('#resp-param-peep')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.NotaCampos.getIssues('faseC')
+    .some((issue) => issue.message.includes('Vía aérea artificial')))).toBe(true);
+
+  await page.locator('#flowTabFaseC').click();
+  const airway = 'Tubo orotraqueal (TOT) – intubación orotraqueal';
+  await page.locator('#dispositivosPicker-search').fill(airway);
+  await page.locator('#dispositivosPicker-search').press('Enter');
+  await expect(page.locator('#dispositivosList .multi-add-item', { hasText: airway })).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => window.NotaCampos.getIssues('faseC')
+    .some((issue) => issue.message.includes('Vía aérea artificial')))).toBe(false);
+});
+
+test('abnormal device states create editable pendings and protect edited text on removal', async ({ page }) => {
+  await loadCompleteQa(page);
+  await page.locator('#flowTabFaseC').click();
+  const card = page.locator('#dispositivosList .multi-add-item').first();
+  const status = card.locator('.dev-estado');
+  await status.fill('Flebitis grado II (dolor y eritema)');
+  await page.getByRole('option', { name: 'Flebitis grado II (dolor y eritema)', exact: true }).click();
+
+  const generated = page.locator('#generatedPendings');
+  const pending = generated.locator('.generated-pending-text');
+  await page.locator('#flowTabFaseF').click();
+  await expect(generated).toBeVisible();
+  await expect(pending).toHaveValue('Vigilar sitio de inserción en próxima ronda; documentar evolución');
+  await expect(generated.locator('.priority-badge')).toHaveText('Media');
+  await pending.fill('Vigilar acceso y documentar evolución en próxima ronda');
+
+  await page.locator('#flowTabFaseC').click();
+  await status.fill('Permeable y funcional');
+  await page.getByRole('option', { name: 'Permeable y funcional', exact: true }).click();
+  await expect(page.locator('#dependentChangeDialog')).toHaveJSProperty('open', true);
+  await page.keyboard.press('Escape');
+  await expect(status).toHaveValue('Flebitis grado II (dolor y eritema)');
+  await expect(pending).toHaveValue('Vigilar acceso y documentar evolución en próxima ronda');
+
+  await status.fill('Permeable y funcional');
+  await page.getByRole('option', { name: 'Permeable y funcional', exact: true }).click();
+  await page.locator('[data-dependent-confirm]').click();
+  await expect(generated).toHaveAttribute('hidden', '');
+});
+
+test('education permits repeated recipients and blocks documented incompatibilities', async ({ page }) => {
+  await loadCompleteQa(page);
+  await page.locator('#flowTabFaseD').click();
+  const patient = page.locator('[data-edu-dest="Paciente"]');
+  await patient.click();
+  await patient.click();
+  await expect(page.locator('#educacionList .multi-add-item')).toHaveCount(2);
+  const patientTopics = page.locator('#educacionList .edu-tema');
+  await patientTopics.nth(0).fill('Cuidado del acceso');
+  await patientTopics.nth(1).fill('Signos de alarma');
+  await page.locator('#educacionList .edu-no-companion').first().check();
+
+  await page.locator('[data-edu-dest="No fue posible brindar educación – paciente sin condiciones"]').click();
+  await expect(page.locator('#educacionList .multi-add-item')).toHaveCount(2);
+  await expect(page.locator('#actionAnnouncer')).toContainText('no puede combinarse');
+
+  await page.locator('[data-edu-dest="Cuidador externo"]').click();
+  await expect(page.locator('#educacionList .multi-add-item')).toHaveCount(3);
+  await page.locator('#educacionList .edu-tema').last().fill('Administración segura');
+
+  await page.locator('[data-edu-dest="Paciente y familiar"]').click();
+  await expect(page.locator('#educacionList .multi-add-item')).toHaveCount(4);
+  await page.locator('#educacionList .edu-tema').last().fill('Cuidado del acceso');
+  await expect(page.locator('#actionAnnouncer')).toContainText('mismo tema');
+
+  await page.locator('[data-edu-dest="Sin acompañante"]').click();
+  await expect(page.locator('#educacionList .multi-add-item')).toHaveCount(4);
+  await expect(page.locator('#actionAnnouncer')).toContainText('no puede combinarse');
+});
+
 test('confirmation dialogs support directional actions, contain focus and restore the invoker', async ({ page }) => {
   await loadCompleteQa(page);
   await page.locator('#flowTabFaseB').click();
@@ -1106,18 +1305,18 @@ test('confirmation dialogs support directional actions, contain focus and restor
   await expect(dialog).toHaveJSProperty('open', true);
   await expect(cancel).toBeFocused();
 
-  await page.keyboard.press('ArrowRight');
+  await cancel.press('ArrowRight');
   await expect(confirm).toBeFocused();
-  await page.keyboard.press('ArrowRight');
+  await confirm.press('ArrowRight');
   await expect(confirm).toBeFocused();
-  await page.keyboard.press('ArrowLeft');
+  await confirm.press('ArrowLeft');
   await expect(cancel).toBeFocused();
-  await page.keyboard.press('Shift+Tab');
+  await cancel.press('Shift+Tab');
   await expect(confirm).toBeFocused();
-  await page.keyboard.press('Tab');
+  await confirm.press('Tab');
   await expect(cancel).toBeFocused();
   expect(await page.evaluate(() => document.querySelector('#dependentChangeDialog').contains(document.activeElement))).toBe(true);
-  await page.keyboard.press('Escape');
+  await cancel.press('Escape');
   await expect(dialog).toHaveJSProperty('open', false);
   await expect(trigger).toBeFocused();
   await expect.poll(() => page.evaluate(() => ({
@@ -1134,15 +1333,15 @@ test('confirmation dialogs support directional actions, contain focus and restor
   const resetAll = page.locator('#resetAllBtn');
   await expect(resetDialog).toHaveJSProperty('open', true);
   await expect(resetCancel).toBeFocused();
-  await page.keyboard.press('ArrowDown');
+  await resetCancel.press('ArrowDown');
   await expect(resetSectionButton).toBeFocused();
-  await page.keyboard.press('ArrowDown');
+  await resetSectionButton.press('ArrowDown');
   await expect(resetAll).toBeFocused();
-  await page.keyboard.press('ArrowDown');
+  await resetAll.press('ArrowDown');
   await expect(resetAll).toBeFocused();
-  await page.keyboard.press('ArrowUp');
+  await resetAll.press('ArrowUp');
   await expect(resetSectionButton).toBeFocused();
-  await page.keyboard.press('Enter');
+  await resetSectionButton.press('Enter');
   await expect(resetDialog).toHaveJSProperty('open', false);
   await expect.poll(() => page.evaluate(() => window.NotaCampos.state.escalas.length)).toBe(0);
 });
@@ -1391,6 +1590,52 @@ test('twenty-five device lifecycles leave no portal or duplicate state behind', 
 
   const names = await page.evaluate(() => window.NotaCampos.state.dispositivos.map((item) => item.nombre));
   expect(new Set(names).size).toBe(names.length);
+});
+
+test('all 49 clinical devices render every configured parameter and their specific status menu', async ({ page, browserName }) => {
+  test.setTimeout(60_000);
+  test.skip(browserName !== 'chromium', 'The complete structural catalog is rendered once; interactive families run in every engine.');
+  await openDelivery(page);
+  const failures = await page.evaluate(() => {
+    const base = window.NotaCampos.captureState();
+    const mismatches = [];
+    for (const definition of window.CareFlowClinical.devices) {
+      const snapshot = structuredClone(base);
+      snapshot.dispositivos = [{
+        id: 'catalog-audit-device',
+        clinicalId: definition.id,
+        nombre: definition.name,
+        origen: 'manual',
+        estadoId: '',
+        estado: '',
+        parametros: {},
+      }];
+      snapshot.sinDispositivos = false;
+      snapshot.pendientesAutomaticos = [];
+      window.NotaCampos.restoreState(snapshot, { notify: false });
+      const card = document.querySelector('#dispositivosList .multi-add-item');
+      const missingParameters = definition.fields
+        .filter((field) => !document.getElementById(`dev-param-catalog-audit-device-${field.id}`))
+        .map((field) => field.id);
+      const statusInput = document.getElementById('dev-estado-catalog-audit-device');
+      const combo = statusInput?.closest('[data-cbx]')?._notaCombobox;
+      combo?.open();
+      const renderedStatuses = document.getElementById('dev-estado-catalog-audit-device-listbox')
+        ?.querySelectorAll('.cbx-opt').length ?? -1;
+      combo?.close();
+      if (!card || missingParameters.length || renderedStatuses !== definition.statuses.length) {
+        mismatches.push({
+          device: definition.name,
+          missingParameters,
+          expectedStatuses: definition.statuses.length,
+          renderedStatuses,
+        });
+      }
+    }
+    window.NotaCampos.restoreState(base, { notify: false });
+    return mismatches;
+  });
+  expect(failures).toEqual([]);
 });
 
 test('internal navigation warns about uncopied changes without storing the draft', async ({ page }) => {

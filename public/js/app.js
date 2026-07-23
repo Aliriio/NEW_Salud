@@ -436,6 +436,12 @@ function setupPatientContext() {
 
     if (new URLSearchParams(window.location.search).get('qa') === '1') {
         window.CareFlowQaPatientLookup = (status) => setPatientLookupState(status);
+        window.CareFlowQaPatientIdentity = (type, number) => {
+            patientIdTypeCode = ID_TYPES.some((entry) => entry.value === type) ? type : '';
+            noteLifecycle.setIdentity({ type: patientIdTypeCode, number: String(number || '') });
+            renderPatientContext();
+            updateNote();
+        };
     }
 }
 
@@ -2797,6 +2803,7 @@ function setupFieldNavigationRegistry() {
         ['clinical-neuro', 'faseB', '[data-estado="estadoNeurologico"]', '#estadoNeurologico'],
         ['clinical-hemo', 'faseB', '[data-estado="estadoHemodinamico"]', '#estadoHemodinamico'],
         ['clinical-resp', 'faseB', '[data-estado="estadoRespiratorio"]', '#estadoRespiratorio'],
+        ['clinical-resp-params', 'faseB', '#respiratoryParameters', '#respiratoryParameters .clinical-parameter'],
         ['clinical-scales', 'faseB', '#escalasBlock', '#escalasPicker .multi-add-input'],
         ['diagnosis-medical', 'faseC', '#diagnosticoMedico', '#diagnosticoMedico'],
         ['diagnosis-isolation', 'faseC', '[data-cbx="aislamiento"]', '#aislamiento'],
@@ -2808,12 +2815,13 @@ function setupFieldNavigationRegistry() {
         ['delivery-trend', 'faseF', '[data-cbx="tendenciaEvolutiva"]', '#tendenciaEvolutiva'],
         ['delivery-meta', 'faseF', '#metaSeg', '#metaSeg'],
         ['delivery-criterion', 'faseF', '#criterioClinico', '#criterioClinico'],
+        ['delivery-generated-pending', 'faseF', '#generatedPendings', '#generatedPendings textarea'],
         ['delivery-pending', 'faseF', '#pendientes', '#pendientes'],
         ['delivery-observations', 'faseF', '#otrosComentarios', '#otrosComentarios'],
     ];
     fields.forEach(([id, stageId, root, anchor]) => {
         const record = registerNavigationField({ id, stageId, root, anchor });
-        if (['patient-dob', 'clinical-scales', 'diagnosis-devices', 'findings-regions', 'findings-education'].includes(id)) {
+        if (['patient-dob', 'clinical-resp-params', 'clinical-scales', 'diagnosis-devices', 'findings-regions', 'findings-education', 'delivery-generated-pending'].includes(id)) {
             setupInternalFieldNavigation(record.definition.root());
         }
     });
@@ -3101,8 +3109,11 @@ function moveDialogActionFocus(dialog, origin, direction) {
     const button = origin?.closest?.('[data-dialog-actions] button');
     const group = button?.closest?.('[data-dialog-actions]');
     if (!button || !group || !dialog.contains(group)) return false;
-    const buttons = [...group.querySelectorAll('button:not([disabled])')]
-        .filter((candidate) => isInteractionElementVisible(candidate));
+    const available = [...group.querySelectorAll('button:not([disabled])')];
+    const visible = available.filter((candidate) => isInteractionElementVisible(candidate));
+    // Durante la apertura nativa de <dialog>, Firefox/WebKit pueden entregar el
+    // primer keydown antes de que getClientRects() refleje todos los botones.
+    const buttons = visible.length >= 2 ? visible : available;
     if (buttons.length < 2 || !buttons.includes(button)) return false;
 
     const centers = buttons.map((candidate) => {
@@ -3138,7 +3149,10 @@ function setupDialogActionNavigation(dialog) {
         if (event.defaultPrevented || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
         if (!event.key.startsWith('Arrow')) return;
         const direction = event.key.slice(5).toLowerCase();
-        if (!moveDialogActionFocus(dialog, event.target, direction)) return;
+        const origin = event.target?.closest?.('[data-dialog-actions] button')
+            ? event.target
+            : document.activeElement;
+        if (!moveDialogActionFocus(dialog, origin, direction)) return;
         event.preventDefault();
         event.stopPropagation();
     });
@@ -3257,6 +3271,13 @@ function setupInteractionCore() {
             overlay: ({ event, key, overlay, target }) => {
                 showKeyboardCoach();
                 if (overlay?.modal !== false && keepTabInsideDialog(event, overlay?.element)) return true;
+                if (key.startsWith('Arrow') && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+                    const direction = key.slice(5).toLowerCase();
+                    const origin = target?.closest?.('[data-dialog-actions] button')
+                        ? target
+                        : document.activeElement;
+                    if (moveDialogActionFocus(overlay?.element, origin, direction)) return true;
+                }
                 if (key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey) {
                     if (overlay?.id === 'note-review') primaryReviewAction()?.focus();
                     return true;
@@ -4393,7 +4414,7 @@ function renderNote({ confirmationTime = null } = {}) {
         + `en posición ${v(posDisp)} en cama ${v(s?.numCama)} de la habitación ${v(s?.numHabitacion)}, `
         + `ubicado en el servicio de ${v(s?.servicio)}, correspondiente al área clínica de ${v(selected.areaNombre)}. `
         + `Al momento de la entrega, el paciente se encuentra ${v(s?.estadoNeurologico)}, ${v(s?.estadoHemodinamico)} `
-        + `y ${v(s?.estadoRespiratorio)}.`;
+        + `y ${v(nc?.formatRespiratoryState?.() || s?.estadoRespiratorio)}.`;
     if (s?.sinEscalas) p1 += ` No se aplicaron escalas de valoración durante el turno.`;
     else if ((s?.escalas?.length || 0) <= 2) {
         // Pocas escalas: en línea
@@ -4486,7 +4507,7 @@ function renderNote({ confirmationTime = null } = {}) {
         + `Se hace entrega del paciente en posición ${v(posDisp)}, con ${v(nc?.formatVigentes())}, `
         + `medidas de seguridad confirmadas${aisl === ',' ? '' : aisl.replace(/,$/, '')}. `
         + `Se comunican verbalmente y por escrito los siguientes pendientes para continuidad del cuidado `
-        + `en el próximo turno: ${v(s?.pendientes)}`;
+        + `en el próximo turno: ${v(nc?.formatPendientes?.() || s?.pendientes)}`;
     blocks.push(en);
 
     // Observaciones adicionales (campo opcional)
@@ -4581,7 +4602,10 @@ function restoreConfirmedVersion(version) {
     if (!version?.formSnapshot) return false;
     suppressRevisionTracking = true;
     cancelPendingUndo();
-    window.NotaCampos?.restoreState?.(version.formSnapshot.notaCampos);
+    // Restaurar como una sola transacción. NotaCampos se rehidrata primero sin
+    // publicar un estado parcial; la nota se vuelve a renderizar cuando también
+    // están listos los campos escalares y el PAE.
+    window.NotaCampos?.restoreState?.(version.formSnapshot.notaCampos, { notify: false });
     restoreSegmentedControl('sexoSeg', els.sexo, version.formSnapshot.scalar?.sexo, '___');
     restoreSegmentedControl('metaSeg', els.metaLograda, version.formSnapshot.scalar?.meta, '');
     if (els.dobFecha) {
@@ -4599,6 +4623,7 @@ function restoreConfirmedVersion(version) {
         : 'patient';
     activateFlowStage(stage, { focus: false });
     if (stage === 'fasePAE') activateStep(currentStep, { focus: false });
+    renderNote({ confirmationTime: version.confirmationTime });
     if (els.noteContent && version.noteHtml) els.noteContent.innerHTML = version.noteHtml;
     suppressRevisionTracking = false;
     updateCopyBtnState();
@@ -4646,6 +4671,7 @@ function requestDiscardEditing(trigger = document.activeElement) {
             if (!restoreConfirmedVersion(version)) return;
             announceAction('Cambios descartados. Se restauró la última versión confirmada.');
             requestAnimationFrame(() => {
+                updateCopyBtnState();
                 const target = els.copyBtn && !els.copyBtn.hidden ? els.copyBtn : els.noteToggleBtn;
                 target?.focus?.({ preventScroll: true });
             });
